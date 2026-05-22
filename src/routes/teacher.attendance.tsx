@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useMemo } from "react";
-import { Search, CheckCircle2, X, Clock, FileText, Save } from "lucide-react";
+import { Search, CheckCircle2, X, FileText, Save } from "lucide-react";
 import { toast } from "sonner";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { TEACHER_ME, studentsInClass } from "@/lib/teacherStaffData";
@@ -19,7 +19,6 @@ const COLORS: Record<AttStatus, string> = {
 function TeacherAttendance() {
   const [tab, setTab] = useState<"take" | "history">("take");
   const [cls, setCls] = useState(TEACHER_ME.classes[0]);
-  const [period, setPeriod] = useState(1);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [loaded, setLoaded] = useState(false);
   const [marks, setMarks] = useState<Record<string, AttStatus>>({});
@@ -27,6 +26,7 @@ function TeacherAttendance() {
   const [confirm, setConfirm] = useState(false);
   const [notify, setNotify] = useState(true);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [listOpen, setListOpen] = useState<{ mode: "current" | "history"; cls: string; date: string } | null>(null);
 
   const students = useMemo(() => studentsInClass(cls), [cls]);
   const filtered = students.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
@@ -49,14 +49,30 @@ function TeacherAttendance() {
     setLoaded(true);
     setMarks({});
     setSavedAt(null);
-    toast.success(`Loaded ${students.length} students for ${cls}, Period ${period}`);
+    toast.success(`Loaded ${students.length} students for ${cls} on ${date}`);
   };
 
   const submit = () => {
     setConfirm(false);
-    toast.success(`Attendance submitted for ${cls}, Period ${period}. ${notify && counts.Absent > 0 ? `Sending ${counts.Absent} parent SMS…` : ""}`);
+    toast.success(`Attendance submitted for ${cls} on ${date}. ${notify && counts.Absent > 0 ? `Sending ${counts.Absent} parent SMS…` : ""}`);
     setLoaded(false);
     setMarks({});
+  };
+
+  const exportExcel = () => {
+    if (!loaded) {
+      toast.error("Load students first");
+      return;
+    }
+    toast.success(`Attendance exported (Excel) for ${cls} on ${date}`);
+  };
+
+  const openCurrentList = () => {
+    if (!loaded) {
+      toast.error("Load students first");
+      return;
+    }
+    setListOpen({ mode: "current", cls, date });
   };
 
   return (
@@ -79,22 +95,22 @@ function TeacherAttendance() {
               </select>
             </div>
             <div>
-              <label className="text-xs font-semibold text-muted-foreground">Period</label>
-              <select value={period} onChange={e => setPeriod(+e.target.value)} className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm">
-                {[1, 2, 3, 4, 5, 6, 7, 8].map(p => <option key={p} value={p}>Period {p}</option>)}
-              </select>
-            </div>
-            <div>
               <label className="text-xs font-semibold text-muted-foreground">Date</label>
               <input type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm" />
             </div>
             <button onClick={load} className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90">Load Students</button>
+            <button onClick={exportExcel} className="h-9 px-4 rounded-md border border-border text-sm font-semibold hover:bg-muted inline-flex items-center gap-2">
+              <FileText className="h-4 w-4" /> Export Excel
+            </button>
+            <button onClick={openCurrentList} className="h-9 px-4 rounded-md border border-border text-sm font-semibold hover:bg-muted">
+              Students List
+            </button>
           </div>
 
           {loaded && (
             <div className="grid lg:grid-cols-3 gap-5">
               <div className="lg:col-span-2 rounded-xl border border-border bg-card shadow-sm">
-                <div className="p-4 border-b border-border flex items-center gap-3">
+                <div className="p-4 border-b border-border flex items-center gap-2 flex-wrap">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <input value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm" placeholder="Search student…" />
@@ -142,7 +158,7 @@ function TeacherAttendance() {
               <div className="rounded-xl border border-border bg-card p-5 shadow-sm h-fit space-y-4">
                 <div>
                   <div className="text-xs uppercase text-muted-foreground">Session</div>
-                  <div className="font-display text-lg font-bold">{cls} · Period {period}</div>
+                  <div className="font-display text-lg font-bold">{cls}</div>
                   <div className="text-xs text-muted-foreground">{TEACHER_ME.subject} · {date}</div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-center">
@@ -174,19 +190,25 @@ function TeacherAttendance() {
         <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-muted text-xs uppercase">
-              <tr><th className="text-left p-3">Date</th><th className="text-left p-3">Class</th><th className="text-left p-3">Period</th><th className="text-left p-3">Present</th><th className="text-left p-3">Absent</th><th className="text-left p-3">Late</th><th className="text-left p-3">Submitted</th><th className="text-left p-3">Actions</th></tr>
+              <tr><th className="text-left p-3">Date</th><th className="text-left p-3">Class</th><th className="text-left p-3">Present</th><th className="text-left p-3">Absent</th><th className="text-left p-3">Late</th><th className="text-left p-3">Submitted</th><th className="text-left p-3">Actions</th></tr>
             </thead>
             <tbody>
               {Array.from({ length: 8 }).map((_, i) => (
                 <tr key={i} className={`border-t border-border ${i % 2 ? "bg-gray-50" : ""}`}>
                   <td className="p-3">2026-05-{String(15 - i).padStart(2, "0")}</td>
                   <td className="p-3 font-semibold">{TEACHER_ME.classes[i % TEACHER_ME.classes.length]}</td>
-                  <td className="p-3">P{(i % 6) + 1}</td>
                   <td className="p-3 text-indigo-700 font-semibold">{28 - (i % 4)}</td>
                   <td className="p-3 text-red-600">{i % 3}</td>
                   <td className="p-3 text-amber-600">{i % 2}</td>
                   <td className="p-3 text-muted-foreground">07:{String(45 + i).padStart(2, "0")}</td>
-                  <td className="p-3"><button className="text-xs text-primary font-semibold hover:underline">View</button></td>
+                  <td className="p-3">
+                    <button
+                      onClick={() => setListOpen({ mode: "history", cls: TEACHER_ME.classes[i % TEACHER_ME.classes.length], date: `2026-05-${String(15 - i).padStart(2, "0")}` })}
+                      className="text-xs text-primary font-semibold hover:underline"
+                    >
+                      View Students
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -201,7 +223,7 @@ function TeacherAttendance() {
               <h3 className="font-display text-lg font-bold">Confirm Submission</h3>
               <button onClick={() => setConfirm(false)} className="rounded-md p-1 hover:bg-muted"><X className="h-4 w-4" /></button>
             </div>
-            <p className="text-sm text-muted-foreground mb-3">Submitting attendance for <b>{cls}</b>, Period {period}, {date}</p>
+            <p className="text-sm text-muted-foreground mb-3">Submitting attendance for <b>{cls}</b>, {date}</p>
             <div className="flex gap-3 text-sm mb-4">
               <span className="text-indigo-700 font-semibold">{counts.Present} Present</span>
               <span className="text-red-600 font-semibold">{counts.Absent} Absent</span>
@@ -214,6 +236,44 @@ function TeacherAttendance() {
             <div className="flex justify-end gap-2 mt-5">
               <button onClick={() => setConfirm(false)} className="h-9 px-4 rounded-md border border-border text-sm font-semibold">Cancel</button>
               <button onClick={submit} className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {listOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setListOpen(null)}>
+          <div className="w-full max-w-3xl rounded-2xl bg-background p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-display text-lg font-bold">Student Attendance List</h3>
+                <p className="text-xs text-muted-foreground">{listOpen.cls} · {listOpen.date}</p>
+              </div>
+              <button onClick={() => setListOpen(null)} className="rounded-md p-1 hover:bg-muted"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="rounded-xl border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted text-xs uppercase">
+                  <tr><th className="text-left p-3">Student</th><th className="text-left p-3">Reg #</th><th className="text-left p-3">Status</th></tr>
+                </thead>
+                <tbody>
+                  {studentsInClass(listOpen.cls).map((s, i) => {
+                    const status = listOpen.mode === "current"
+                      ? (marks[s.id] ?? "Not marked")
+                      : (["Present", "Absent", "Late", "Excused"][i % 4] as AttStatus);
+                    const statusClass = status in COLORS ? COLORS[status as AttStatus] : "bg-muted text-muted-foreground border-border";
+                    return (
+                      <tr key={s.id} className={`border-t border-border ${i % 2 ? "bg-gray-50" : ""}`}>
+                        <td className="p-3 font-medium">{s.name}</td>
+                        <td className="p-3 text-muted-foreground">{s.cardId}</td>
+                        <td className="p-3">
+                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${statusClass}`}>{status}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

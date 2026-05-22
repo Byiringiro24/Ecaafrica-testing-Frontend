@@ -2,8 +2,9 @@ import { ReactNode, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, BookOpen, ClipboardCheck, GraduationCap, TrendingUp,
-  MessageSquare, Bell, Calendar, User, LogOut, Menu, X, Search,
+  MessageSquare, Bell, Calendar, User, LogOut, Menu, X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { TEACHER_ME } from "@/lib/teacherStaffData";
 import logo from "@/assets/logo.png";
@@ -32,6 +33,7 @@ const NAV = [
 
 export function TeacherLayout({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
@@ -102,14 +104,46 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
               <h1 className="font-display text-xl md:text-2xl font-bold truncate">{title}</h1>
               {subtitle && <p className="text-xs md:text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
             </div>
-            <div className="hidden md:flex relative w-64">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              <input className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30" placeholder="Search students, classes..." />
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setProfileOpen(p => !p)}
+                className="hidden sm:flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted"
+              >
+                <div className="text-right leading-tight">
+                  <div className="text-sm font-semibold">{TEACHER_ME.name}</div>
+                  <div className="text-[11px] text-muted-foreground">Teacher</div>
+                </div>
+                <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground text-sm font-bold">
+                  {TEACHER_ME.initials}
+                </div>
+              </button>
+
+              {profileOpen && (
+                <div className="absolute right-0 mt-2 w-48 rounded-lg border border-border bg-card shadow-lg overflow-hidden">
+                  <Link
+                    to="/teacher/profile"
+                    onClick={() => setProfileOpen(false)}
+                    className="block w-full text-left px-4 py-2 text-sm hover:bg-muted"
+                  >
+                    View Profile
+                  </Link>
+                  <button
+                    onClick={() => { toast.info("Account settings…"); setProfileOpen(false); }}
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-muted"
+                  >
+                    Account Settings
+                  </button>
+                  <Link
+                    to="/login"
+                    onClick={() => setProfileOpen(false)}
+                    className="block w-full text-left px-4 py-2 text-sm text-destructive hover:bg-muted"
+                  >
+                    Sign Out
+                  </Link>
+                </div>
+              )}
             </div>
-            <button className="relative grid h-10 w-10 place-items-center rounded-lg border border-border bg-card hover:bg-muted">
-              <Bell className="h-4 w-4" />
-              <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-destructive" />
-            </button>
           </div>
         </header>
         <main className="flex-1 px-4 md:px-8 py-6">{children}</main>

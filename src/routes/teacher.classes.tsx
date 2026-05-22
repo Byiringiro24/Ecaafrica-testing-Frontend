@@ -40,7 +40,6 @@ function TeacherClasses() {
                 <button onClick={() => { setOpenClass(cls); setTab("students"); }} className="flex-1 h-8 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90">
                   View Students
                 </button>
-                <button className="h-8 px-3 text-xs font-semibold rounded-md border border-border hover:bg-muted">Attendance</button>
               </div>
             </div>
           );

@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import {
-  Building2, MessageSquare, Calendar, Database,
+  Building2, MessageSquare, Calendar, User, Database,
   Plus, Trash2, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -13,11 +13,16 @@ const TABS = [
   { id: "school", label: "School Information", icon: Building2 },
   { id: "sms", label: "SMS Configuration", icon: MessageSquare },
   { id: "calendar", label: "Academic Calendar", icon: Calendar },
+  { id: "profile", label: "Profile Settings", icon: User },
   { id: "logs", label: "User logs", icon: Database },
 ] as const;
 
 function SettingsPage() {
-  const [tab, setTab] = useState<typeof TABS[number]["id"]>("school");
+  const search = useRouterState({ select: (s) => s.location.search });
+  const [tab, setTab] = useState<typeof TABS[number]["id"]>(() => {
+    const tabParam = new URLSearchParams(search ?? "").get("tab");
+    return TABS.some(t => t.id === tabParam) ? (tabParam as typeof TABS[number]["id"]) : "school";
+  });
 
   return (
     <AppLayout title="System Settings" subtitle="Configure school, SMS, and user access">
@@ -40,6 +45,7 @@ function SettingsPage() {
           {tab === "school" && <SchoolTab />}
           {tab === "sms" && <SMSTab />}
           {tab === "calendar" && <CalendarTab />}
+          {tab === "profile" && <ProfileTab />}
           {tab === "logs" && <UserLogsTab />}
         </div>
       </div>
@@ -163,6 +169,62 @@ function CalendarTab() {
           className="rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground inline-flex items-center justify-center gap-1"><Plus className="h-4 w-4" /> Add</button>
       </div>
       <button onClick={() => toast.success("Calendar saved")} className="mt-5 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground">Save Calendar</button>
+    </>
+  );
+}
+
+function ProfileTab() {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  const handleSave = () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      toast.error("Fill in all password fields");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("New passwords do not match");
+      return;
+    }
+    toast.success("Password updated");
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+  };
+
+  return (
+    <>
+      <h3 className="font-display font-bold text-lg mb-4">Profile Settings</h3>
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Current Password" full>
+          <input
+            type="password"
+            className={inp}
+            value={currentPassword}
+            onChange={e => setCurrentPassword(e.target.value)}
+          />
+        </Field>
+        <Field label="New Password" full>
+          <input
+            type="password"
+            className={inp}
+            value={newPassword}
+            onChange={e => setNewPassword(e.target.value)}
+          />
+        </Field>
+        <Field label="Confirm New Password" full>
+          <input
+            type="password"
+            className={inp}
+            value={confirmPassword}
+            onChange={e => setConfirmPassword(e.target.value)}
+          />
+        </Field>
+      </div>
+      <button onClick={handleSave} className="mt-5 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground">
+        Save Password
+      </button>
     </>
   );
 }

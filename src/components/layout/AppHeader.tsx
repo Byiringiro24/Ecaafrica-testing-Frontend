@@ -1,4 +1,7 @@
-import { Bell, Menu, Search } from "lucide-react";
+import { useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { Menu } from "lucide-react";
+import { toast } from "sonner";
 
 interface Props {
   title: string;
@@ -7,6 +10,7 @@ interface Props {
 }
 
 export function AppHeader({ title, subtitle, onMenuClick }: Props) {
+  const [profileOpen, setProfileOpen] = useState(false);
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur-md">
       <div className="flex items-center gap-4 px-4 md:px-8 py-4">
@@ -25,29 +29,45 @@ export function AppHeader({ title, subtitle, onMenuClick }: Props) {
             <p className="text-xs md:text-sm text-muted-foreground mt-0.5">{subtitle}</p>
           )}
         </div>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setProfileOpen(p => !p)}
+            className="hidden sm:flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted"
+          >
+            <div className="text-right leading-tight">
+              <div className="text-sm font-semibold">Mugisha Jean</div>
+              <div className="text-[11px] text-muted-foreground">Super Admin</div>
+            </div>
+            <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground text-sm font-bold">
+              MJ
+            </div>
+          </button>
 
-        <div className="hidden md:flex relative w-64">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search students, classes..."
-            className="h-10 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-          />
-        </div>
-
-        <button className="relative grid h-10 w-10 place-items-center rounded-lg border border-border bg-card hover:bg-muted">
-          <Bell className="h-4 w-4" />
-          <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-destructive" />
-        </button>
-
-        <div className="hidden sm:flex items-center gap-3">
-          <div className="text-right leading-tight">
-            <div className="text-sm font-semibold">Mugisha Jean</div>
-            <div className="text-[11px] text-muted-foreground">Super Admin</div>
-          </div>
-          <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground text-sm font-bold">
-            MJ
-          </div>
+          {profileOpen && (
+            <div className="absolute right-0 mt-2 w-48 rounded-lg border border-border bg-card shadow-lg overflow-hidden">
+              <button
+                onClick={() => { toast.info("Open profile…"); setProfileOpen(false); }}
+                className="w-full text-left px-4 py-2 text-sm hover:bg-muted"
+              >
+                View Profile
+              </button>
+              <Link
+                to="/settings"
+                search={{ tab: "profile" }}
+                onClick={() => setProfileOpen(false)}
+                className="block w-full text-left px-4 py-2 text-sm hover:bg-muted"
+              >
+                Account Settings
+              </Link>
+              <button
+                onClick={() => { toast.success("Signed out"); setProfileOpen(false); }}
+                className="w-full text-left px-4 py-2 text-sm text-destructive hover:bg-muted"
+              >
+                Sign Out
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

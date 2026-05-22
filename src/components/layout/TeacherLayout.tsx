@@ -2,7 +2,7 @@ import { ReactNode, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, BookOpen, ClipboardCheck, GraduationCap, TrendingUp,
-  MessageSquare, Bell, Calendar, User, LogOut, Menu, X,
+  Calendar, User, LogOut, Menu, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -20,10 +20,6 @@ const NAV = [
   { section: "Academic", items: [
     { to: "/teacher/exams", label: "Exams & Results", icon: GraduationCap },
     { to: "/teacher/progress", label: "Student Progress", icon: TrendingUp },
-  ]},
-  { section: "Communication", items: [
-    { to: "/teacher/messages", label: "Parent Messages", icon: MessageSquare },
-    { to: "/teacher/notifications", label: "Notifications", icon: Bell },
   ]},
   { section: "Personal", items: [
     { to: "/teacher/schedule", label: "My Schedule", icon: Calendar },

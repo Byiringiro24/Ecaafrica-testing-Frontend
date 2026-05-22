@@ -1,16 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { UserCheck, Plus, X, Search, LogOut, Eye, Camera, Printer, ChevronRight, ChevronLeft, Calendar, CheckCircle2, Clock, Users } from "lucide-react";
+import { UserCheck, Plus, X, Search, LogOut, Eye, Printer, ChevronRight, ChevronLeft, Calendar, CheckCircle2, Clock, Users } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Avatar } from "@/components/ui-kit/Avatar";
-import { VISITORS, STAFF, type Visitor } from "@/lib/mockData";
+import { VISITORS, STAFF, type Visitor, type Staff } from "@/lib/mockData";
 
 export const Route = createFileRoute("/visitors")({ component: VisitorsPage });
 
 const TABS = ["Active Visitors", "Scheduled", "History", "Logs"] as const;
 type Tab = typeof TABS[number];
+
+const hostTitleFor = (role: Staff["role"]) => {
+  if (role === "Admin") return "Head Teacher";
+  if (role === "Teacher") return "Teacher";
+  return "HOD";
+};
+
+const hostDisplayName = (staff: Staff) => `${hostTitleFor(staff.role)} ${staff.name}`;
 
 function VisitorsPage() {
   const [tab, setTab] = useState<Tab>("Active Visitors");
@@ -256,7 +264,7 @@ function ModalShell({ onClose, children, size = "lg" }: { onClose: () => void; c
   useEsc(onClose);
   const w = size === "md" ? "max-w-md" : size === "xl" ? "max-w-3xl" : "max-w-xl";
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-sm p-4">
       <div className={`w-full ${w} rounded-2xl bg-card shadow-2xl border border-border max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>{children}</div>
     </div>
   );
@@ -267,7 +275,7 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
   const [submitting, setSubmitting] = useState(false);
   const [data, setData] = useState({
     name: "", nationalId: "", phone: "", organization: "",
-    purpose: "Parent Visit" as Visitor["purpose"], host: STAFF[0]?.name || "",
+    purpose: "Parent Visit" as Visitor["purpose"], host: STAFF[0] ? hostDisplayName(STAFF[0]) : "",
     appointmentDate: new Date().toISOString().slice(0, 10), appointmentTime: "09:00",
     duration: "1 hr", notes: "", printBadge: true, smsHost: true,
   });
@@ -278,9 +286,6 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
     if (s === 1) {
       if (!data.name.trim()) e.name = "Required";
       if (!data.nationalId.trim()) e.nationalId = "Required";
-      if (!/^\+250 ?7\d{2} ?\d{3} ?\d{3}$/.test(data.phone.replace(/\s/g, "").replace(/^\+2507/, "+250 7"))) {
-        if (!/^\+2507\d{8}$/.test(data.phone.replace(/\s/g, ""))) e.phone = "Format: +250 7XX XXX XXX";
-      }
     }
     if (s === 2) {
       if (!data.host) e.host = "Required";
@@ -346,9 +351,6 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
             <Field label="Organization / Relationship">
               <input className={inputCls(false)} value={data.organization} onChange={e => setData({ ...data, organization: e.target.value })} placeholder="e.g. Parent of Keza Aline (S3A)" />
             </Field>
-            <button type="button" className="inline-flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:bg-muted">
-              <Camera className="h-4 w-4" /> Capture visitor photo
-            </button>
           </>
         )}
         {step === 2 && (
@@ -361,7 +363,10 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
               </Field>
               <Field label="Host (Staff)" required error={errors.host}>
                 <select className={inputCls(!!errors.host)} value={data.host} onChange={e => setData({ ...data, host: e.target.value })}>
-                  {STAFF.map(s => <option key={s.id}>{s.name}</option>)}
+                  {STAFF.map(s => {
+                    const label = hostDisplayName(s);
+                    return <option key={s.id} value={label}>{label}</option>;
+                  })}
                 </select>
               </Field>
             </div>

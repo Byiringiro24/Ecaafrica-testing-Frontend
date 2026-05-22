@@ -13,7 +13,8 @@ export const Route = createFileRoute("/fees")({ component: FeesPage });
 const TABS = ["Fee Dashboard", "Student Fees", "Transaction Logs", "Fee Structure", "Reminders", "Subscription"] as const;
 
 function FeesPage() {
-  const [tab, setTab] = useState<typeof TABS[number]>("Fee Dashboard");
+  const subscriptionOnly = true;
+  const [tab, setTab] = useState<typeof TABS[number]>(subscriptionOnly ? "Subscription" : "Fee Dashboard");
   const expected = STUDENT_FEES.reduce((s, f) => s + f.total, 0);
   const collected = STUDENT_FEES.reduce((s, f) => s + f.paid, 0);
   const outstanding = expected - collected;
@@ -22,7 +23,7 @@ function FeesPage() {
 
   return (
     <AppLayout title="Fee Management" subtitle="Tuition, boarding & activity fees — Amafaranga">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+      <div className={`grid grid-cols-2 md:grid-cols-5 gap-3 mb-5 ${subscriptionOnly ? "hidden" : ""}`}>
         <StatCard label="Total Expected" value={formatRWF(expected)} />
         <StatCard label="Collected" value={formatRWF(collected)} tone="success" />
         <StatCard label="Outstanding" value={formatRWF(outstanding)} />
@@ -30,7 +31,7 @@ function FeesPage() {
         <StatCard label="This Month" value={formatRWF(month)} tone="success" />
       </div>
 
-      <div className="flex flex-wrap gap-1 border-b border-border mb-4 overflow-x-auto">
+      <div className={`flex flex-wrap gap-1 border-b border-border mb-4 overflow-x-auto ${subscriptionOnly ? "hidden" : ""}`}>
         {TABS.map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
@@ -39,12 +40,12 @@ function FeesPage() {
         ))}
       </div>
 
-      {tab === "Fee Dashboard" && <DashboardTab />}
-      {tab === "Student Fees" && <StudentFeesTab />}
-      {tab === "Transaction Logs" && <TransactionLogsTab />}
-      {tab === "Fee Structure" && <FeeStructureTab />}
-      {tab === "Reminders" && <RemindersTab />}
-      {tab === "Subscription" && <SubscriptionTab />}
+      {!subscriptionOnly && tab === "Fee Dashboard" && <DashboardTab />}
+      {!subscriptionOnly && tab === "Student Fees" && <StudentFeesTab />}
+      {!subscriptionOnly && tab === "Transaction Logs" && <TransactionLogsTab />}
+      {!subscriptionOnly && tab === "Fee Structure" && <FeeStructureTab />}
+      {!subscriptionOnly && tab === "Reminders" && <RemindersTab />}
+      {(subscriptionOnly || tab === "Subscription") && <SubscriptionTab />}
     </AppLayout>
   );
 }

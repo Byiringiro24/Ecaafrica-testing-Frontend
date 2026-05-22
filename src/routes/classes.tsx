@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
-  Plus, Search, User, DoorOpen, Eye, Pencil, X, Trash2, Download,
+  Plus, Search, User, DoorOpen, Eye, Pencil, X, Trash2, Download, Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -18,10 +18,15 @@ import {
 
 export const Route = createFileRoute("/classes")({ component: ClassesPage });
 
+const DEFAULT_LEVELS = ["Senior 1", "Senior 2", "Senior 3", "Senior 4", "Senior 5", "Senior 6"];
+
 function ClassesPage() {
   const [list, setList] = useState<ClassInfo[]>(CLASS_LIST);
+  const [levels, setLevels] = useState(DEFAULT_LEVELS);
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [levelOpen, setLevelOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState<ClassInfo | null>(null);
   const [detail, setDetail] = useState<ClassInfo | null>(null);
   const [editing, setEditing] = useState<ClassInfo | null>(null);
 
@@ -44,6 +49,10 @@ function ClassesPage() {
         <button onClick={() => setAddOpen(true)}
           className="h-10 inline-flex items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
           <Plus className="h-4 w-4" /> Add Class
+        </button>
+        <button onClick={() => setLevelOpen(true)}
+          className="h-10 inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 text-sm font-semibold hover:bg-muted">
+          <Plus className="h-4 w-4" /> Add Level
         </button>
       </div>
 
@@ -71,12 +80,15 @@ function ClassesPage() {
                   <div className="h-full bg-success" style={{ width: `${pct}%` }} />
                 </div>
               </div>
-              <div className="mt-4 flex gap-2">
-                <button onClick={() => setDetail(c)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button onClick={() => setDetail(c)} className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">
                   <Eye className="h-3.5 w-3.5" /> View Details
                 </button>
-                <button onClick={() => setEditing(c)} className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary/10 text-primary px-3 py-2 text-xs font-semibold hover:bg-primary/20">
+                <button onClick={() => setEditing(c)} className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary/10 text-primary px-3 py-2 text-xs font-semibold hover:bg-primary/20">
                   <Pencil className="h-3.5 w-3.5" /> Edit
+                </button>
+                <button onClick={() => setImportOpen(c)} className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">
+                  <Upload className="h-3.5 w-3.5" /> Import Students
                 </button>
               </div>
             </div>
@@ -84,11 +96,19 @@ function ClassesPage() {
         })}
       </div>
 
-      {addOpen && <ClassFormModal onClose={() => setAddOpen(false)} onSave={(c) => { setList(p => [...p, c]); toast.success(`${c.name} created`); }} />}
-      {editing && <ClassFormModal cls={editing} onClose={() => setEditing(null)}
+      {addOpen && <ClassFormModal levels={levels} onClose={() => setAddOpen(false)} onSave={(c) => { setList(p => [...p, c]); toast.success(`${c.name} created`); }} />}
+      {editing && <ClassFormModal levels={levels} cls={editing} onClose={() => setEditing(null)}
         onSave={(c) => { setList(p => p.map(x => x.id === c.id ? c : x)); toast.success("Saved"); }}
         onDelete={(id) => { setList(p => p.filter(x => x.id !== id)); toast.success("Class deleted"); }} />}
       {detail && <ClassDetailDrawer cls={detail} onClose={() => setDetail(null)} />}
+      {importOpen && <ClassImportModal cls={importOpen} onClose={() => setImportOpen(null)} />}
+      {levelOpen && (
+        <LevelFormModal
+          levels={levels}
+          onClose={() => setLevelOpen(false)}
+          onSave={(level) => { setLevels(p => [...p, level]); toast.success(`${level} added`); }}
+        />
+      )}
     </AppLayout>
   );
 }
@@ -220,13 +240,14 @@ function Mini({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ClassFormModal({ cls, onClose, onSave, onDelete }: { cls?: ClassInfo; onClose: () => void; onSave: (c: ClassInfo) => void; onDelete?: (id: string) => void; }) {
-  const [level, setLevel] = useState(cls?.level || "Senior 1");
+function ClassFormModal({ cls, levels, onClose, onSave, onDelete }: { cls?: ClassInfo; levels: string[]; onClose: () => void; onSave: (c: ClassInfo) => void; onDelete?: (id: string) => void; }) {
+  const [level, setLevel] = useState(cls?.level || levels[0] || "Senior 1");
   const [section, setSection] = useState(cls?.section || "A");
   const [teacher, setTeacher] = useState(cls?.teacher || "");
   const [room, setRoom] = useState(cls?.room || "");
   const [capacity, setCapacity] = useState(cls?.capacity || 40);
   const [confirmDel, setConfirmDel] = useState(false);
+  const levelOptions = levels.includes(level) ? levels : [level, ...levels];
 
   const save = () => {
     if (!teacher || !room) { toast.error("Teacher and room are required"); return; }
@@ -249,7 +270,7 @@ function ClassFormModal({ cls, onClose, onSave, onDelete }: { cls?: ClassInfo; o
           <button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-4 w-4" /></button>
         </div>
         <div className="px-6 py-5 grid grid-cols-2 gap-4">
-          <Field label="Level"><select value={level} onChange={e => setLevel(e.target.value)} className={inp}>{["Senior 1","Senior 2","Senior 3","Senior 4","Senior 5","Senior 6"].map(l => <option key={l}>{l}</option>)}</select></Field>
+          <Field label="Level"><select value={level} onChange={e => setLevel(e.target.value)} className={inp}>{levelOptions.map(l => <option key={l}>{l}</option>)}</select></Field>
           <Field label="Section"><input value={section} onChange={e => setSection(e.target.value.toUpperCase())} className={inp} /></Field>
           <Field label="Teacher" full><input value={teacher} onChange={e => setTeacher(e.target.value)} className={inp} placeholder="e.g. Mr. Habimana" /></Field>
           <Field label="Room"><input value={room} onChange={e => setRoom(e.target.value)} className={inp} /></Field>
@@ -271,6 +292,94 @@ function ClassFormModal({ cls, onClose, onSave, onDelete }: { cls?: ClassInfo; o
         <ConfirmModal open={confirmDel} title="Delete Class" message={`Are you sure you want to delete ${cls.name}? This cannot be undone.`}
           danger confirmLabel="Delete" onConfirm={() => { onDelete(cls.id); onClose(); }} onClose={() => setConfirmDel(false)} />
       )}
+    </div>
+  );
+}
+
+function ClassImportModal({ cls, onClose }: { cls: ClassInfo; onClose: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+
+  const importFile = () => {
+    if (!file) {
+      toast.error("Select a file to import");
+      return;
+    }
+    toast.success(`Import queued for ${cls.name}`);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[55] grid place-items-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h3 className="font-display font-bold">Import Students</h3>
+          <button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div className="text-sm text-muted-foreground">
+            Import students into <span className="font-semibold text-foreground">{cls.name}</span>.
+          </div>
+          <label className="block">
+            <span className="text-xs font-semibold mb-1.5 block">Upload File</span>
+            <input
+              type="file"
+              accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className={inp}
+            />
+          </label>
+          <a
+            href="/students-import-template.csv"
+            download="ecareafrica-students-template.csv"
+            className="inline-flex items-center gap-2 text-xs font-semibold text-primary hover:underline"
+          >
+            <Download className="h-3.5 w-3.5" /> Download Template
+          </a>
+        </div>
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-border">
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
+          <button onClick={importFile} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Import</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LevelFormModal({ levels, onClose, onSave }: { levels: string[]; onClose: () => void; onSave: (level: string) => void; }) {
+  const [name, setName] = useState("");
+
+  const save = () => {
+    const next = name.trim();
+    if (!next) {
+      toast.error("Level name is required");
+      return;
+    }
+    if (levels.some(l => l.toLowerCase() === next.toLowerCase())) {
+      toast.error("Level already exists");
+      return;
+    }
+    onSave(next);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[55] grid place-items-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h3 className="font-display font-bold">Add New Level</h3>
+          <button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="px-6 py-5">
+          <label className="block">
+            <span className="text-xs font-semibold mb-1.5 block">Level Name</span>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Senior 7" className={inp} />
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 px-6 py-4 border-t border-border">
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
+          <button onClick={save} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Save</button>
+        </div>
+      </div>
     </div>
   );
 }

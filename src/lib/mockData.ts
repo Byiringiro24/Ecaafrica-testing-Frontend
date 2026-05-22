@@ -6,6 +6,7 @@ export interface Student {
   name: string;
   gender: "Male" | "Female";
   class: string;
+  residency: "Boarding" | "Day";
   parentName: string;
   parentPhone: string;
   attendanceRate: number;
@@ -62,6 +63,7 @@ export const STUDENTS: Student[] = Array.from({ length: 60 }, (_, i) => {
     name,
     gender: i % 2 === 0 ? "Female" : "Male",
     class: cls,
+    residency: i % 4 === 0 ? "Boarding" : "Day",
     parentName: parent,
     parentPhone: rwPhone(i + 1),
     attendanceRate: 70 + ((i * 13) % 30),

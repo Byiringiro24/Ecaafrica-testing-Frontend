@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Users, CheckCircle2, XCircle, Clock, Send } from "lucide-react";
+import { Users, CheckCircle2, XCircle, Clock } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -11,7 +11,6 @@ import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import {
   todayCounts, WEEK_ATTENDANCE, CLASS_PIE, RECENT_CHECKINS, ABSENCE_ALERTS,
 } from "@/lib/mockData";
-import { toast } from "sonner";
 
 export const Route = createFileRoute("/dashboard")({
   component: DashboardPage,
@@ -108,13 +107,6 @@ function DashboardPage() {
                   <p className="text-sm font-semibold truncate">{a.name}</p>
                   <p className="text-xs text-muted-foreground">{a.class} • {a.daysMissed} days missed</p>
                 </div>
-                <button
-                  onClick={() => toast.success(`SMS queued for ${a.name}'s parent`)}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-                >
-                  <Send className="h-3 w-3" />
-                  Notify
-                </button>
               </div>
             ))}
           </div>

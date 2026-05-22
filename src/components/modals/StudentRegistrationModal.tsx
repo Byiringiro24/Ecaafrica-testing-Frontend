@@ -10,14 +10,14 @@ interface Props {
 }
 
 interface FormData {
-  name: string; cardId: string; dob: string; gender: string;
+  name: string; residency: string; dob: string; gender: string;
   class: string; combination: string; year: string;
   parentName: string; relationship: string; parentPhone: string;
   parentPhone2: string; email: string; address: string;
 }
 
 const EMPTY: FormData = {
-  name: "", cardId: "", dob: "", gender: "Male",
+  name: "", residency: "Day", dob: "", gender: "Male",
   class: "S1A", combination: "", year: "2025",
   parentName: "", relationship: "Father", parentPhone: "",
   parentPhone2: "", email: "", address: "",
@@ -38,7 +38,7 @@ export function StudentRegistrationModal({ open, onClose }: Props) {
     const e: typeof errors = {};
     if (step === 0) {
       if (!data.name) e.name = true;
-      if (!data.cardId) e.cardId = true;
+      if (!data.residency) e.residency = true;
       if (!data.dob) e.dob = true;
     }
     if (step === 1) {
@@ -98,8 +98,11 @@ export function StudentRegistrationModal({ open, onClose }: Props) {
               <Field label="Full Name *" error={errors.name}>
                 <input value={data.name} onChange={e => set("name", e.target.value)} className={inputCls(errors.name)} placeholder="e.g. Uwimana Marie" />
               </Field>
-              <Field label="Card / Student ID *" error={errors.cardId}>
-                <input value={data.cardId} onChange={e => set("cardId", e.target.value)} className={inputCls(errors.cardId)} placeholder="RW20240001" />
+              <Field label="Boarding / Day Student *" error={errors.residency}>
+                <select value={data.residency} onChange={e => set("residency", e.target.value)} className={inputCls(errors.residency)}>
+                  <option value="Day">Day Student</option>
+                  <option value="Boarding">Boarding Student</option>
+                </select>
               </Field>
               <Field label="Date of Birth *" error={errors.dob}>
                 <input type="date" value={data.dob} onChange={e => set("dob", e.target.value)} className={inputCls(errors.dob)} />
@@ -164,7 +167,7 @@ export function StudentRegistrationModal({ open, onClose }: Props) {
             <div className="space-y-4">
               <ReviewBlock title="Student Information" rows={[
                 ["Full Name", data.name],
-                ["Card ID", data.cardId],
+                ["Residency", data.residency],
                 ["Date of Birth", data.dob],
                 ["Gender", data.gender],
                 ["Class", data.class],

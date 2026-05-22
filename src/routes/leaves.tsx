@@ -8,13 +8,12 @@ import { LEAVE_REQUESTS, STUDENTS, schoolConfig, type LeaveRequest } from "@/lib
 
 export const Route = createFileRoute("/leaves")({ component: LeavesPage });
 
-const TABS = ["Pending","Approved","Rejected","All History"] as const;
+const TABS = ["Pending","Approved","All History"] as const;
 
 function LeavesPage() {
   const [tab, setTab] = useState<typeof TABS[number]>("Pending");
   const [requests, setRequests] = useState(LEAVE_REQUESTS);
   const [approving, setApproving] = useState<LeaveRequest | null>(null);
-  const [rejecting, setRejecting] = useState<LeaveRequest | null>(null);
   const [newOpen, setNewOpen] = useState(false);
 
   const pending = requests.filter(r => r.status === "Pending").length;
@@ -30,7 +29,7 @@ function LeavesPage() {
   const onLeaveStudents = requests.filter(r => r.status === "Approved");
 
   return (
-    <AppLayout title="Leave Management" subtitle="Uruhushya · Approve, reject & track student leave">
+    <AppLayout title="Leave Management" subtitle="Uruhushya · Approve & track student leave">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <StatCard label="Pending Requests" value={pending} tone="destructive" />
         <StatCard label="Approved Today" value={approvedToday} tone="success" />
@@ -66,7 +65,6 @@ function LeavesPage() {
                   <td className="px-4 py-3 space-x-1.5 whitespace-nowrap">
                     {r.status === "Pending" ? (<>
                       <button onClick={() => setApproving(r)} className="text-xs font-semibold text-success hover:underline">✅ Approve</button>
-                      <button onClick={() => setRejecting(r)} className="text-xs font-semibold text-destructive hover:underline">❌ Reject</button>
                     </>) : <span className="text-xs text-muted-foreground">—</span>}
                   </td>
                 </tr>
@@ -104,7 +102,6 @@ function LeavesPage() {
       </div>
 
       {approving && <ApproveModal req={approving} onClose={() => setApproving(null)} onConfirm={() => { setRequests(p => p.map(x => x.id === approving.id ? { ...x, status: "Approved" } : x)); toast.success(`Leave approved & SMS sent to ${approving.contactPerson}`); setApproving(null); }} />}
-      {rejecting && <RejectModal req={rejecting} onClose={() => setRejecting(null)} onConfirm={(reason) => { setRequests(p => p.map(x => x.id === rejecting.id ? { ...x, status: "Rejected" } : x)); toast.success(`Leave rejected (${reason}) & parent notified`); setRejecting(null); }} />}
       {newOpen && <NewLeaveModal onClose={() => setNewOpen(false)} onCreate={(req) => { setRequests(p => [req, ...p]); toast.success("Leave request submitted (Pending)"); setNewOpen(false); }} />}
     </AppLayout>
   );
@@ -148,30 +145,6 @@ function ApproveModal({ req, onClose, onConfirm }: { req: LeaveRequest; onClose:
         <div className="px-6 py-4 border-t border-border flex justify-end gap-2">
           <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold">Cancel</button>
           <button onClick={onConfirm} className="inline-flex items-center gap-1.5 rounded-lg bg-success text-white px-4 py-2 text-sm font-semibold hover:bg-success/90"><Check className="h-4 w-4" /> Approve & Notify</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RejectModal({ req, onClose, onConfirm }: { req: LeaveRequest; onClose: () => void; onConfirm: (reason: string) => void }) {
-  const [reason, setReason] = useState("");
-  const [sms, setSms] = useState(true);
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onClick={onClose}>
-      <div className="bg-card rounded-2xl shadow-2xl max-w-md w-full" onClick={e => e.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-border flex justify-between items-center"><h3 className="font-display font-bold">Reject Leave Request</h3><button onClick={onClose}><X className="h-4 w-4" /></button></div>
-        <div className="px-6 py-5 space-y-4">
-          <div className="rounded-lg bg-muted/40 p-3 text-sm"><div className="font-bold">{req.studentName}</div><div className="text-xs text-muted-foreground">{req.type} · {req.departureDate} → {req.returnDate}</div></div>
-          <div>
-            <label className="block text-xs font-semibold mb-1.5">Reason for rejection *</label>
-            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} className={`w-full rounded-lg border bg-background p-3 text-sm ${!reason ? "border-destructive" : "border-border"}`} placeholder="Provide a clear reason..." />
-          </div>
-          <label className="flex items-center justify-between rounded-lg border border-border p-3"><span className="text-sm">Notify parent of rejection</span><input type="checkbox" checked={sms} onChange={e => setSms(e.target.checked)} /></label>
-        </div>
-        <div className="px-6 py-4 border-t border-border flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold">Cancel</button>
-          <button onClick={() => reason && onConfirm(reason)} disabled={!reason} className="rounded-lg bg-destructive text-white px-4 py-2 text-sm font-semibold disabled:opacity-50">Reject & Notify</button>
         </div>
       </div>
     </div>

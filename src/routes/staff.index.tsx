@@ -268,10 +268,15 @@ function Row({ k, v }: { k: string; v: string }) {
 
 function RegisterStaffModal({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState(1);
-  const [data, setData] = useState({ name: "", gender: "Male", dob: "", nationalId: "", phone: "", email: "", address: "", emergency: "", role: "Teacher", department: "Teaching", joinDate: "", contract: "Permanent", subjects: [] as string[], generateLogin: true, sendEmail: true });
+  const departmentOptions = ["School Admin", "Teacher", "Staff Only"] as const;
+  const [data, setData] = useState({ name: "", gender: "Male", dob: "", nationalId: "", phone: "", email: "", address: "", emergency: "", role: "Teacher", department: "Teacher", joinDate: "", contract: "Permanent", subjects: [] as string[], generateLogin: true, sendEmail: true });
   const update = (k: string, v: any) => setData(p => ({ ...p, [k]: v }));
+  const updateDepartment = (v: typeof departmentOptions[number]) => {
+    update("department", v);
+    update("role", v === "Teacher" ? "Teacher" : "Admin");
+  };
   const valid1 = data.name && data.phone && data.email;
-  const valid2 = data.role && data.joinDate;
+  const valid2 = data.joinDate;
   const submit = () => { toast.success(`Staff ${data.name} registered with ID STF-2025-${String(STAFF.length + 1).padStart(3,"0")}`); onClose(); };
 
   return (
@@ -301,8 +306,7 @@ function RegisterStaffModal({ onClose }: { onClose: () => void }) {
           {step === 2 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Staff ID (auto)" value={`STF-2025-${String(STAFF.length + 1).padStart(3,"0")}`} onChange={() => {}} disabled />
-              <Field label="Role *" type="select" value={data.role} onChange={(v: any) => update("role", v)} options={["Teacher","Admin","Warden","Accountant","Librarian","Guard","Cleaner","Driver","Cook"]} />
-              <Field label="Department" type="select" value={data.department} onChange={(v: any) => update("department", v)} options={DEPARTMENTS} />
+              <Field label="Department" type="select" value={data.department} onChange={(v: any) => updateDepartment(v)} options={departmentOptions as unknown as string[]} />
               <Field label="Join Date *" type="date" value={data.joinDate} onChange={(v: any) => update("joinDate", v)} required />
               <Field label="Contract Type" type="select" value={data.contract} onChange={(v: any) => update("contract", v)} options={["Permanent","Contract","Part-time"]} />
               {data.role === "Teacher" && (
@@ -331,7 +335,7 @@ function RegisterStaffModal({ onClose }: { onClose: () => void }) {
           {step === 4 && (
             <div className="space-y-2 text-sm">
               <div className="font-semibold mb-2">Review</div>
-              {Object.entries(data).filter(([,v]) => typeof v !== "boolean").map(([k,v]: [string, any]) => (
+              {Object.entries(data).filter(([k, v]) => typeof v !== "boolean" && k !== "role").map(([k,v]: [string, any]) => (
                 <div key={k} className="flex justify-between border-b border-border py-1.5"><span className="text-muted-foreground capitalize">{k}</span><span className="font-medium">{Array.isArray(v) ? v.join(", ") : String(v) || "ΓÇö"}</span></div>
               ))}
             </div>

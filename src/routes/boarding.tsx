@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { X, Bell, AlertTriangle, Check } from "lucide-react";
+import { X, Bell, Check } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
@@ -8,15 +8,50 @@ import { DORMITORIES, TODAY_ROLLCALL, STUDENTS, type Dormitory } from "@/lib/moc
 
 export const Route = createFileRoute("/boarding")({ component: BoardingPage });
 
+const LOG_TABS = ["Morning Log", "Evening Log", "Dormitory Logs"] as const;
+type LogTab = typeof LOG_TABS[number];
+
 function BoardingPage() {
   const [house, setHouse] = useState<Dormitory | null>(null);
   const [rollCall, setRollCall] = useState<{ dorm: Dormitory; period: "Morning" | "Evening" } | null>(null);
+  const [tab, setTab] = useState<LogTab>("Evening Log");
 
   const totalBoarders = DORMITORIES.reduce((s, d) => s + d.studentIds.length, 0);
   const presentTonight = TODAY_ROLLCALL.filter(r => r.evening === "Present").length;
   const onLeave = TODAY_ROLLCALL.filter(r => r.evening === "On Leave").length;
   const absent = TODAY_ROLLCALL.filter(r => r.evening === "Absent").length;
   const alerts = TODAY_ROLLCALL.filter(r => r.consecutiveAbsences >= 2);
+
+  const rollLogs = useMemo(() => TODAY_ROLLCALL.map(r => {
+    const student = STUDENTS.find(s => s.id === r.studentId);
+    const dorm = DORMITORIES.find(d => d.studentIds.includes(r.studentId));
+    return {
+      id: r.studentId,
+      studentName: student?.name ?? "Unknown",
+      className: student?.class ?? "—",
+      dormName: dorm?.name ?? "Day Scholar",
+      parentName: student?.parentName ?? "",
+      morning: r.morning,
+      evening: r.evening,
+      consecutiveAbsences: r.consecutiveAbsences,
+    };
+  }), []);
+
+  const dormLogs = useMemo(() => DORMITORIES.map(d => {
+    const ids = new Set(d.studentIds);
+    const dormRoll = TODAY_ROLLCALL.filter(r => ids.has(r.studentId));
+    const present = dormRoll.filter(r => r.evening === "Present").length;
+    const leave = dormRoll.filter(r => r.evening === "On Leave").length;
+    const abs = dormRoll.filter(r => r.evening === "Absent").length;
+    const occ = (d.studentIds.length / d.capacity) * 100;
+    return {
+      dorm: d,
+      present,
+      leave,
+      absent: abs,
+      occupancy: Math.round(occ),
+    };
+  }), []);
 
   return (
     <AppLayout title="Boarding Management" subtitle="Dormitories, roll calls & absence monitoring">
@@ -28,73 +63,110 @@ function BoardingPage() {
         <StatCard label="Absence Alerts" value={alerts.length} tone="destructive" />
       </div>
 
-      <div className="mb-5">
-        <h2 className="font-display font-bold text-lg mb-3">Dormitory Overview</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {DORMITORIES.map(d => {
-            const ids = new Set(d.studentIds);
-            const dormRoll = TODAY_ROLLCALL.filter(r => ids.has(r.studentId));
-            const present = dormRoll.filter(r => r.evening === "Present").length;
-            const leave = dormRoll.filter(r => r.evening === "On Leave").length;
-            const abs = dormRoll.filter(r => r.evening === "Absent").length;
-            const occ = (d.studentIds.length / d.capacity) * 100;
-            return (
-              <div key={d.id} className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                <div className="font-display font-bold">{d.name}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">Warden: {d.warden}</div>
-                <div className="mt-3">
-                  <div className="flex justify-between text-xs mb-1"><span className="font-semibold">{d.studentIds.length} / {d.capacity} occupied</span><span className="text-muted-foreground">{Math.round(occ)}%</span></div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden"><div className="h-full bg-primary" style={{ width: `${occ}%` }} /></div>
-                </div>
-                <div className="flex justify-between text-xs mt-3">
-                  <span className="text-success font-semibold">● {present} Present</span>
-                  <span className="text-blue-600 font-semibold">● {leave} Leave</span>
-                  <span className="text-destructive font-semibold">● {abs} Absent</span>
-                </div>
-                <div className="flex gap-2 mt-3">
-                  <button onClick={() => setHouse(d)} className="flex-1 rounded-lg border border-border px-2 py-1.5 text-xs font-semibold hover:bg-muted">View House</button>
-                  <button onClick={() => setRollCall({ dorm: d, period: "Evening" })} className="flex-1 rounded-lg bg-primary text-primary-foreground px-2 py-1.5 text-xs font-semibold">Roll Call</button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      <div className="flex gap-1 border-b border-border mb-4">
+        {LOG_TABS.map(t => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+            {t}
+          </button>
+        ))}
       </div>
 
-      <div className="mb-5">
-        <h2 className="font-display font-bold text-lg mb-3">Absence Monitoring</h2>
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-xs uppercase text-muted-foreground"><tr>{["Student","House","Consecutive Absences","Last Seen","Status","Actions"].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr></thead>
-              <tbody>
-                {alerts.sort((a,b) => b.consecutiveAbsences - a.consecutiveAbsences).slice(0, 12).map(r => {
-                  const s = STUDENTS.find(x => x.id === r.studentId)!;
-                  const dorm = DORMITORIES.find(d => d.studentIds.includes(r.studentId));
-                  const critical = r.consecutiveAbsences >= 3;
-                  return (
-                    <tr key={r.studentId} className={`border-t border-border ${critical ? "bg-destructive/5" : "odd:bg-background even:bg-muted/20"}`}>
-                      <td className="px-4 py-3 font-medium">{s.name}</td>
-                      <td className="px-4 py-3 text-xs">{dorm?.name}</td>
-                      <td className="px-4 py-3"><span className={`font-bold ${critical ? "text-destructive" : "text-amber-600"}`}>{r.consecutiveAbsences} days</span></td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">2 days ago</td>
-                      <td className="px-4 py-3">{critical ? <span className="inline-flex items-center gap-1 rounded-full bg-destructive/15 text-destructive px-2 py-0.5 text-[11px] font-bold"><AlertTriangle className="h-3 w-3" /> Critical</span> : <span className="inline-flex rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[11px] font-bold">Warning</span>}</td>
-                      <td className="px-4 py-3 space-x-2 whitespace-nowrap">
-                        <button onClick={() => toast.success(`SMS sent to ${s.parentName}`)} className="text-xs font-semibold text-primary hover:underline">Notify Parent</button>
-                        <button onClick={() => toast.info("Escalated to admin")} className="text-xs font-semibold text-muted-foreground hover:underline">Escalate</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      {tab === "Morning Log" && (
+        <RollLogTable
+          rows={rollLogs}
+          period="Morning"
+          onNotify={(name) => toast.success(`SMS sent to ${name}`)}
+        />
+      )}
+      {tab === "Evening Log" && (
+        <RollLogTable
+          rows={rollLogs}
+          period="Evening"
+          onNotify={(name) => toast.success(`SMS sent to ${name}`)}
+        />
+      )}
+      {tab === "Dormitory Logs" && (
+        <DormitoryLogTable
+          rows={dormLogs}
+          onView={(d) => setHouse(d)}
+          onRollCall={(d) => setRollCall({ dorm: d, period: "Evening" })}
+        />
+      )}
 
       {house && <HouseDetailDrawer dorm={house} onClose={() => setHouse(null)} />}
       {rollCall && <RollCallModal dorm={rollCall.dorm} period={rollCall.period} onClose={() => setRollCall(null)} />}
     </AppLayout>
+  );
+}
+
+function RollLogTable({ rows, period, onNotify }: { rows: { id: string; studentName: string; className: string; dormName: string; parentName: string; morning: "Present" | "Absent" | "On Leave"; evening: "Present" | "Absent" | "On Leave"; consecutiveAbsences: number; }[]; period: "Morning" | "Evening"; onNotify: (name: string) => void; }) {
+  const statusClass: Record<"Present" | "Absent" | "On Leave", string> = {
+    Present: "bg-success/15 text-success",
+    Absent: "bg-destructive/15 text-destructive",
+    "On Leave": "bg-blue-100 text-blue-700",
+  };
+  const pickStatus = (r: (typeof rows)[number]) => period === "Morning" ? r.morning : r.evening;
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+            <tr>{["#","Student","Class","House","Status","Consecutive Absences","Actions"].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const status = pickStatus(r);
+              return (
+                <tr key={r.id} className={`border-t border-border ${status === "Absent" ? "bg-destructive/5" : "odd:bg-background even:bg-muted/20"}`}>
+                  <td className="px-4 py-3 text-muted-foreground">{i + 1}</td>
+                  <td className="px-4 py-3 font-medium">{r.studentName}</td>
+                  <td className="px-4 py-3">{r.className}</td>
+                  <td className="px-4 py-3 text-xs">{r.dormName}</td>
+                  <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${statusClass[status]}`}>{status}</span></td>
+                  <td className="px-4 py-3"><span className={`font-bold ${r.consecutiveAbsences >= 3 ? "text-destructive" : "text-amber-600"}`}>{r.consecutiveAbsences} days</span></td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => onNotify(r.parentName || r.studentName)} className="text-xs font-semibold text-primary hover:underline">Notify Parent</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function DormitoryLogTable({ rows, onView, onRollCall }: { rows: { dorm: Dormitory; present: number; leave: number; absent: number; occupancy: number; }[]; onView: (d: Dormitory) => void; onRollCall: (d: Dormitory) => void; }) {
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+            <tr>{["Dormitory","Warden","Occupancy","Present","On Leave","Absent","Actions"].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.dorm.id} className="border-t border-border odd:bg-background even:bg-muted/20">
+                <td className="px-4 py-3 font-medium">{r.dorm.name}</td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{r.dorm.warden}</td>
+                <td className="px-4 py-3 text-xs">
+                  {r.dorm.studentIds.length}/{r.dorm.capacity} ({r.occupancy}%)
+                </td>
+                <td className="px-4 py-3 text-success font-semibold">{r.present}</td>
+                <td className="px-4 py-3 text-blue-700 font-semibold">{r.leave}</td>
+                <td className="px-4 py-3 text-destructive font-semibold">{r.absent}</td>
+                <td className="px-4 py-3 space-x-2">
+                  <button onClick={() => onView(r.dorm)} className="text-xs font-semibold text-primary hover:underline">View House</button>
+                  <button onClick={() => onRollCall(r.dorm)} className="text-xs font-semibold text-muted-foreground hover:underline">Roll Call</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

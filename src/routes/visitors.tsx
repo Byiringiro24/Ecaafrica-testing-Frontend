@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Avatar } from "@/components/ui-kit/Avatar";
-import { VISITORS, STAFF, type Visitor, type Staff } from "@/lib/mockData";
+import { VISITORS, STAFF, STUDENTS, type Visitor, type Staff, type Student } from "@/lib/mockData";
 
 export const Route = createFileRoute("/visitors")({ component: VisitorsPage });
 
@@ -19,6 +19,11 @@ const hostTitleFor = (role: Staff["role"]) => {
 };
 
 const hostDisplayName = (staff: Staff) => `${hostTitleFor(staff.role)} ${staff.name}`;
+
+const VISITOR_TYPES = ["Parent/Guardian", "Organization"] as const;
+type VisitorType = typeof VISITOR_TYPES[number];
+
+const studentLabel = (student: Student) => `${student.name} - ${student.class}`;
 
 function VisitorsPage() {
   const [tab, setTab] = useState<Tab>("Active Visitors");
@@ -275,17 +280,33 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
   const [submitting, setSubmitting] = useState(false);
   const [data, setData] = useState({
     name: "", nationalId: "", phone: "", organization: "",
+    visitorType: "Parent/Guardian" as VisitorType,
+    studentSearch: "",
     purpose: "Parent Visit" as Visitor["purpose"], host: STAFF[0] ? hostDisplayName(STAFF[0]) : "",
     appointmentDate: new Date().toISOString().slice(0, 10), appointmentTime: "09:00",
-    duration: "1 hr", notes: "", printBadge: true, smsHost: true,
+    duration: "1 hr", notes: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const studentOptions = useMemo(() => STUDENTS.map(s => ({ id: s.id, label: studentLabel(s) })), []);
+  const matchedStudent = useMemo(() => {
+    const q = data.studentSearch.trim().toLowerCase();
+    if (!q) return null;
+    const match = studentOptions.find(o => o.label.toLowerCase() === q);
+    return match ? STUDENTS.find(s => s.id === match.id) ?? null : null;
+  }, [data.studentSearch, studentOptions]);
+  const relationshipOrg = data.visitorType === "Parent/Guardian"
+    ? (matchedStudent ? `Parent of ${matchedStudent.name} (${matchedStudent.class})` : "")
+    : data.organization;
+  const organizationValue = relationshipOrg.trim() || "—";
 
   const validateStep = (s: number) => {
     const e: Record<string, string> = {};
     if (s === 1) {
       if (!data.name.trim()) e.name = "Required";
       if (!data.nationalId.trim()) e.nationalId = "Required";
+      if (data.visitorType === "Parent/Guardian" && !matchedStudent) e.studentSearch = "Select a student";
+      if (data.visitorType === "Organization" && !data.organization.trim()) e.organization = "Required";
     }
     if (s === 2) {
       if (!data.host) e.host = "Required";
@@ -301,13 +322,11 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
       const id = `V${String(Math.floor(Math.random() * 9000) + 1000)}`;
       const v: Visitor = {
         id, name: data.name, nationalId: data.nationalId, phone: data.phone,
-        organization: data.organization || "—", purpose: data.purpose, host: data.host,
+        organization: organizationValue, purpose: data.purpose, host: data.host,
         checkinTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         status: "on-campus", date: "today", notes: data.notes,
       };
       onSave(v);
-      if (data.smsHost) toast.success(`SMS sent to ${data.host}`);
-      if (data.printBadge) setTimeout(() => window.print(), 200);
     }, 600);
   };
 
@@ -348,9 +367,49 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
                 <input className={inputCls(!!errors.phone)} value={data.phone} onChange={e => setData({ ...data, phone: e.target.value })} placeholder="+250 7XX XXX XXX" />
               </Field>
             </div>
-            <Field label="Organization / Relationship">
-              <input className={inputCls(false)} value={data.organization} onChange={e => setData({ ...data, organization: e.target.value })} placeholder="e.g. Parent of Keza Aline (S3A)" />
-            </Field>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="Visitor Type" required>
+                <select
+                  className={inputCls(false)}
+                  value={data.visitorType}
+                  onChange={e => {
+                    const visitorType = e.target.value as VisitorType;
+                    const nextPurpose = visitorType === "Parent/Guardian"
+                      ? "Parent Visit"
+                      : data.purpose === "Parent Visit" ? "Official Business" : data.purpose;
+                    setData({ ...data, visitorType, purpose: nextPurpose });
+                  }}
+                >
+                  {VISITOR_TYPES.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </Field>
+              {data.visitorType === "Parent/Guardian" ? (
+                <Field label="Student (Search)" required error={errors.studentSearch}>
+                  <input
+                    list="visitor-students"
+                    className={inputCls(!!errors.studentSearch)}
+                    value={data.studentSearch}
+                    onChange={e => setData({ ...data, studentSearch: e.target.value })}
+                    placeholder="e.g. Fabrice - S1A"
+                  />
+                  <datalist id="visitor-students">
+                    {studentOptions.map(o => <option key={o.id} value={o.label} />)}
+                  </datalist>
+                  {matchedStudent && (
+                    <p className="mt-1 text-xs text-muted-foreground">Saved as: Parent of {matchedStudent.name} ({matchedStudent.class})</p>
+                  )}
+                </Field>
+              ) : (
+                <Field label="Organization / Relationship" required error={errors.organization}>
+                  <input
+                    className={inputCls(!!errors.organization)}
+                    value={data.organization}
+                    onChange={e => setData({ ...data, organization: e.target.value })}
+                    placeholder="e.g. Ministry of Education"
+                  />
+                </Field>
+              )}
+            </div>
           </>
         )}
         {step === 2 && (
@@ -394,27 +453,15 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
               <Row k="Visitor" v={data.name} />
               <Row k="National ID" v={data.nationalId} />
               <Row k="Phone" v={data.phone} />
-              <Row k="Organization" v={data.organization || "—"} />
+              {data.visitorType === "Parent/Guardian" && matchedStudent && (
+                <Row k="Student" v={`${matchedStudent.name} (${matchedStudent.class})`} />
+              )}
+              <Row k="Organization / Relationship" v={organizationValue} />
               <Row k="Purpose" v={data.purpose} />
               <Row k="Host" v={data.host} />
               <Row k="When" v={`${data.appointmentDate} • ${data.appointmentTime} (${data.duration})`} />
               {data.notes && <Row k="Notes" v={data.notes} />}
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={data.printBadge} onChange={e => setData({ ...data, printBadge: e.target.checked })} />
-              Print Visitor Badge
-            </label>
-            <label className="flex items-start gap-2 text-sm">
-              <input type="checkbox" checked={data.smsHost} onChange={e => setData({ ...data, smsHost: e.target.checked })} className="mt-1" />
-              <span>
-                Send SMS to Host
-                {data.smsHost && (
-                  <span className="block mt-1 text-xs text-muted-foreground italic bg-muted/50 rounded p-2">
-                    "A visitor {data.name || "[Name]"} is arriving for {data.purpose} at {data.appointmentTime}."
-                  </span>
-                )}
-              </span>
-            </label>
           </>
         )}
       </div>

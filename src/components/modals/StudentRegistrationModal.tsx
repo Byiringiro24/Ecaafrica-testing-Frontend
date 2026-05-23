@@ -14,6 +14,7 @@ interface FormData {
   class: string; combination: string; year: string;
   parentName: string; relationship: string; parentPhone: string;
   parentPhone2: string; email: string; address: string;
+  parentOccupation: string; parentNationalId: string;
 }
 
 const EMPTY: FormData = {
@@ -21,6 +22,7 @@ const EMPTY: FormData = {
   class: "S1A", combination: "", year: "2025",
   parentName: "", relationship: "Father", parentPhone: "",
   parentPhone2: "", email: "", address: "",
+  parentOccupation: "", parentNationalId: "",
 };
 
 const STEPS = ["Student Info", "Parent Info", "Review"];
@@ -148,6 +150,12 @@ export function StudentRegistrationModal({ open, onClose }: Props) {
                   {["Father","Mother","Guardian"].map(r => <option key={r}>{r}</option>)}
                 </select>
               </Field>
+              <Field label="Occupation">
+                <input value={data.parentOccupation} onChange={e => set("parentOccupation", e.target.value)} className={inputCls()} placeholder="e.g. Nurse" />
+              </Field>
+              <Field label="National ID">
+                <input value={data.parentNationalId} onChange={e => set("parentNationalId", e.target.value)} className={inputCls()} placeholder="1199…" />
+              </Field>
               <Field label="Primary Phone (SMS) *" error={errors.parentPhone}>
                 <input value={data.parentPhone} onChange={e => set("parentPhone", e.target.value)} className={inputCls(errors.parentPhone)} placeholder="+250 78X XXX XXX" />
               </Field>
@@ -177,6 +185,8 @@ export function StudentRegistrationModal({ open, onClose }: Props) {
               <ReviewBlock title="Parent / Guardian" rows={[
                 ["Name", data.parentName],
                 ["Relationship", data.relationship],
+                ["Occupation", data.parentOccupation || "—"],
+                ["National ID", data.parentNationalId || "—"],
                 ["Primary Phone", data.parentPhone],
                 ["Secondary Phone", data.parentPhone2 || "—"],
                 ["Email", data.email || "—"],

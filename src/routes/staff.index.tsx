@@ -269,7 +269,7 @@ function Row({ k, v }: { k: string; v: string }) {
 function RegisterStaffModal({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState(1);
   const departmentOptions = ["School Admin", "Teacher", "Staff Only"] as const;
-  const [data, setData] = useState({ name: "", gender: "Male", dob: "", nationalId: "", phone: "", email: "", address: "", emergency: "", role: "Teacher", department: "Teacher", joinDate: "", contract: "Permanent", subjects: [] as string[], generateLogin: true, sendEmail: true });
+  const [data, setData] = useState({ name: "", gender: "Male", dob: "", nationalId: "", phone: "", email: "", address: "", emergency: "", role: "Teacher", department: "Teacher", joinDate: "", contract: "Permanent", salary: "", subjects: [] as string[], qualifications: "", experience: "", timetableAccess: "View only", generateLogin: true, sendEmail: true });
   const update = (k: string, v: any) => setData(p => ({ ...p, [k]: v }));
   const updateDepartment = (v: typeof departmentOptions[number]) => {
     update("department", v);
@@ -309,6 +309,7 @@ function RegisterStaffModal({ onClose }: { onClose: () => void }) {
               <Field label="Department" type="select" value={data.department} onChange={(v: any) => updateDepartment(v)} options={departmentOptions as unknown as string[]} />
               <Field label="Join Date *" type="date" value={data.joinDate} onChange={(v: any) => update("joinDate", v)} required />
               <Field label="Contract Type" type="select" value={data.contract} onChange={(v: any) => update("contract", v)} options={["Permanent","Contract","Part-time"]} />
+              <Field label="Salary" value={data.salary} onChange={(v: any) => update("salary", v)} placeholder="e.g. 350,000" />
               {data.role === "Teacher" && (
                 <div className="md:col-span-2">
                   <div className="text-xs font-semibold text-muted-foreground mb-1.5">Subjects</div>
@@ -322,6 +323,13 @@ function RegisterStaffModal({ onClose }: { onClose: () => void }) {
                     })}
                   </div>
                 </div>
+              )}
+              {data.role === "Teacher" && (
+                <>
+                  <Field label="Qualifications" value={data.qualifications} onChange={(v: any) => update("qualifications", v)} placeholder="e.g. B.Ed, M.Sc" />
+                  <Field label="Experience" value={data.experience} onChange={(v: any) => update("experience", v)} placeholder="e.g. 6 years" />
+                  <Field label="Timetable Access" type="select" value={data.timetableAccess} onChange={(v: any) => update("timetableAccess", v)} options={["Full","View only","None"]} />
+                </>
               )}
             </div>
           )}

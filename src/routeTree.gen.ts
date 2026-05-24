@@ -16,6 +16,8 @@ import { Route as StaffRouteImport } from './routes/staff'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as RegisterRouteImport } from './routes/register'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as ParentsRouteImport } from './routes/parents'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as LoginRouteImport } from './routes/login'
@@ -23,10 +25,13 @@ import { Route as LeavesRouteImport } from './routes/leaves'
 import { Route as GateRouteImport } from './routes/gate'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as FeesRouteImport } from './routes/fees'
+import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as ContactRouteImport } from './routes/contact'
 import { Route as ClassesRouteImport } from './routes/classes'
 import { Route as BoardingRouteImport } from './routes/boarding'
 import { Route as AttendanceRouteImport } from './routes/attendance'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SuperAdminIndexRouteImport } from './routes/super-admin.index'
 import { Route as StaffIndexRouteImport } from './routes/staff.index'
@@ -97,6 +102,16 @@ const ReportsRoute = ReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ParentsRoute = ParentsRouteImport.update({
   id: '/parents',
   path: '/parents',
@@ -132,9 +147,19 @@ const FeesRoute = FeesRouteImport.update({
   path: '/fees',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FeaturesRoute = FeaturesRouteImport.update({
+  id: '/features',
+  path: '/features',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContactRoute = ContactRouteImport.update({
+  id: '/contact',
+  path: '/contact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ClassesRoute = ClassesRouteImport.update({
@@ -150,6 +175,11 @@ const BoardingRoute = BoardingRouteImport.update({
 const AttendanceRoute = AttendanceRouteImport.update({
   id: '/attendance',
   path: '/attendance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -325,10 +355,13 @@ const SuperAdminSchoolsIdRoute = SuperAdminSchoolsIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/attendance': typeof AttendanceRoute
   '/boarding': typeof BoardingRoute
   '/classes': typeof ClassesRoute
+  '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
+  '/features': typeof FeaturesRoute
   '/fees': typeof FeesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/gate': typeof GateRoute
@@ -336,6 +369,8 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/parents': typeof ParentsRoute
+  '/pricing': typeof PricingRoute
+  '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -379,10 +414,13 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/attendance': typeof AttendanceRoute
   '/boarding': typeof BoardingRoute
   '/classes': typeof ClassesRoute
+  '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
+  '/features': typeof FeaturesRoute
   '/fees': typeof FeesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/gate': typeof GateRoute
@@ -390,6 +428,8 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/parents': typeof ParentsRoute
+  '/pricing': typeof PricingRoute
+  '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -431,10 +471,13 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/attendance': typeof AttendanceRoute
   '/boarding': typeof BoardingRoute
   '/classes': typeof ClassesRoute
+  '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
+  '/features': typeof FeaturesRoute
   '/fees': typeof FeesRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/gate': typeof GateRoute
@@ -442,6 +485,8 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/notifications': typeof NotificationsRoute
   '/parents': typeof ParentsRoute
+  '/pricing': typeof PricingRoute
+  '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
@@ -487,10 +532,13 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/about'
     | '/attendance'
     | '/boarding'
     | '/classes'
+    | '/contact'
     | '/dashboard'
+    | '/features'
     | '/fees'
     | '/forgot-password'
     | '/gate'
@@ -498,6 +546,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/notifications'
     | '/parents'
+    | '/pricing'
+    | '/register'
     | '/reports'
     | '/reset-password'
     | '/settings'
@@ -541,10 +591,13 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/about'
     | '/attendance'
     | '/boarding'
     | '/classes'
+    | '/contact'
     | '/dashboard'
+    | '/features'
     | '/fees'
     | '/forgot-password'
     | '/gate'
@@ -552,6 +605,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/notifications'
     | '/parents'
+    | '/pricing'
+    | '/register'
     | '/reports'
     | '/reset-password'
     | '/settings'
@@ -592,10 +647,13 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/about'
     | '/attendance'
     | '/boarding'
     | '/classes'
+    | '/contact'
     | '/dashboard'
+    | '/features'
     | '/fees'
     | '/forgot-password'
     | '/gate'
@@ -603,6 +661,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/notifications'
     | '/parents'
+    | '/pricing'
+    | '/register'
     | '/reports'
     | '/reset-password'
     | '/settings'
@@ -647,10 +707,13 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
   AttendanceRoute: typeof AttendanceRoute
   BoardingRoute: typeof BoardingRoute
   ClassesRoute: typeof ClassesRoute
+  ContactRoute: typeof ContactRoute
   DashboardRoute: typeof DashboardRoute
+  FeaturesRoute: typeof FeaturesRoute
   FeesRoute: typeof FeesRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   GateRoute: typeof GateRoute
@@ -658,6 +721,8 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   NotificationsRoute: typeof NotificationsRoute
   ParentsRoute: typeof ParentsRoute
+  PricingRoute: typeof PricingRoute
+  RegisterRoute: typeof RegisterRoute
   ReportsRoute: typeof ReportsRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRoute
@@ -727,6 +792,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReportsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/parents': {
       id: '/parents'
       path: '/parents'
@@ -776,11 +855,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FeesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/features': {
+      id: '/features'
+      path: '/features'
+      fullPath: '/features'
+      preLoaderRoute: typeof FeaturesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/contact': {
+      id: '/contact'
+      path: '/contact'
+      fullPath: '/contact'
+      preLoaderRoute: typeof ContactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/classes': {
@@ -802,6 +895,13 @@ declare module '@tanstack/react-router' {
       path: '/attendance'
       fullPath: '/attendance'
       preLoaderRoute: typeof AttendanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -1122,10 +1222,13 @@ const SuperAdminRouteWithChildren = SuperAdminRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
   AttendanceRoute: AttendanceRoute,
   BoardingRoute: BoardingRoute,
   ClassesRoute: ClassesRoute,
+  ContactRoute: ContactRoute,
   DashboardRoute: DashboardRoute,
+  FeaturesRoute: FeaturesRoute,
   FeesRoute: FeesRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
   GateRoute: GateRoute,
@@ -1133,6 +1236,8 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   NotificationsRoute: NotificationsRoute,
   ParentsRoute: ParentsRoute,
+  PricingRoute: PricingRoute,
+  RegisterRoute: RegisterRoute,
   ReportsRoute: ReportsRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRoute,

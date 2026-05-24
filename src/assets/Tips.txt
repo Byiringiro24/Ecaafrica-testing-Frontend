@@ -1,6 +1,0 @@
-DB Schema + Migrations (all 25 tables) → Opus + Thinking ON
-Auth, JWT, Role middleware → Opus + Thinking ON
-Students, Attendance, Classes → Sonnet + Effort High
-Fees, Boarding, Gate, Leaves → Sonnet + Effort Normal
-SMS/Parents, Reports, Settings → Sonnet + Effort Normal
-Super Admin module → Sonnet + Effort Normal

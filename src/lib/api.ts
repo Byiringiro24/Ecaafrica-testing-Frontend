@@ -1,4 +1,5 @@
 import { getPlatformToken } from "./platformAuth";
+import { getSchoolToken } from "./schoolAuth";
 
 export const API_BASE_URL = (
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
@@ -13,7 +14,7 @@ type ApiError = {
 };
 
 type ApiRequestOptions = RequestInit & {
-  auth?: "platform" | "none";
+  auth?: "platform" | "school" | "none";
   returnMeta?: boolean;
 };
 
@@ -30,7 +31,12 @@ export async function apiRequest<T>(
     if (token) headers.set("Authorization", `Bearer ${token}`);
   }
 
-  if (!headers.has("Content-Type") && options.body) {
+  if (authMode === "school") {
+    const token = getSchoolToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  if (!headers.has("Content-Type") && options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 

@@ -141,21 +141,29 @@ export const ABSENCE_ALERTS = STUDENTS.slice(0, 5).map((s, i) => ({
 export interface ClassInfo {
   id: string;
   name: string;
+  fullName?: string;
   level: string;
   section: string;
   teacher: string;
+  teacherId?: string | null;
   room: string;
   capacity: number;
   studentCount: number;
+  classId?: string;
+  sectionId?: string;
+  academicYearId?: string | null;
 }
 
 export const CLASS_LIST: ClassInfo[] = CLASSES.map((c, i) => {
   const levelNum = c[1];
   const section = c.slice(2);
+  const nameMatch = c.match(/^([A-Za-z]+\d+)([A-Za-z]+)$/);
+  const fullName = nameMatch ? `${nameMatch[1]} ${nameMatch[2]}` : c;
   const studentCount = STUDENTS.filter(s => s.class === c).length;
   return {
     id: `CLS-${i + 1}`,
     name: c,
+    fullName,
     level: `Senior ${levelNum}`,
     section,
     teacher: TEACHERS[i % TEACHERS.length],

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Plus, Search, User, DoorOpen, Eye, Pencil, X, Trash2, Download, Upload,
@@ -9,9 +9,18 @@ import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { ConfirmModal } from "@/components/modals/ConfirmModal";
 import {
-  CLASS_LIST, STUDENTS, TODAY_ATTENDANCE, levelBadgeClass, levelBorderClass,
+  levelBadgeClass, levelBorderClass,
   type ClassInfo,
 } from "@/lib/mockData";
+import { apiRequest } from "@/lib/api";
+import {
+  downloadStudentImportTemplate,
+  makeStudentImportCsvFile,
+  parseStudentImportFile,
+  type StudentImportIssue,
+  type StudentImportParseResult
+} from "@/lib/studentImport";
+import { getSchoolAuth, isSchoolAdminRole } from "@/lib/schoolAuth";
 import {
   AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
@@ -20,23 +29,279 @@ export const Route = createFileRoute("/classes")({ component: ClassesPage });
 
 const DEFAULT_LEVELS = ["Senior 1", "Senior 2", "Senior 3", "Senior 4", "Senior 5", "Senior 6"];
 
+type ClassRecord = {
+  id: string;
+  name: string;
+  level: number;
+  description?: string | null;
+  academic_year_id?: string | null;
+};
+
+type SectionRecord = {
+  id: string;
+  name: string;
+  full_name: string;
+  class_id: string;
+  capacity?: number | null;
+  room?: string | null;
+  class_teacher_id?: string | null;
+};
+
+type AcademicYearRecord = {
+  id: string;
+  name: string;
+  is_current?: boolean | null;
+};
+
+type TeacherRecord = {
+  id: string;
+  name?: string | null;
+  role?: string | null;
+};
+
+type ClassFormPayload = {
+  level: string;
+  section: string;
+  teacherId?: string | null;
+  room?: string | null;
+  capacity: number;
+  academicYearId?: string | null;
+};
+
+const normalizeSectionKey = (value: string) => value.toLowerCase().replace(/\s+/g, "");
+const parseLevelNumber = (value: string) => {
+  const match = value.match(/\d+/);
+  return match ? Number(match[0]) : 1;
+};
+const toClassName = (levelNumber: number) => `S${levelNumber}`;
+
 function ClassesPage() {
-  const [list, setList] = useState<ClassInfo[]>(CLASS_LIST);
+  const [list, setList] = useState<ClassInfo[]>([]);
   const [levels, setLevels] = useState(DEFAULT_LEVELS);
+  const [classRecords, setClassRecords] = useState<ClassRecord[]>([]);
+  const [sectionRecords, setSectionRecords] = useState<SectionRecord[]>([]);
+  const [academicYears, setAcademicYears] = useState<AcademicYearRecord[]>([]);
+  const [currentYear, setCurrentYear] = useState<AcademicYearRecord | null>(null);
+  const [teachers, setTeachers] = useState<TeacherRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [levelOpen, setLevelOpen] = useState(false);
   const [importOpen, setImportOpen] = useState<ClassInfo | null>(null);
   const [detail, setDetail] = useState<ClassInfo | null>(null);
   const [editing, setEditing] = useState<ClassInfo | null>(null);
+  const role = getSchoolAuth()?.user?.role ?? null;
+  const canImport = !role || isSchoolAdminRole(role);
+
+  const teacherMap = useMemo(() => {
+    return new Map(teachers.map((teacher) => [teacher.id, teacher]));
+  }, [teachers]);
+
+  const buildClassList = (
+    classes: ClassRecord[],
+    sections: SectionRecord[],
+    teacherLookup: Map<string, TeacherRecord>
+  ) => {
+    const classMap = new Map(classes.map((item) => [item.id, item]));
+
+    return sections.reduce<ClassInfo[]>((acc, section) => {
+      const cls = classMap.get(section.class_id);
+      if (!cls) return acc;
+
+      const displayName = `${cls.name}${section.name}`;
+      const levelLabel = `Senior ${cls.level}`;
+      const teacher = section.class_teacher_id
+        ? teacherLookup.get(section.class_teacher_id)?.name ?? "Unassigned"
+        : "Unassigned";
+
+      acc.push({
+        id: section.id,
+        name: displayName,
+        fullName: section.full_name,
+        level: levelLabel,
+        section: section.name,
+        teacher,
+        teacherId: section.class_teacher_id ?? null,
+        room: section.room ?? "",
+        capacity: section.capacity ?? 0,
+        studentCount: 0,
+        classId: cls.id,
+        sectionId: section.id,
+        academicYearId: cls.academic_year_id ?? null
+      });
+
+      return acc;
+    }, []);
+  };
+
+  const loadClassData = async () => {
+    setLoading(true);
+    try {
+      const [classes, sections] = await Promise.all([
+        apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }),
+        apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" })
+      ]);
+
+      setClassRecords(classes);
+      setSectionRecords(sections);
+
+      const derivedLevels = Array.from(
+        new Set(classes.map((item) => `Senior ${item.level}`))
+      );
+      if (derivedLevels.length) {
+        setLevels((prev) => Array.from(new Set([...prev, ...derivedLevels])));
+      }
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load classes");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAcademicYears = async () => {
+    try {
+      const years = await apiRequest<AcademicYearRecord[]>("/academic-years?limit=50", {
+        auth: "school"
+      });
+      setAcademicYears(years);
+      const current = years.find((year) => year.is_current) ?? years[0] ?? null;
+      setCurrentYear(current);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load academic years");
+    }
+  };
+
+  const loadTeachers = async () => {
+    try {
+      const users = await apiRequest<TeacherRecord[]>("/users?role=teacher&limit=200", {
+        auth: "school"
+      });
+      setTeachers(users);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load teachers");
+    }
+  };
+
+  useEffect(() => {
+    loadClassData();
+    loadAcademicYears();
+    loadTeachers();
+  }, []);
+
+  useEffect(() => {
+    setList(buildClassList(classRecords, sectionRecords, teacherMap));
+  }, [classRecords, sectionRecords, teacherMap]);
 
   const filtered = list.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.teacher.toLowerCase().includes(search.toLowerCase())
   );
 
-  const todayPresent = (clsName: string) =>
-    TODAY_ATTENDANCE.filter(a => a.class === clsName && a.status === "Present").length;
+  const todayPresent = (_clsName: string) => 0;
+
+  const handleSaveClass = async (payload: ClassFormPayload, target?: ClassInfo) => {
+    const levelNumber = parseLevelNumber(payload.level);
+    const sectionName = payload.section.trim().toUpperCase();
+    const roomValue = (payload.room ?? "").trim();
+    const normalizedYearId =
+      payload.academicYearId === undefined
+        ? currentYear?.id ?? null
+        : payload.academicYearId || null;
+
+    if (!sectionName) {
+      toast.error("Section is required");
+      return false;
+    }
+
+    setSaving(true);
+    try {
+      const className = toClassName(levelNumber);
+      let classRecord = classRecords.find(
+        (item) =>
+          item.name === className &&
+          (normalizedYearId
+            ? item.academic_year_id === normalizedYearId
+            : !item.academic_year_id)
+      );
+
+      if (!classRecord) {
+        const classPayload: Record<string, any> = {
+          name: className,
+          level: levelNumber
+        };
+        if (normalizedYearId) {
+          classPayload.academic_year_id = normalizedYearId;
+        }
+
+        classRecord = await apiRequest<ClassRecord>("/classes", {
+          method: "POST",
+          body: JSON.stringify(classPayload),
+          auth: "school"
+        });
+        setClassRecords((prev) => [...prev, classRecord!]);
+      }
+
+      if (!classRecord) {
+        throw new Error("Unable to resolve class record");
+      }
+
+      const sectionPayload = {
+        class_id: classRecord.id,
+        name: sectionName,
+        full_name: `${className} ${sectionName}`,
+        capacity: payload.capacity,
+        room: roomValue ? roomValue : null,
+        class_teacher_id: payload.teacherId || undefined
+      };
+
+      if (target?.sectionId) {
+        await apiRequest(`/sections/${target.sectionId}`, {
+          method: "PATCH",
+          body: JSON.stringify(sectionPayload),
+          auth: "school"
+        });
+      } else {
+        await apiRequest<SectionRecord>("/sections", {
+          method: "POST",
+          body: JSON.stringify(sectionPayload),
+          auth: "school"
+        });
+      }
+
+      await loadClassData();
+      toast.success(target ? "Class updated" : "Class created");
+      return true;
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to save class");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteClass = async (target: ClassInfo) => {
+    if (!target.sectionId) {
+      toast.error("Missing section reference");
+      return false;
+    }
+
+    setSaving(true);
+    try {
+      await apiRequest(`/sections/${target.sectionId}`, {
+        method: "DELETE",
+        auth: "school"
+      });
+      await loadClassData();
+      toast.success("Class deleted");
+      return true;
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to delete class");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <AppLayout title="Class Management" subtitle={`${list.length} classes — Senior 1 to Senior 6`}>
@@ -56,6 +321,10 @@ function ClassesPage() {
         </button>
       </div>
 
+      {loading && (
+        <div className="mt-3 text-xs text-muted-foreground">Loading classes…</div>
+      )}
+
       <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map(c => {
           const present = todayPresent(c.name);
@@ -69,7 +338,7 @@ function ClassesPage() {
               <div className="mt-3">
                 <div className="font-semibold">{c.level} — Section {c.section}</div>
                 <div className="mt-1.5 flex items-center gap-2 text-sm text-muted-foreground"><User className="h-3.5 w-3.5" />{c.teacher}</div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground"><DoorOpen className="h-3.5 w-3.5" />{c.room}</div>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground"><DoorOpen className="h-3.5 w-3.5" />{c.room || "—"}</div>
               </div>
               <div className="mt-4">
                 <div className="flex justify-between text-xs mb-1.5">
@@ -87,7 +356,18 @@ function ClassesPage() {
                 <button onClick={() => setEditing(c)} className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary/10 text-primary px-3 py-2 text-xs font-semibold hover:bg-primary/20">
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </button>
-                <button onClick={() => setImportOpen(c)} className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">
+                <button
+                  onClick={() => {
+                    if (!canImport) {
+                      toast.error("Only School Admins can import students.");
+                      return;
+                    }
+                    setImportOpen(c);
+                  }}
+                  className={`flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted ${!canImport ? "opacity-60 cursor-not-allowed" : ""}`}
+                  title={!canImport ? "School Admin only" : ""}
+                  disabled={!canImport}
+                >
                   <Upload className="h-3.5 w-3.5" /> Import Students
                 </button>
               </div>
@@ -96,12 +376,55 @@ function ClassesPage() {
         })}
       </div>
 
-      {addOpen && <ClassFormModal levels={levels} onClose={() => setAddOpen(false)} onSave={(c) => { setList(p => [...p, c]); toast.success(`${c.name} created`); }} />}
-      {editing && <ClassFormModal levels={levels} cls={editing} onClose={() => setEditing(null)}
-        onSave={(c) => { setList(p => p.map(x => x.id === c.id ? c : x)); toast.success("Saved"); }}
-        onDelete={(id) => { setList(p => p.filter(x => x.id !== id)); toast.success("Class deleted"); }} />}
+      {addOpen && (
+        <ClassFormModal
+          levels={levels}
+          teachers={teachers}
+          academicYears={academicYears}
+          defaultAcademicYearId={currentYear?.id ?? null}
+          saving={saving}
+          onClose={() => setAddOpen(false)}
+          onSubmit={async (payload) => {
+            const ok = await handleSaveClass(payload);
+            if (ok) setAddOpen(false);
+          }}
+        />
+      )}
+      {editing && (
+        <ClassFormModal
+          levels={levels}
+          cls={editing}
+          teachers={teachers}
+          academicYears={academicYears}
+          defaultAcademicYearId={currentYear?.id ?? null}
+          saving={saving}
+          onClose={() => setEditing(null)}
+          onSubmit={async (payload) => {
+            const ok = await handleSaveClass(payload, editing);
+            if (ok) setEditing(null);
+          }}
+          onDelete={async () => {
+            const ok = await handleDeleteClass(editing);
+            if (ok) setEditing(null);
+          }}
+        />
+      )}
       {detail && <ClassDetailDrawer cls={detail} onClose={() => setDetail(null)} />}
-      {importOpen && <ClassImportModal cls={importOpen} onClose={() => setImportOpen(null)} />}
+      {importOpen && (
+        <ClassImportModal
+          cls={importOpen}
+          onClose={() => setImportOpen(null)}
+          onImported={(count) => {
+            setList((prev) =>
+              prev.map((item) =>
+                item.id === importOpen.id
+                  ? { ...item, studentCount: item.studentCount + count }
+                  : item
+              )
+            );
+          }}
+        />
+      )}
       {levelOpen && (
         <LevelFormModal
           levels={levels}
@@ -113,23 +436,34 @@ function ClassesPage() {
   );
 }
 
+type StudentLite = {
+  id: string;
+  name: string;
+  attendanceRate: number;
+};
+
+type AttendanceLite = {
+  studentId: string;
+  status: "Present" | "Absent" | "Late";
+};
+
 function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => void }) {
   const [tab, setTab] = useState<"students" | "trend" | "reports">("students");
   const [q, setQ] = useState("");
-  const students = STUDENTS.filter(s => s.class === cls.name);
+  const students: StudentLite[] = [];
+  const attendance: AttendanceLite[] = [];
   const filtered = students.filter(s => s.name.toLowerCase().includes(q.toLowerCase()));
+  const trend: Array<{ day: string; rate: number }> = [];
+  const hasTrend = trend.length > 0;
+  const hasStudents = students.length > 0;
+  const best = hasTrend ? trend.reduce((a, b) => a.rate > b.rate ? a : b) : null;
+  const worst = hasTrend ? trend.reduce((a, b) => a.rate < b.rate ? a : b) : null;
+  const avg = hasTrend ? Math.round(trend.reduce((s, x) => s + x.rate, 0) / trend.length) : 0;
 
-  const trend = Array.from({ length: 14 }, (_, i) => ({
-    day: `D${i + 1}`,
-    rate: 70 + ((i * 11 + cls.name.charCodeAt(1)) % 25),
-  }));
-  const best = trend.reduce((a, b) => a.rate > b.rate ? a : b);
-  const worst = trend.reduce((a, b) => a.rate < b.rate ? a : b);
-  const avg = Math.round(trend.reduce((s, x) => s + x.rate, 0) / trend.length);
-
-  const sorted = [...students].sort((a, b) => a.attendanceRate - b.attendanceRate);
+  const sorted = hasStudents ? [...students].sort((a, b) => a.attendanceRate - b.attendanceRate) : [];
   const worst5 = sorted.slice(0, 5);
   const best5 = [...sorted].reverse().slice(0, 5);
+  const roomLabel = cls.room || "—";
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -138,7 +472,7 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
         <div className="flex items-start justify-between px-6 py-4 border-b border-border">
           <div>
             <div className="font-display font-bold text-lg">{cls.name} — {cls.level} Section {cls.section}</div>
-            <div className="text-xs text-muted-foreground mt-0.5">{cls.teacher} • {cls.room}</div>
+            <div className="text-xs text-muted-foreground mt-0.5">{cls.teacher} • {roomLabel}</div>
           </div>
           <button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-5 w-5" /></button>
         </div>
@@ -159,8 +493,13 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
                   className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
               </div>
               <div className="space-y-2">
+                {filtered.length === 0 && (
+                  <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
+                    No student data available for this class yet.
+                  </div>
+                )}
                 {filtered.map(s => {
-                  const today = TODAY_ATTENDANCE.find(a => a.studentId === s.id);
+                  const today = attendance.find(a => a.studentId === s.id);
                   return (
                     <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/40">
                       <Avatar name={s.name} size="sm" />
@@ -178,51 +517,67 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
           )}
           {tab === "trend" && (
             <>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trend}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="rate" stroke="#545f72" fill="#545f7233" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="grid grid-cols-3 gap-3 mt-4">
-                <Mini label="Best Day" value={`${best.day} • ${best.rate}%`} />
-                <Mini label="Worst Day" value={`${worst.day} • ${worst.rate}%`} />
-                <Mini label="Average" value={`${avg}%`} />
-              </div>
+              {hasTrend ? (
+                <>
+                  <div className="h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={trend}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="rate" stroke="#545f72" fill="#545f7233" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 mt-4">
+                    {best && <Mini label="Best Day" value={`${best.day} • ${best.rate}%`} />}
+                    {worst && <Mini label="Worst Day" value={`${worst.day} • ${worst.rate}%`} />}
+                    <Mini label="Average" value={`${avg}%`} />
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+                  No attendance trend data available yet.
+                </div>
+              )}
             </>
           )}
           {tab === "reports" && (
             <>
-              <div className="rounded-lg border border-border p-4 mb-4">
-                <h4 className="font-display font-bold mb-2 text-sm">Top 5 Most Absent</h4>
-                {worst5.map(s => (
-                  <div key={s.id} className="flex items-center justify-between py-1.5 text-sm">
-                    <span>{s.name}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">{100 - s.attendanceRate} days</span>
-                      <span className="px-2 py-0.5 rounded text-xs font-bold bg-destructive/15 text-destructive">High Risk</span>
-                    </div>
+              {hasStudents ? (
+                <>
+                  <div className="rounded-lg border border-border p-4 mb-4">
+                    <h4 className="font-display font-bold mb-2 text-sm">Top 5 Most Absent</h4>
+                    {worst5.map(s => (
+                      <div key={s.id} className="flex items-center justify-between py-1.5 text-sm">
+                        <span>{s.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">{100 - s.attendanceRate} days</span>
+                          <span className="px-2 py-0.5 rounded text-xs font-bold bg-destructive/15 text-destructive">High Risk</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <div className="rounded-lg border border-border p-4 mb-4">
-                <h4 className="font-display font-bold mb-2 text-sm">Top 5 Best Attendance</h4>
-                {best5.map(s => (
-                  <div key={s.id} className="flex items-center justify-between py-1.5 text-sm">
-                    <span>{s.name}</span>
-                    <span className="px-2 py-0.5 rounded text-xs font-bold bg-success/15 text-success">{s.attendanceRate}%</span>
+                  <div className="rounded-lg border border-border p-4 mb-4">
+                    <h4 className="font-display font-bold mb-2 text-sm">Top 5 Best Attendance</h4>
+                    {best5.map(s => (
+                      <div key={s.id} className="flex items-center justify-between py-1.5 text-sm">
+                        <span>{s.name}</span>
+                        <span className="px-2 py-0.5 rounded text-xs font-bold bg-success/15 text-success">{s.attendanceRate}%</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <button onClick={() => toast.success("CSV download started")}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
-                <Download className="h-4 w-4" /> Download CSV
-              </button>
+                  <button onClick={() => toast.success("CSV download started")}
+                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
+                    <Download className="h-4 w-4" /> Download CSV
+                  </button>
+                </>
+              ) : (
+                <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+                  No class reports available yet.
+                </div>
+              )}
             </>
           )}
         </div>
@@ -240,26 +595,53 @@ function Mini({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ClassFormModal({ cls, levels, onClose, onSave, onDelete }: { cls?: ClassInfo; levels: string[]; onClose: () => void; onSave: (c: ClassInfo) => void; onDelete?: (id: string) => void; }) {
+function ClassFormModal({
+  cls,
+  levels,
+  teachers,
+  academicYears,
+  defaultAcademicYearId,
+  saving,
+  onClose,
+  onSubmit,
+  onDelete
+}: {
+  cls?: ClassInfo;
+  levels: string[];
+  teachers: TeacherRecord[];
+  academicYears: AcademicYearRecord[];
+  defaultAcademicYearId?: string | null;
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (payload: ClassFormPayload) => Promise<void>;
+  onDelete?: () => Promise<void>;
+}) {
   const [level, setLevel] = useState(cls?.level || levels[0] || "Senior 1");
   const [section, setSection] = useState(cls?.section || "A");
-  const [teacher, setTeacher] = useState(cls?.teacher || "");
-  const [room, setRoom] = useState(cls?.room || "");
+  const [teacherId, setTeacherId] = useState<string>(cls?.teacherId ?? "");
+  const [room, setRoom] = useState(cls?.room ?? "");
   const [capacity, setCapacity] = useState(cls?.capacity || 40);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [academicYearId, setAcademicYearId] = useState<string>(
+    cls?.academicYearId ?? defaultAcademicYearId ?? ""
+  );
   const levelOptions = levels.includes(level) ? levels : [level, ...levels];
 
-  const save = () => {
-    if (!teacher || !room) { toast.error("Teacher and room are required"); return; }
-    const lvlNum = level.match(/\d/)?.[0] || "1";
-    const next: ClassInfo = {
-      id: cls?.id || `CLS-${Date.now()}`,
-      name: `S${lvlNum}${section}`,
-      level, section, teacher, room, capacity,
-      studentCount: cls?.studentCount ?? 0,
-    };
-    onSave(next);
-    onClose();
+  useEffect(() => {
+    if (!cls && !academicYearId && defaultAcademicYearId) {
+      setAcademicYearId(defaultAcademicYearId);
+    }
+  }, [cls, academicYearId, defaultAcademicYearId]);
+
+  const save = async () => {
+    await onSubmit({
+      level,
+      section,
+      teacherId: teacherId || null,
+      room,
+      capacity,
+      academicYearId
+    });
   };
 
   return (
@@ -272,45 +654,223 @@ function ClassFormModal({ cls, levels, onClose, onSave, onDelete }: { cls?: Clas
         <div className="px-6 py-5 grid grid-cols-2 gap-4">
           <Field label="Level"><select value={level} onChange={e => setLevel(e.target.value)} className={inp}>{levelOptions.map(l => <option key={l}>{l}</option>)}</select></Field>
           <Field label="Section"><input value={section} onChange={e => setSection(e.target.value.toUpperCase())} className={inp} /></Field>
-          <Field label="Teacher" full><input value={teacher} onChange={e => setTeacher(e.target.value)} className={inp} placeholder="e.g. Mr. Habimana" /></Field>
-          <Field label="Room"><input value={room} onChange={e => setRoom(e.target.value)} className={inp} /></Field>
+          {academicYears.length > 0 ? (
+            <Field label="Academic year" full>
+              <select value={academicYearId} onChange={e => setAcademicYearId(e.target.value)} className={inp}>
+                <option value="">Not set</option>
+                {academicYears.map((year) => (
+                  <option key={year.id} value={year.id}>
+                    {year.name}{year.is_current ? " (Current)" : ""}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : (
+            <div className="col-span-2 text-xs text-muted-foreground">
+              No academic year found. Create one before importing students.
+            </div>
+          )}
+          <Field label="Teacher" full>
+            <select value={teacherId} onChange={e => setTeacherId(e.target.value)} className={inp}>
+              <option value="">Unassigned</option>
+              {teachers.map((teacher) => (
+                <option key={teacher.id} value={teacher.id}>
+                  {teacher.name ?? "Unnamed teacher"}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Room (optional)"><input value={room} onChange={e => setRoom(e.target.value)} className={inp} /></Field>
           <Field label="Capacity"><input type="number" value={capacity} onChange={e => setCapacity(+e.target.value)} className={inp} /></Field>
         </div>
         <div className="flex justify-between gap-2 px-6 py-4 border-t border-border">
           {cls && onDelete ? (
-            <button onClick={() => setConfirmDel(true)} className="inline-flex items-center gap-1.5 text-destructive text-sm font-semibold hover:underline">
+            <button
+              onClick={() => setConfirmDel(true)}
+              className="inline-flex items-center gap-1.5 text-destructive text-sm font-semibold hover:underline"
+              disabled={saving}
+            >
               <Trash2 className="h-4 w-4" /> Delete
             </button>
           ) : <span />}
           <div className="flex gap-2">
             <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
-            <button onClick={save} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">{cls ? "Save Changes" : "Save"}</button>
+            <button
+              onClick={save}
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+              disabled={saving}
+            >
+              {saving ? "Saving…" : cls ? "Save Changes" : "Save"}
+            </button>
           </div>
         </div>
       </div>
       {cls && onDelete && (
         <ConfirmModal open={confirmDel} title="Delete Class" message={`Are you sure you want to delete ${cls.name}? This cannot be undone.`}
-          danger confirmLabel="Delete" onConfirm={() => { onDelete(cls.id); onClose(); }} onClose={() => setConfirmDel(false)} />
+          danger confirmLabel="Delete" onConfirm={async () => { await onDelete(); }} onClose={() => setConfirmDel(false)} />
       )}
     </div>
   );
 }
 
-function ClassImportModal({ cls, onClose }: { cls: ClassInfo; onClose: () => void }) {
+function ClassImportModal({
+  cls,
+  onClose,
+  onImported
+}: {
+  cls: ClassInfo;
+  onClose: () => void;
+  onImported?: (count: number) => void;
+}) {
   const [file, setFile] = useState<File | null>(null);
+  const [parseResult, setParseResult] = useState<StudentImportParseResult | null>(null);
+  const [parsing, setParsing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [importedCount, setImportedCount] = useState<number | null>(null);
+  const [serverIssues, setServerIssues] = useState<string[]>([]);
+  const [metaIssues, setMetaIssues] = useState<string[]>([]);
+  const [metaLoading, setMetaLoading] = useState(false);
+  const [section, setSection] = useState<SectionRecord | null>(null);
+  const [academicYear, setAcademicYear] = useState<AcademicYearRecord | null>(null);
 
-  const importFile = () => {
-    if (!file) {
-      toast.error("Select a file to import");
+  useEffect(() => {
+    let active = true;
+
+    const loadMeta = async () => {
+      setMetaLoading(true);
+      setMetaIssues([]);
+
+      try {
+        const [sections, years] = await Promise.all([
+          apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" }),
+          apiRequest<AcademicYearRecord[]>("/academic-years?limit=50", { auth: "school" })
+        ]);
+
+        if (!active) return;
+
+        const normalizedName = normalizeSectionKey(cls.fullName ?? cls.name);
+        const matchedSection = cls.sectionId
+          ? sections.find((item) => item.id === cls.sectionId)
+          : sections.find(
+            (item) => normalizeSectionKey(item.full_name ?? "") === normalizedName
+          );
+        const currentYear = years.find((year) => year.is_current) ?? years[0] ?? null;
+        const issues: string[] = [];
+
+        if (!matchedSection) {
+          issues.push(`No matching section found for ${cls.name}.`);
+        }
+
+        if (!currentYear) {
+          issues.push("No academic year found. Set a current academic year before importing.");
+        }
+
+        setSection(matchedSection ?? null);
+        setAcademicYear(currentYear);
+        setMetaIssues(issues);
+      } catch (error: any) {
+        if (!active) return;
+        setMetaIssues([error?.message ?? "Failed to load class metadata."]);
+      } finally {
+        if (active) {
+          setMetaLoading(false);
+        }
+      }
+    };
+
+    loadMeta();
+
+    return () => {
+      active = false;
+    };
+  }, [cls.name, cls.fullName, cls.sectionId]);
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const selected = event.target.files?.[0] ?? null;
+    setFile(selected);
+    setParseResult(null);
+    setImportedCount(null);
+    setServerIssues([]);
+
+    if (!selected) {
       return;
     }
-    toast.success(`Import queued for ${cls.name}`);
-    onClose();
+
+    setParsing(true);
+    try {
+      const result = await parseStudentImportFile(selected);
+      setParseResult(result);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to parse file");
+      setParseResult(null);
+    } finally {
+      setParsing(false);
+    }
   };
+
+  const importFile = async () => {
+    if (!parseResult?.validRows.length) {
+      toast.error("No valid rows to import");
+      return;
+    }
+
+    if (!section || !academicYear) {
+      toast.error("Missing class assignment details");
+      return;
+    }
+
+    setUploading(true);
+    setServerIssues([]);
+
+    try {
+      const csvFile = makeStudentImportCsvFile(
+        parseResult.validRows,
+        `students-${cls.name.toLowerCase()}-${Date.now()}.csv`
+      );
+      const formData = new FormData();
+      formData.append("file", csvFile);
+
+      const query = new URLSearchParams({
+        section_id: section.id,
+        academic_year_id: academicYear.id
+      });
+
+      const result = await apiRequest<{ created: number }>(
+        `/students/import?${query.toString()}`,
+        {
+          method: "POST",
+          body: formData,
+          auth: "school"
+        }
+      );
+
+      const created = result?.created ?? parseResult.validRows.length;
+      setImportedCount(created);
+      toast.success(`${created} students imported to ${cls.name}`);
+      onImported?.(created);
+    } catch (error: any) {
+      const details = Array.isArray(error?.details) ? error.details : [];
+      setServerIssues(details);
+      toast.error(error?.message ?? "Import failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const hasHeaderIssues =
+    parseResult?.issues.some((issue) => issue.type === "header") ?? false;
+  const hasValidRows = (parseResult?.validRows.length ?? 0) > 0;
+  const disableImport =
+    !hasValidRows ||
+    parsing ||
+    uploading ||
+    metaLoading ||
+    metaIssues.length > 0 ||
+    hasHeaderIssues;
 
   return (
     <div className="fixed inset-0 z-[55] grid place-items-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md rounded-2xl bg-card shadow-2xl">
+      <div className="w-full max-w-xl rounded-2xl bg-card shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h3 className="font-display font-bold">Import Students</h3>
           <button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-4 w-4" /></button>
@@ -319,27 +879,110 @@ function ClassImportModal({ cls, onClose }: { cls: ClassInfo; onClose: () => voi
           <div className="text-sm text-muted-foreground">
             Import students into <span className="font-semibold text-foreground">{cls.name}</span>.
           </div>
+
+          <div className="rounded-lg border border-border p-3 text-xs space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Section mapping</span>
+              <span className="font-semibold">
+                {metaLoading ? "Loading…" : section?.full_name ?? cls.fullName ?? cls.name ?? "Not found"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Academic year</span>
+              <span className="font-semibold">
+                {metaLoading ? "Loading…" : academicYear?.name ?? "Not set"}
+              </span>
+            </div>
+          </div>
+
+          {metaIssues.length > 0 && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive space-y-1">
+              {metaIssues.map((issue) => (
+                <div key={issue}>{issue}</div>
+              ))}
+            </div>
+          )}
+
           <label className="block">
             <span className="text-xs font-semibold mb-1.5 block">Upload File</span>
             <input
               type="file"
               accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              onChange={handleFileChange}
               className={inp}
             />
           </label>
-          <a
-            href="/students-import-template.csv"
-            download="ecareafrica-students-template.csv"
+
+          <button
+            type="button"
+            onClick={() => downloadStudentImportTemplate()}
             className="inline-flex items-center gap-2 text-xs font-semibold text-primary hover:underline"
           >
             <Download className="h-3.5 w-3.5" /> Download Template
-          </a>
+          </button>
+
+          {parsing && (
+            <div className="text-xs text-muted-foreground">Parsing file…</div>
+          )}
+
+          {parseResult && (
+            <div className="rounded-lg border border-border p-3 text-xs space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Rows detected</span>
+                <span className="font-semibold">{parseResult.totalRows}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Ready to import</span>
+                <span className="font-semibold">{parseResult.validRows.length}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Issues found</span>
+                <span className="font-semibold">{parseResult.issues.length}</span>
+              </div>
+            </div>
+          )}
+
+          {parseResult?.issues.length ? (
+            <IssueList title="Validation & duplicate issues" issues={parseResult.issues} />
+          ) : null}
+
+          {serverIssues.length > 0 && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive space-y-1">
+              {serverIssues.map((issue, index) => (
+                <div key={`${issue}-${index}`}>{issue}</div>
+              ))}
+            </div>
+          )}
+
+          {importedCount !== null && (
+            <div className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-xs text-success">
+              Successfully imported {importedCount} students.
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-border">
           <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
-          <button onClick={importFile} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Import</button>
+          <button
+            onClick={importFile}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+            disabled={disableImport}
+          >
+            {uploading ? "Importing…" : "Import"}
+          </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function IssueList({ title, issues }: { title: string; issues: StudentImportIssue[] }) {
+  return (
+    <div className="rounded-lg border border-border p-3 text-xs">
+      <div className="font-semibold mb-2">{title}</div>
+      <div className="max-h-40 overflow-y-auto space-y-1 text-muted-foreground">
+        {issues.map((issue, index) => (
+          <div key={`${issue.row}-${index}`}>Row {issue.row}: {issue.message}</div>
+        ))}
       </div>
     </div>
   );

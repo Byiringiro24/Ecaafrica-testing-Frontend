@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import {
   Building2, MessageSquare, Calendar, User, Database,
@@ -6,7 +6,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { getSchoolAuth } from "@/lib/schoolAuth";
 
 export const Route = createFileRoute("/settings")({ component: SettingsPage });
 
@@ -81,7 +83,47 @@ type HolidayRecord = {
   type?: string | null;
 };
 
+type SystemSetting = {
+  id: string;
+  key_name: string;
+  value: string | number | boolean | null;
+  type?: string | null;
+};
+
+type CurrentUser = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  role?: string | null;
+  phone?: string | null;
+};
+
+const SCHOOL_SETTING_KEYS = [
+  "school_name",
+  "school_logo",
+  "school_address",
+  "school_district",
+  "school_province",
+  "school_principal",
+] as const;
+
+type SchoolSettingKey = typeof SCHOOL_SETTING_KEYS[number];
+
 function SchoolTab() {
+  // ── School info state ──────────────────────────────────────
+  const [settingsMap, setSettingsMap] = useState<Record<string, SystemSetting>>({});
+  const [schoolInfo, setSchoolInfo] = useState<Record<SchoolSettingKey, string>>({
+    school_name: "",
+    school_logo: "",
+    school_address: "",
+    school_district: "",
+    school_province: "",
+    school_principal: "",
+  });
+  const [infoLoading, setInfoLoading] = useState(false);
+  const [savingInfo, setSavingInfo] = useState(false);
+
+  // ── Academic year state ────────────────────────────────────
   const [academicYears, setAcademicYears] = useState<AcademicYearRecord[]>([]);
   const [currentYearId, setCurrentYearId] = useState("");
   const [yearLoading, setYearLoading] = useState(false);
@@ -90,11 +132,35 @@ function SchoolTab() {
   const [yearEnd, setYearEnd] = useState("");
   const [yearCurrent, setYearCurrent] = useState(true);
 
+  const loadSchoolInfo = async () => {
+    setInfoLoading(true);
+    try {
+      const settings = await apiRequest<SystemSetting[]>("/system-settings?limit=100", {
+        auth: "school",
+      });
+      const map: Record<string, SystemSetting> = {};
+      settings.forEach((s) => { map[s.key_name] = s; });
+      setSettingsMap(map);
+      setSchoolInfo({
+        school_name: String(map.school_name?.value ?? ""),
+        school_logo: String(map.school_logo?.value ?? ""),
+        school_address: String(map.school_address?.value ?? ""),
+        school_district: String(map.school_district?.value ?? ""),
+        school_province: String(map.school_province?.value ?? ""),
+        school_principal: String(map.school_principal?.value ?? ""),
+      });
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load school info");
+    } finally {
+      setInfoLoading(false);
+    }
+  };
+
   const loadAcademicYears = async () => {
     setYearLoading(true);
     try {
       const years = await apiRequest<AcademicYearRecord[]>("/academic-years?limit=50", {
-        auth: "school"
+        auth: "school",
       });
       setAcademicYears(years);
       const current = years.find((year) => year.is_current) ?? years[0] ?? null;
@@ -107,8 +173,39 @@ function SchoolTab() {
   };
 
   useEffect(() => {
+    loadSchoolInfo();
     loadAcademicYears();
   }, []);
+
+  const handleSaveSchoolInfo = async () => {
+    setSavingInfo(true);
+    try {
+      await Promise.all(
+        SCHOOL_SETTING_KEYS.map((key) => {
+          const existing = settingsMap[key];
+          const value = schoolInfo[key];
+          if (existing?.id) {
+            return apiRequest(`/system-settings/${existing.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ value }),
+              auth: "school",
+            });
+          }
+          return apiRequest("/system-settings", {
+            method: "POST",
+            body: JSON.stringify({ key_name: key, value, type: "string" }),
+            auth: "school",
+          });
+        })
+      );
+      await loadSchoolInfo();
+      toast.success("School information saved");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to save school info");
+    } finally {
+      setSavingInfo(false);
+    }
+  };
 
   const handleSetCurrent = async (id: string) => {
     if (!id) return;
@@ -117,7 +214,7 @@ function SchoolTab() {
       await apiRequest(`/academic-years/${id}`, {
         method: "PATCH",
         body: JSON.stringify({ is_current: true }),
-        auth: "school"
+        auth: "school",
       });
       await loadAcademicYears();
       toast.success("Academic year updated");
@@ -133,7 +230,6 @@ function SchoolTab() {
       toast.error("Name, start date, and end date are required");
       return;
     }
-
     setYearLoading(true);
     try {
       await apiRequest("/academic-years", {
@@ -142,9 +238,9 @@ function SchoolTab() {
           name: yearName.trim(),
           start_date: yearStart,
           end_date: yearEnd,
-          is_current: yearCurrent
+          is_current: yearCurrent,
         }),
-        auth: "school"
+        auth: "school",
       });
       setYearName("");
       setYearStart("");
@@ -160,15 +256,10 @@ function SchoolTab() {
   };
 
   const handleDeleteYear = async (id: string) => {
-    if (!window.confirm("Delete this academic year?")) {
-      return;
-    }
+    if (!window.confirm("Delete this academic year?")) return;
     setYearLoading(true);
     try {
-      await apiRequest(`/academic-years/${id}`, {
-        method: "DELETE",
-        auth: "school"
-      });
+      await apiRequest(`/academic-years/${id}`, { method: "DELETE", auth: "school" });
       await loadAcademicYears();
       toast.success("Academic year deleted");
     } catch (error: any) {
@@ -178,43 +269,174 @@ function SchoolTab() {
     }
   };
 
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setField("school_logo", reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const setField = (key: SchoolSettingKey, value: string) =>
+    setSchoolInfo((prev) => ({ ...prev, [key]: value }));
+
+  const showInfoSkeleton = infoLoading && Object.keys(settingsMap).length === 0;
+  const showYearSkeleton = yearLoading && academicYears.length === 0;
+
+  const currentYear = academicYears.find((y) => y.is_current);
+
   return (
     <>
-      <h3 className="font-display font-bold text-lg mb-4">School Information</h3>
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="School Name" full><input className={inp} defaultValue="Groupe Scolaire de Kigali" /></Field>
-        <Field label="School Logo" full>
-          <div className="flex items-center gap-4">
-            <div className="h-20 w-20 rounded-lg border-2 border-dashed border-border grid place-items-center bg-muted/30">
-              <Upload className="h-6 w-6 text-muted-foreground" />
+      <h3 className="font-display font-bold text-lg mb-5">School Information</h3>
+
+      {/* ── Profile card — displays current data from DB ── */}
+      {showInfoSkeleton || showYearSkeleton ? (
+        <div className="rounded-2xl border border-border bg-muted/20 p-5 mb-6 flex items-center gap-5">
+          <Skeleton className="h-20 w-20 rounded-2xl flex-shrink-0" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="h-3 w-64" />
+            <div className="flex gap-4 mt-1">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-5 w-20 rounded-full" />
             </div>
-            <button className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">Upload Logo</button>
           </div>
-        </Field>
-        <Field label="Address" full><input className={inp} defaultValue="KK 15 Avenue, Kicukiro" /></Field>
-        <Field label="District"><input className={inp} defaultValue="Kicukiro" /></Field>
-        <Field label="Province"><input className={inp} defaultValue="Kigali City" /></Field>
-        <Field label="Academic Year">
-          <select
-            className={inp}
-            value={currentYearId}
-            onChange={(e) => {
-              setCurrentYearId(e.target.value);
-              handleSetCurrent(e.target.value);
-            }}
-            disabled={yearLoading || academicYears.length === 0}
-          >
-            {academicYears.length === 0 && <option value="">No academic year</option>}
-            {academicYears.map((year) => (
-              <option key={year.id} value={year.id}>
-                {year.name}{year.is_current ? " (Current)" : ""}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Principal"><input className={inp} defaultValue="Dr. Mukamana Diane" /></Field>
-      </div>
-      <button onClick={() => toast.success("School info saved")} className="mt-5 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground">Save Changes</button>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-border bg-muted/10 p-5 mb-6 flex items-center gap-5">
+          <div className="h-20 w-20 rounded-2xl border border-border bg-background flex-shrink-0 grid place-items-center overflow-hidden shadow-sm">
+            {schoolInfo.school_logo ? (
+              <img src={schoolInfo.school_logo} alt="School logo" className="h-full w-full object-cover" />
+            ) : (
+              <Building2 className="h-8 w-8 text-muted-foreground" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <p className="font-display font-bold text-xl leading-tight truncate">
+              {schoolInfo.school_name || <span className="text-muted-foreground italic">School name not set</span>}
+            </p>
+            {schoolInfo.school_address && (
+              <p className="text-sm text-muted-foreground mt-0.5 truncate">{schoolInfo.school_address}</p>
+            )}
+            <div className="flex flex-wrap items-center gap-3 mt-2">
+              {schoolInfo.school_district && (
+                <span className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">District:</span> {schoolInfo.school_district}
+                </span>
+              )}
+              {schoolInfo.school_province && (
+                <span className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">Province:</span> {schoolInfo.school_province}
+                </span>
+              )}
+              {schoolInfo.school_principal && (
+                <span className="text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">Principal:</span> {schoolInfo.school_principal}
+                </span>
+              )}
+              {currentYear && (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-100 px-2.5 py-0.5 rounded-full">
+                  {currentYear.name} · Current
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit form ── */}
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Edit Details</p>
+
+      {showInfoSkeleton ? (
+        <div className="grid grid-cols-2 gap-4">
+          <FieldSkeleton full />
+          <div className="col-span-2 space-y-2">
+            <Skeleton className="h-3 w-24" />
+            <div className="flex items-center gap-4">
+              <Skeleton className="h-20 w-20 rounded-xl" />
+              <div className="flex flex-col gap-2">
+                <Skeleton className="h-9 w-28" />
+              </div>
+            </div>
+          </div>
+          <FieldSkeleton full />
+          <FieldSkeleton />
+          <FieldSkeleton />
+          <FieldSkeleton />
+          <FieldSkeleton />
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="School Name" full>
+            <input className={inp} value={schoolInfo.school_name} onChange={(e) => setField("school_name", e.target.value)} placeholder="e.g. Kigali Academy" />
+          </Field>
+
+          <Field label="School Logo" full>
+            <div className="flex items-center gap-4">
+              <div className="h-16 w-16 rounded-xl border border-border bg-muted/30 grid place-items-center overflow-hidden flex-shrink-0">
+                {schoolInfo.school_logo ? (
+                  <img src={schoolInfo.school_logo} alt="Logo preview" className="h-full w-full object-cover" />
+                ) : (
+                  <Upload className="h-5 w-5 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => logoInputRef.current?.click()}
+                  className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">
+                  Upload Logo
+                </button>
+                {schoolInfo.school_logo && (
+                  <button type="button" onClick={() => setField("school_logo", "")}
+                    className="text-xs text-destructive hover:underline">
+                    Remove
+                  </button>
+                )}
+                <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
+              </div>
+            </div>
+          </Field>
+
+          <Field label="Address" full>
+            <input className={inp} value={schoolInfo.school_address} onChange={(e) => setField("school_address", e.target.value)} placeholder="e.g. KG 501 St, Kigali" />
+          </Field>
+
+          <Field label="District">
+            <input className={inp} value={schoolInfo.school_district} onChange={(e) => setField("school_district", e.target.value)} placeholder="e.g. Gasabo" />
+          </Field>
+
+          <Field label="Province">
+            <input className={inp} value={schoolInfo.school_province} onChange={(e) => setField("school_province", e.target.value)} placeholder="e.g. Kigali" />
+          </Field>
+
+          <Field label="Academic Year">
+            {showYearSkeleton ? (
+              <Skeleton className="h-10 w-full" />
+            ) : (
+              <div className={`${inp} flex items-center justify-between bg-muted/20`}>
+                <span className="font-medium">{currentYear?.name ?? "—"}</span>
+                {currentYear && (
+                  <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">Current</span>
+                )}
+              </div>
+            )}
+          </Field>
+
+          <Field label="Principal" full>
+            <input className={inp} value={schoolInfo.school_principal} onChange={(e) => setField("school_principal", e.target.value)} placeholder="e.g. Jean Bosco Uwimana" />
+          </Field>
+        </div>
+      )}
+
+      <button
+        onClick={handleSaveSchoolInfo}
+        disabled={savingInfo || infoLoading}
+        className="mt-5 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+      >
+        {savingInfo ? "Saving…" : "Save Changes"}
+      </button>
 
       <div className="mt-8 rounded-xl border border-border bg-background p-4">
         <div className="flex items-center justify-between mb-3">
@@ -237,11 +459,19 @@ function SchoolTab() {
               </tr>
             </thead>
             <tbody>
-              {academicYears.length === 0 ? (
+              {showYearSkeleton ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <tr key={`year-skeleton-${i}`} className="border-t border-border">
+                    <td className="px-3 py-2"><Skeleton className="h-4 w-28" /></td>
+                    <td className="px-3 py-2"><Skeleton className="h-4 w-24" /></td>
+                    <td className="px-3 py-2"><Skeleton className="h-4 w-24" /></td>
+                    <td className="px-3 py-2"><Skeleton className="h-4 w-16" /></td>
+                    <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-20 ml-auto" /></td>
+                  </tr>
+                ))
+              ) : academicYears.length === 0 ? (
                 <tr className="border-t border-border">
-                  <td colSpan={5} className="px-3 py-3 text-xs text-muted-foreground">
-                    No academic years yet.
-                  </td>
+                  <td colSpan={5} className="px-3 py-3 text-xs text-muted-foreground">No academic years yet.</td>
                 </tr>
               ) : (
                 academicYears.map((year) => (
@@ -250,27 +480,17 @@ function SchoolTab() {
                     <td className="px-3 py-2">{year.start_date}</td>
                     <td className="px-3 py-2">{year.end_date}</td>
                     <td className="px-3 py-2">
-                      {year.is_current ? (
-                        <span className="text-xs font-semibold text-success">Current</span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Inactive</span>
-                      )}
+                      {year.is_current
+                        ? <span className="text-xs font-semibold text-success">Current</span>
+                        : <span className="text-xs text-muted-foreground">Inactive</span>}
                     </td>
                     <td className="px-3 py-2 text-right">
                       {!year.is_current && (
-                        <button
-                          onClick={() => handleSetCurrent(year.id)}
-                          className="mr-3 text-xs font-semibold text-primary hover:underline"
-                          disabled={yearLoading}
-                        >
+                        <button onClick={() => handleSetCurrent(year.id)} className="mr-3 text-xs font-semibold text-primary hover:underline" disabled={yearLoading}>
                           Set current
                         </button>
                       )}
-                      <button
-                        onClick={() => handleDeleteYear(year.id)}
-                        className="text-xs text-destructive hover:underline"
-                        disabled={yearLoading}
-                      >
+                      <button onClick={() => handleDeleteYear(year.id)} className="text-xs text-destructive hover:underline" disabled={yearLoading}>
                         Delete
                       </button>
                     </td>
@@ -296,11 +516,7 @@ function SchoolTab() {
             Set as current
           </label>
         </div>
-        <button
-          onClick={handleCreateYear}
-          className="mt-3 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
-          disabled={yearLoading}
-        >
+        <button onClick={handleCreateYear} className="mt-3 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60" disabled={yearLoading}>
           Add Academic Year
         </button>
       </div>
@@ -357,6 +573,7 @@ function CalendarTab() {
   const [selectedYearId, setSelectedYearId] = useState("");
   const [terms, setTerms] = useState<TermRecord[]>([]);
   const [holidays, setHolidays] = useState<HolidayRecord[]>([]);
+  const [yearsLoading, setYearsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
 
@@ -378,6 +595,7 @@ function CalendarTab() {
   const toDateInput = (value?: string | null) => (value ? value.slice(0, 10) : "");
 
   const loadAcademicYears = async () => {
+    setYearsLoading(true);
     try {
       const years = await apiRequest<AcademicYearRecord[]>("/academic-years?limit=50", {
         auth: "school"
@@ -394,6 +612,8 @@ function CalendarTab() {
       ));
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to load academic years");
+    } finally {
+      setYearsLoading(false);
     }
   };
 
@@ -452,6 +672,10 @@ function CalendarTab() {
       loadTerms(selectedYearId);
     }
   }, [selectedYearId]);
+
+  const showYearSkeleton = yearsLoading && academicYears.length === 0;
+  const showTermsSkeleton = loading && terms.length === 0 && Boolean(selectedYearId);
+  const showHolidaysSkeleton = loading && holidays.length === 0;
 
   const handleSaveYear = async (year: AcademicYearRecord) => {
     setSavingId(`year-${year.id}`);
@@ -674,18 +898,22 @@ function CalendarTab() {
       <h3 className="font-display font-bold text-lg mb-4">Academic Calendar</h3>
       <div className="rounded-lg border border-border p-3 mb-4">
         <Field label="Academic year">
-          <select
-            value={selectedYearId}
-            onChange={(e) => setSelectedYearId(e.target.value)}
-            className={inp}
-          >
-            {academicYears.length === 0 && <option value="">No academic year</option>}
-            {academicYears.map((year) => (
-              <option key={year.id} value={year.id}>
-                {year.name}{year.is_current ? " (Current)" : ""}
-              </option>
-            ))}
-          </select>
+          {showYearSkeleton ? (
+            <Skeleton className="h-10 w-full" />
+          ) : (
+            <select
+              value={selectedYearId}
+              onChange={(e) => setSelectedYearId(e.target.value)}
+              className={inp}
+            >
+              {academicYears.length === 0 && <option value="">No academic year</option>}
+              {academicYears.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.name}{year.is_current ? " (Current)" : ""}
+                </option>
+              ))}
+            </select>
+          )}
         </Field>
       </div>
 
@@ -702,7 +930,17 @@ function CalendarTab() {
             </tr>
           </thead>
           <tbody>
-            {academicYears.length === 0 ? (
+            {showYearSkeleton ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <tr key={`year-skeleton-${i}`} className="border-t border-border">
+                  <td className="px-3 py-2"><Skeleton className="h-4 w-28" /></td>
+                  <td className="px-3 py-2"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-3 py-2"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-3 py-2"><Skeleton className="h-4 w-10" /></td>
+                  <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-20 ml-auto" /></td>
+                </tr>
+              ))
+            ) : academicYears.length === 0 ? (
               <tr className="border-t border-border">
                 <td colSpan={5} className="px-3 py-3 text-xs text-muted-foreground">
                   No academic years yet.
@@ -819,7 +1057,17 @@ function CalendarTab() {
             </tr>
           </thead>
           <tbody>
-            {terms.length === 0 ? (
+            {showTermsSkeleton ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <tr key={`term-skeleton-${i}`} className="border-t border-border">
+                  <td className="px-3 py-2"><Skeleton className="h-4 w-28" /></td>
+                  <td className="px-3 py-2"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-3 py-2"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-3 py-2"><Skeleton className="h-4 w-10" /></td>
+                  <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-20 ml-auto" /></td>
+                </tr>
+              ))
+            ) : terms.length === 0 ? (
               <tr className="border-t border-border">
                 <td colSpan={5} className="px-3 py-3 text-xs text-muted-foreground">
                   {selectedYearId ? "No terms yet." : "Select an academic year to load terms."}
@@ -936,7 +1184,17 @@ function CalendarTab() {
             </tr>
           </thead>
           <tbody>
-            {holidays.length === 0 ? (
+            {showHolidaysSkeleton ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <tr key={`holiday-skeleton-${i}`} className="border-t border-border">
+                  <td className="px-3 py-2"><Skeleton className="h-4 w-28" /></td>
+                  <td className="px-3 py-2"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-3 py-2"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-3 py-2"><Skeleton className="h-4 w-16" /></td>
+                  <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-20 ml-auto" /></td>
+                </tr>
+              ))
+            ) : holidays.length === 0 ? (
               <tr className="border-t border-border">
                 <td colSpan={5} className="px-3 py-3 text-xs text-muted-foreground">
                   No holidays yet.
@@ -1047,11 +1305,59 @@ function CalendarTab() {
 }
 
 function ProfileTab() {
+  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [name, setName] = useState("");
+  const [loadingUser, setLoadingUser] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [savingPwd, setSavingPwd] = useState(false);
 
-  const handleSave = () => {
+  const loadUser = async () => {
+    setLoadingUser(true);
+    try {
+      const data = await apiRequest<CurrentUser>("/auth/me", { auth: "school" });
+      setUser(data);
+      setName(data.name ?? "");
+    } catch (error: any) {
+      const cached = getSchoolAuth()?.user;
+      if (cached) {
+        setUser(cached);
+        setName(cached.name ?? "");
+      } else {
+        toast.error(error?.message ?? "Failed to load profile");
+      }
+    } finally {
+      setLoadingUser(false);
+    }
+  };
+
+  useEffect(() => { loadUser(); }, []);
+
+  const showProfileSkeleton = loadingUser && !user;
+
+  const handleSaveProfile = async () => {
+    if (!user?.id) return;
+    setSavingProfile(true);
+    try {
+      await apiRequest(`/users/${user.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+        auth: "school",
+      });
+      toast.success("Profile updated");
+      await loadUser();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to update profile");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleSavePassword = async () => {
+    if (!user?.id) return;
     if (!currentPassword || !newPassword || !confirmPassword) {
       toast.error("Fill in all password fields");
       return;
@@ -1060,44 +1366,79 @@ function ProfileTab() {
       toast.error("New passwords do not match");
       return;
     }
-    toast.success("Password updated");
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
+    setSavingPwd(true);
+    try {
+      await apiRequest(`/users/${user.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ current_password: currentPassword, password: newPassword }),
+        auth: "school",
+      });
+      toast.success("Password updated");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to update password");
+    } finally {
+      setSavingPwd(false);
+    }
   };
 
   return (
     <>
       <h3 className="font-display font-bold text-lg mb-4">Profile Settings</h3>
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Current Password" full>
-          <input
-            type="password"
-            className={inp}
-            value={currentPassword}
-            onChange={e => setCurrentPassword(e.target.value)}
-          />
-        </Field>
-        <Field label="New Password" full>
-          <input
-            type="password"
-            className={inp}
-            value={newPassword}
-            onChange={e => setNewPassword(e.target.value)}
-          />
-        </Field>
-        <Field label="Confirm New Password" full>
-          <input
-            type="password"
-            className={inp}
-            value={confirmPassword}
-            onChange={e => setConfirmPassword(e.target.value)}
-          />
-        </Field>
+
+      <div className="rounded-xl border border-border bg-background p-4 mb-6">
+        <h4 className="font-display font-bold text-base mb-3">Account Information</h4>
+        {showProfileSkeleton ? (
+          <div className="grid grid-cols-2 gap-4">
+            <FieldSkeleton full />
+            <FieldSkeleton full />
+            <FieldSkeleton full />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Full Name" full>
+              <input className={inp} value={name} onChange={(e) => setName(e.target.value)} />
+            </Field>
+            <Field label="Email" full>
+              <input className={`${inp} opacity-60`} value={user?.email ?? ""} readOnly />
+            </Field>
+            <Field label="Role" full>
+              <input className={`${inp} opacity-60`} value={user?.role ?? ""} readOnly />
+            </Field>
+          </div>
+        )}
+        <button
+          onClick={handleSaveProfile}
+          disabled={savingProfile || loadingUser}
+          className="mt-4 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+        >
+          {savingProfile ? "Saving…" : "Save Profile"}
+        </button>
       </div>
-      <button onClick={handleSave} className="mt-5 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground">
-        Save Password
-      </button>
+
+      <div className="rounded-xl border border-border bg-background p-4">
+        <h4 className="font-display font-bold text-base mb-3">Change Password</h4>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Current Password" full>
+            <input type="password" className={inp} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+          </Field>
+          <Field label="New Password" full>
+            <input type="password" className={inp} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          </Field>
+          <Field label="Confirm New Password" full>
+            <input type="password" className={inp} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+          </Field>
+        </div>
+        <button
+          onClick={handleSavePassword}
+          disabled={savingPwd || loadingUser}
+          className="mt-4 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+        >
+          {savingPwd ? "Saving…" : "Save Password"}
+        </button>
+      </div>
     </>
   );
 }
@@ -1136,4 +1477,13 @@ function UserLogsTab() {
 
 function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
   return <label className={`block ${full ? "col-span-2" : ""}`}><span className="text-xs font-semibold mb-1.5 block">{label}</span>{children}</label>;
+}
+
+function FieldSkeleton({ full }: { full?: boolean }) {
+  return (
+    <div className={`space-y-2 ${full ? "col-span-2" : ""}`}>
+      <Skeleton className="h-3 w-24" />
+      <Skeleton className="h-10 w-full" />
+    </div>
+  );
 }

@@ -1,6 +1,7 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
+import { getSchoolAuth } from "@/lib/schoolAuth";
 
 interface Props {
   title: string;
@@ -10,6 +11,13 @@ interface Props {
 
 export function AppLayout({ title, subtitle, children }: Props) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!getSchoolAuth()?.accessToken) {
+      window.location.replace("/login");
+    }
+  }, []);
+
   return (
     <div className="flex min-h-screen bg-background">
       <AppSidebar open={open} onClose={() => setOpen(false)} />

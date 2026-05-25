@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Avatar } from "@/components/ui-kit/Avatar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { VISITORS, STAFF, STUDENTS, type Visitor, type Staff, type Student } from "@/lib/mockData";
 
 export const Route = createFileRoute("/visitors")({ component: VisitorsPage });
@@ -31,6 +32,12 @@ function VisitorsPage() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [checkoutTarget, setCheckoutTarget] = useState<Visitor | null>(null);
   const [viewing, setViewing] = useState<Visitor | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timeoutId);
+  }, []);
 
   const today = list.filter(v => v.date === "today");
   const onCampus = list.filter(v => v.status === "on-campus").length;
@@ -46,26 +53,32 @@ function VisitorsPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <StatCard label="Today's Visitors" value={todaysCount} icon={<UserCheck className="h-5 w-5" />} />
-        <StatCard label="Currently On Campus" value={onCampus} tone="success" icon={<Users className="h-5 w-5" />} />
-        <StatCard label="Pending Check-out" value={pendingCheckout} tone="warning" icon={<Clock className="h-5 w-5" />} />
-        <StatCard label="This Week Total" value={weekTotal} icon={<Calendar className="h-5 w-5" />} />
-      </div>
+      {loading ? (
+        <VisitorsSkeleton />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+            <StatCard label="Today's Visitors" value={todaysCount} icon={<UserCheck className="h-5 w-5" />} />
+            <StatCard label="Currently On Campus" value={onCampus} tone="success" icon={<Users className="h-5 w-5" />} />
+            <StatCard label="Pending Check-out" value={pendingCheckout} tone="warning" icon={<Clock className="h-5 w-5" />} />
+            <StatCard label="This Week Total" value={weekTotal} icon={<Calendar className="h-5 w-5" />} />
+          </div>
 
-      <div className="flex flex-wrap gap-1 border-b border-border mb-4 overflow-x-auto">
-        {TABS.map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-            {t}
-          </button>
-        ))}
-      </div>
+          <div className="flex flex-wrap gap-1 border-b border-border mb-4 overflow-x-auto">
+            {TABS.map(t => (
+              <button key={t} onClick={() => setTab(t)}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+                {t}
+              </button>
+            ))}
+          </div>
 
-      {tab === "Active Visitors" && <ActiveTab list={list.filter(v => v.status === "on-campus")} onCheckout={setCheckoutTarget} onView={setViewing} />}
-      {tab === "Scheduled" && <ScheduledTab list={list.filter(v => v.status === "scheduled")} onConfirm={(id) => { setList(prev => prev.map(v => v.id === id ? { ...v, status: "on-campus", checkinTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), date: "today" } : v)); toast.success("Visitor confirmed & checked in"); }} onCancel={(id) => { setList(prev => prev.filter(v => v.id !== id)); toast.success("Appointment cancelled"); }} />}
-      {tab === "History" && <HistoryTab list={list.filter(v => v.status === "checked-out")} />}
-      {tab === "Logs" && <LogsTab list={list} />}
+          {tab === "Active Visitors" && <ActiveTab list={list.filter(v => v.status === "on-campus")} onCheckout={setCheckoutTarget} onView={setViewing} />}
+          {tab === "Scheduled" && <ScheduledTab list={list.filter(v => v.status === "scheduled")} onConfirm={(id) => { setList(prev => prev.map(v => v.id === id ? { ...v, status: "on-campus", checkinTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), date: "today" } : v)); toast.success("Visitor confirmed & checked in"); }} onCancel={(id) => { setList(prev => prev.filter(v => v.id !== id)); toast.success("Appointment cancelled"); }} />}
+          {tab === "History" && <HistoryTab list={list.filter(v => v.status === "checked-out")} />}
+          {tab === "Logs" && <LogsTab list={list} />}
+        </>
+      )}
 
       {registerOpen && <RegisterModal onClose={() => setRegisterOpen(false)} onSave={(v) => { setList(prev => [v, ...prev]); setRegisterOpen(false); toast.success("Visitor checked in successfully"); }} />}
       {checkoutTarget && <CheckoutModal visitor={checkoutTarget} onClose={() => setCheckoutTarget(null)} onConfirm={() => { setList(prev => prev.map(v => v.id === checkoutTarget.id ? { ...v, status: "checked-out", checkoutTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) } : v)); setCheckoutTarget(null); toast.success("Visitor checked out"); }} />}
@@ -244,6 +257,52 @@ function LogsTab({ list }: { list: Visitor[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function VisitorsSkeleton() {
+  return (
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={`visitor-stat-skeleton-${i}`} className="rounded-xl border border-border bg-card p-4">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="mt-3 h-6 w-12" />
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2 border-b border-border mb-4 overflow-x-auto pb-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={`visitor-tab-skeleton-${i}`} className="h-8 w-28 rounded-full" />
+        ))}
+      </div>
+
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <th key={`visitor-head-skeleton-${i}`} className="px-4 py-3 text-left">
+                  <Skeleton className="h-3 w-16" />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <tr key={`visitor-row-skeleton-${i}`} className="border-t border-border">
+                {Array.from({ length: 6 }).map((__, j) => (
+                  <td key={`visitor-cell-skeleton-${i}-${j}`} className="px-4 py-3">
+                    <Skeleton className="h-4 w-24" />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

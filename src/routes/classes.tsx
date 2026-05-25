@@ -6,8 +6,8 @@ import {
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Avatar } from "@/components/ui-kit/Avatar";
-import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { ConfirmModal } from "@/components/modals/ConfirmModal";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   levelBadgeClass, levelBorderClass,
   type ClassInfo,
@@ -68,6 +68,11 @@ type ClassFormPayload = {
   academicYearId?: string | null;
 };
 
+type StudentCountResponse = {
+  data: unknown[];
+  meta?: { total?: number };
+};
+
 const normalizeSectionKey = (value: string) => value.toLowerCase().replace(/\s+/g, "");
 const parseLevelNumber = (value: string) => {
   const match = value.match(/\d+/);
@@ -83,6 +88,7 @@ function ClassesPage() {
   const [academicYears, setAcademicYears] = useState<AcademicYearRecord[]>([]);
   const [currentYear, setCurrentYear] = useState<AcademicYearRecord | null>(null);
   const [teachers, setTeachers] = useState<TeacherRecord[]>([]);
+  const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -101,7 +107,8 @@ function ClassesPage() {
   const buildClassList = (
     classes: ClassRecord[],
     sections: SectionRecord[],
-    teacherLookup: Map<string, TeacherRecord>
+    teacherLookup: Map<string, TeacherRecord>,
+    studentCountLookup: Record<string, number>
   ) => {
     const classMap = new Map(classes.map((item) => [item.id, item]));
 
@@ -125,7 +132,7 @@ function ClassesPage() {
         teacherId: section.class_teacher_id ?? null,
         room: section.room ?? "",
         capacity: section.capacity ?? 0,
-        studentCount: 0,
+        studentCount: studentCountLookup[section.id] ?? 0,
         classId: cls.id,
         sectionId: section.id,
         academicYearId: cls.academic_year_id ?? null
@@ -133,6 +140,37 @@ function ClassesPage() {
 
       return acc;
     }, []);
+  };
+
+  const loadStudentCounts = async (sections: SectionRecord[]) => {
+    if (sections.length === 0) {
+      setStudentCounts({});
+      return;
+    }
+
+    try {
+      const counts = await Promise.all(
+        sections.map(async (section) => {
+          try {
+            const response = await apiRequest<StudentCountResponse>(
+              `/students?section_id=${section.id}&limit=1`,
+              { auth: "school", returnMeta: true }
+            );
+            return [section.id, response.meta?.total ?? 0] as const;
+          } catch {
+            return [section.id, 0] as const;
+          }
+        })
+      );
+
+      const next: Record<string, number> = {};
+      counts.forEach(([id, count]) => {
+        next[id] = count;
+      });
+      setStudentCounts(next);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load student counts");
+    }
   };
 
   const loadClassData = async () => {
@@ -145,6 +183,7 @@ function ClassesPage() {
 
       setClassRecords(classes);
       setSectionRecords(sections);
+      void loadStudentCounts(sections);
 
       const derivedLevels = Array.from(
         new Set(classes.map((item) => `Senior ${item.level}`))
@@ -190,13 +229,14 @@ function ClassesPage() {
   }, []);
 
   useEffect(() => {
-    setList(buildClassList(classRecords, sectionRecords, teacherMap));
-  }, [classRecords, sectionRecords, teacherMap]);
+    setList(buildClassList(classRecords, sectionRecords, teacherMap, studentCounts));
+  }, [classRecords, sectionRecords, teacherMap, studentCounts]);
 
   const filtered = list.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.teacher.toLowerCase().includes(search.toLowerCase())
   );
+  const showSkeleton = loading && list.length === 0;
 
   const todayPresent = (_clsName: string) => 0;
 
@@ -326,54 +366,82 @@ function ClassesPage() {
       )}
 
       <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.map(c => {
-          const present = todayPresent(c.name);
-          const pct = c.studentCount ? Math.round((present / c.studentCount) * 100) : 0;
-          return (
-            <div key={c.id} className={`rounded-xl border border-l-4 border-border bg-card p-5 shadow-sm hover:shadow-md transition ${levelBorderClass(c.level)}`}>
+        {showSkeleton ? (
+          Array.from({ length: 6 }).map((_, i) => (
+            <div key={`class-skeleton-${i}`} className="rounded-xl border border-border bg-card p-5 shadow-sm">
               <div className="flex items-start justify-between">
-                <div className={`px-3 py-1.5 rounded-lg font-display font-bold text-lg ${levelBadgeClass(c.level)}`}>{c.name}</div>
-                <span className="text-xs text-muted-foreground">{c.studentCount}/{c.capacity}</span>
+                <Skeleton className="h-7 w-20" />
+                <Skeleton className="h-3 w-10" />
               </div>
-              <div className="mt-3">
-                <div className="font-semibold">{c.level} — Section {c.section}</div>
-                <div className="mt-1.5 flex items-center gap-2 text-sm text-muted-foreground"><User className="h-3.5 w-3.5" />{c.teacher}</div>
-                <div className="flex items-center gap-2 text-sm text-muted-foreground"><DoorOpen className="h-3.5 w-3.5" />{c.room || "—"}</div>
+              <div className="mt-3 space-y-2">
+                <Skeleton className="h-4 w-36" />
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-24" />
               </div>
-              <div className="mt-4">
-                <div className="flex justify-between text-xs mb-1.5">
-                  <span className="text-muted-foreground">Today's attendance</span>
-                  <span className="font-semibold">{present} Present ({pct}%)</span>
+              <div className="mt-4 space-y-2">
+                <div className="flex justify-between">
+                  <Skeleton className="h-3 w-28" />
+                  <Skeleton className="h-3 w-16" />
                 </div>
-                <div className="h-2 rounded-full bg-muted overflow-hidden">
-                  <div className="h-full bg-success" style={{ width: `${pct}%` }} />
-                </div>
+                <Skeleton className="h-2 w-full rounded-full" />
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button onClick={() => setDetail(c)} className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">
-                  <Eye className="h-3.5 w-3.5" /> View Details
-                </button>
-                <button onClick={() => setEditing(c)} className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary/10 text-primary px-3 py-2 text-xs font-semibold hover:bg-primary/20">
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </button>
-                <button
-                  onClick={() => {
-                    if (!canImport) {
-                      toast.error("Only School Admins can import students.");
-                      return;
-                    }
-                    setImportOpen(c);
-                  }}
-                  className={`flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted ${!canImport ? "opacity-60 cursor-not-allowed" : ""}`}
-                  title={!canImport ? "School Admin only" : ""}
-                  disabled={!canImport}
-                >
-                  <Upload className="h-3.5 w-3.5" /> Import Students
-                </button>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-8 w-full col-span-2" />
               </div>
             </div>
-          );
-        })}
+          ))
+        ) : (
+          filtered.map(c => {
+            const present = todayPresent(c.name);
+            const pct = c.studentCount ? Math.round((present / c.studentCount) * 100) : 0;
+            return (
+              <div key={c.id} className={`rounded-xl border border-l-4 border-border bg-card p-5 shadow-sm hover:shadow-md transition ${levelBorderClass(c.level)}`}>
+                <div className="flex items-start justify-between">
+                  <div className={`px-3 py-1.5 rounded-lg font-display font-bold text-lg ${levelBadgeClass(c.level)}`}>{c.name}</div>
+                  <span className="text-xs text-muted-foreground">{c.studentCount}/{c.capacity}</span>
+                </div>
+                <div className="mt-3">
+                  <div className="font-semibold">{c.level} — Section {c.section}</div>
+                  <div className="mt-1.5 flex items-center gap-2 text-sm text-muted-foreground"><User className="h-3.5 w-3.5" />{c.teacher}</div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground"><DoorOpen className="h-3.5 w-3.5" />{c.room || "—"}</div>
+                </div>
+                <div className="mt-4">
+                  <div className="flex justify-between text-xs mb-1.5">
+                    <span className="text-muted-foreground">Today's attendance</span>
+                    <span className="font-semibold">{present} Present ({pct}%)</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div className="h-full bg-success" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button onClick={() => setDetail(c)} className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">
+                    <Eye className="h-3.5 w-3.5" /> View Details
+                  </button>
+                  <button onClick={() => setEditing(c)} className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary/10 text-primary px-3 py-2 text-xs font-semibold hover:bg-primary/20">
+                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!canImport) {
+                        toast.error("Only School Admins can import students.");
+                        return;
+                      }
+                      setImportOpen(c);
+                    }}
+                    className={`flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted ${!canImport ? "opacity-60 cursor-not-allowed" : ""}`}
+                    title={!canImport ? "School Admin only" : ""}
+                    disabled={!canImport}
+                  >
+                    <Upload className="h-3.5 w-3.5" /> Import Students
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
       {addOpen && (
@@ -415,6 +483,13 @@ function ClassesPage() {
           cls={importOpen}
           onClose={() => setImportOpen(null)}
           onImported={(count) => {
+            const sectionId = importOpen?.sectionId;
+            if (sectionId) {
+              setStudentCounts((prev) => ({
+                ...prev,
+                [sectionId]: (prev[sectionId] ?? 0) + count
+              }));
+            }
             setList((prev) =>
               prev.map((item) =>
                 item.id === importOpen.id
@@ -438,21 +513,38 @@ function ClassesPage() {
 
 type StudentLite = {
   id: string;
-  name: string;
-  attendanceRate: number;
-};
-
-type AttendanceLite = {
-  studentId: string;
-  status: "Present" | "Absent" | "Late";
+  first_name?: string | null;
+  last_name?: string | null;
+  student_id_number?: string | null;
+  gender?: string | null;
+  student_type?: string | null;
 };
 
 function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => void }) {
   const [tab, setTab] = useState<"students" | "trend" | "reports">("students");
   const [q, setQ] = useState("");
-  const students: StudentLite[] = [];
-  const attendance: AttendanceLite[] = [];
-  const filtered = students.filter(s => s.name.toLowerCase().includes(q.toLowerCase()));
+  const [students, setStudents] = useState<StudentLite[]>([]);
+  const [studentsLoading, setStudentsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!cls.sectionId) return;
+    setStudentsLoading(true);
+    apiRequest<StudentLite[]>(`/students?section_id=${cls.sectionId}&limit=500`, { auth: "school" })
+      .then((data) => setStudents(Array.isArray(data) ? data : []))
+      .catch(() => setStudents([]))
+      .finally(() => setStudentsLoading(false));
+  }, [cls.sectionId]);
+
+  const fullName = (s: StudentLite) =>
+    [s.first_name, s.last_name].filter(Boolean).join(" ") || "—";
+
+  const filtered = students.filter((s) => {
+    const name = fullName(s).toLowerCase();
+    const id = (s.student_id_number ?? "").toLowerCase();
+    const search = q.toLowerCase();
+    return name.includes(search) || id.includes(search);
+  });
+
   const trend: Array<{ day: string; rate: number }> = [];
   const hasTrend = trend.length > 0;
   const hasStudents = students.length > 0;
@@ -460,9 +552,6 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
   const worst = hasTrend ? trend.reduce((a, b) => a.rate < b.rate ? a : b) : null;
   const avg = hasTrend ? Math.round(trend.reduce((s, x) => s + x.rate, 0) / trend.length) : 0;
 
-  const sorted = hasStudents ? [...students].sort((a, b) => a.attendanceRate - b.attendanceRate) : [];
-  const worst5 = sorted.slice(0, 5);
-  const best5 = [...sorted].reverse().slice(0, 5);
   const roomLabel = cls.room || "—";
 
   return (
@@ -489,30 +578,45 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
             <>
               <div className="relative mb-3">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search students…"
+                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name or ID…"
                   className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
               </div>
-              <div className="space-y-2">
-                {filtered.length === 0 && (
-                  <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
-                    No student data available for this class yet.
-                  </div>
-                )}
-                {filtered.map(s => {
-                  const today = attendance.find(a => a.studentId === s.id);
-                  return (
-                    <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/40">
-                      <Avatar name={s.name} size="sm" />
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium truncate">{s.name}</div>
-                        <div className="text-xs text-muted-foreground font-mono">{s.id}</div>
+
+              {studentsLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-border">
+                      <Skeleton className="h-8 w-8 rounded-full flex-shrink-0" />
+                      <div className="flex-1 space-y-1">
+                        <Skeleton className="h-3 w-32" />
+                        <Skeleton className="h-3 w-20" />
                       </div>
-                      {today && <StatusBadge status={today.status} />}
-                      <span className="text-xs font-semibold ml-2">{s.attendanceRate}%</span>
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground text-center">
+                  {q ? `No students match "${q}"` : "No students enrolled in this class yet."}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground mb-1">{filtered.length} student{filtered.length !== 1 ? "s" : ""}{q ? " found" : " enrolled"}</p>
+                  {filtered.map(s => (
+                    <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/40">
+                      <Avatar name={fullName(s)} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{fullName(s)}</div>
+                        <div className="text-xs text-muted-foreground font-mono">{s.student_id_number ?? s.id}</div>
+                      </div>
+                      {s.student_type && (
+                        <span className="text-xs font-semibold bg-muted text-muted-foreground px-2 py-0.5 rounded-md capitalize">
+                          {s.student_type}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
           {tab === "trend" && (
@@ -544,41 +648,11 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
             </>
           )}
           {tab === "reports" && (
-            <>
-              {hasStudents ? (
-                <>
-                  <div className="rounded-lg border border-border p-4 mb-4">
-                    <h4 className="font-display font-bold mb-2 text-sm">Top 5 Most Absent</h4>
-                    {worst5.map(s => (
-                      <div key={s.id} className="flex items-center justify-between py-1.5 text-sm">
-                        <span>{s.name}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">{100 - s.attendanceRate} days</span>
-                          <span className="px-2 py-0.5 rounded text-xs font-bold bg-destructive/15 text-destructive">High Risk</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="rounded-lg border border-border p-4 mb-4">
-                    <h4 className="font-display font-bold mb-2 text-sm">Top 5 Best Attendance</h4>
-                    {best5.map(s => (
-                      <div key={s.id} className="flex items-center justify-between py-1.5 text-sm">
-                        <span>{s.name}</span>
-                        <span className="px-2 py-0.5 rounded text-xs font-bold bg-success/15 text-success">{s.attendanceRate}%</span>
-                      </div>
-                    ))}
-                  </div>
-                  <button onClick={() => toast.success("CSV download started")}
-                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
-                    <Download className="h-4 w-4" /> Download CSV
-                  </button>
-                </>
-              ) : (
-                <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
-                  No class reports available yet.
-                </div>
-              )}
-            </>
+            <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+              {hasStudents
+                ? `${students.length} students enrolled in ${cls.name}. Detailed reports coming soon.`
+                : "No class reports available yet."}
+            </div>
           )}
         </div>
       </div>
@@ -848,6 +922,7 @@ function ClassImportModal({
       setImportedCount(created);
       toast.success(`${created} students imported to ${cls.name}`);
       onImported?.(created);
+      setTimeout(() => onClose(), 1200);
     } catch (error: any) {
       const details = Array.isArray(error?.details) ? error.details : [];
       setServerIssues(details);

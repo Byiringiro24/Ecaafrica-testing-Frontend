@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/super-admin/features")({ component: FeaturesPage });
 
@@ -18,6 +20,13 @@ const FLAGS = [
 ];
 
 function FeaturesPage() {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 450);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <SuperAdminLayout
       title="Feature Flags"
@@ -32,29 +41,53 @@ function FeaturesPage() {
         />
       }
     >
-      <p className="text-sm text-muted-foreground mb-4">
-        Also available under <Link to="/super-admin/system" className="text-primary font-semibold hover:underline">System Settings → Feature Flags</Link>.
-      </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {FLAGS.map(f => (
-          <div key={f.key} className="rounded-xl border border-border bg-card p-5">
-            <div className="flex justify-between items-start gap-3">
-              <div>
-                <div className="font-semibold flex items-center gap-2">
-                  {f.name}
-                  {f.beta && <span className="text-[9px] bg-violet-100 text-violet-800 px-1.5 py-0.5 rounded font-bold uppercase">Beta</span>}
+      {loading ? (
+        <FeaturesSkeleton />
+      ) : (
+        <>
+          <p className="text-sm text-muted-foreground mb-4">
+            Also available under <Link to="/super-admin/system" className="text-primary font-semibold hover:underline">System Settings → Feature Flags</Link>.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {FLAGS.map(f => (
+              <div key={f.key} className="rounded-xl border border-border bg-card p-5">
+                <div className="flex justify-between items-start gap-3">
+                  <div>
+                    <div className="font-semibold flex items-center gap-2">
+                      {f.name}
+                      {f.beta && <span className="text-[9px] bg-violet-100 text-violet-800 px-1.5 py-0.5 rounded font-bold uppercase">Beta</span>}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">{f.desc}</p>
+                    <p className="text-[10px] text-muted-foreground mt-2 italic">Applies to new schools by default</p>
+                  </div>
+                  <input type="checkbox" defaultChecked={f.key !== "exam"} onChange={() => toast.success(`${f.name} updated`)} />
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">{f.desc}</p>
-                <p className="text-[10px] text-muted-foreground mt-2 italic">Applies to new schools by default</p>
               </div>
-              <input type="checkbox" defaultChecked={f.key !== "exam"} onChange={() => toast.success(`${f.name} updated`)} />
-            </div>
+            ))}
+          </div>
+          <button type="button" onClick={() => toast.success("Feature flags saved")} className="mt-6 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold">
+            Save all flags
+          </button>
+        </>
+      )}
+    </SuperAdminLayout>
+  );
+}
+
+function FeaturesSkeleton() {
+  return (
+    <>
+      <Skeleton className="h-4 w-96 mb-4" />
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-border bg-card p-5">
+            <Skeleton className="h-4 w-36" />
+            <Skeleton className="mt-2 h-3 w-48" />
+            <Skeleton className="mt-2 h-3 w-32" />
           </div>
         ))}
       </div>
-      <button type="button" onClick={() => toast.success("Feature flags saved")} className="mt-6 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold">
-        Save all flags
-      </button>
-    </SuperAdminLayout>
+      <Skeleton className="mt-6 h-9 w-32" />
+    </>
   );
 }

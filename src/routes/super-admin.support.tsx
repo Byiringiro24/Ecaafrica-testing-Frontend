@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -6,6 +6,7 @@ import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { SaModal, SaInput, SaSelect, FilterBar, Pagination } from "@/components/super-admin/ui";
+import { Skeleton } from "@/components/ui/skeleton";
 import { SUPPORT_TICKETS, MOCK_PLATFORM_SCHOOLS } from "@/lib/superAdminMockData";
 
 export const Route = createFileRoute("/super-admin/support")({ component: SupportPage });
@@ -17,6 +18,12 @@ function SupportPage() {
   const [pageSize, setPageSize] = useState(10);
   const [ticket, setTicket] = useState<(typeof SUPPORT_TICKETS)[0] | null>(null);
   const [newOpen, setNewOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const filtered = useMemo(() => {
     let r = [...SUPPORT_TICKETS];
@@ -32,46 +39,52 @@ function SupportPage() {
       title="Support Tickets"
       breadcrumbs={<SuperAdminBreadcrumbs items={[{ label: "Super Admin", to: "/super-admin" }, { label: "Support" }]} />}
     >
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <StatCard label="Open" value={SUPPORT_TICKETS.filter(t => t.status === "Open").length} />
-        <StatCard label="In Progress" value={SUPPORT_TICKETS.filter(t => t.status === "In Progress").length} tone="warning" />
-        <StatCard label="Resolved Today" value={1} tone="success" />
-        <StatCard label="Avg Response" value="2.4h" />
-      </div>
+      {loading ? (
+        <SupportSkeleton />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+            <StatCard label="Open" value={SUPPORT_TICKETS.filter(t => t.status === "Open").length} />
+            <StatCard label="In Progress" value={SUPPORT_TICKETS.filter(t => t.status === "In Progress").length} tone="warning" />
+            <StatCard label="Resolved Today" value={1} tone="success" />
+            <StatCard label="Avg Response" value="2.4h" />
+          </div>
 
-      <div className="flex justify-between items-center mb-4">
-        <FilterBar>
-          <select value={statusF} onChange={e => setStatusF(e.target.value)} className="h-10 rounded-lg border border-border px-3 text-sm"><option>All</option><option>Open</option><option>In Progress</option><option>Resolved</option></select>
-          <select value={priorityF} onChange={e => setPriorityF(e.target.value)} className="h-10 rounded-lg border border-border px-3 text-sm"><option>All</option><option>High</option><option>Medium</option><option>Low</option></select>
-        </FilterBar>
-        <button type="button" onClick={() => setNewOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold shrink-0">
-          <Plus className="h-4 w-4" /> New Ticket
-        </button>
-      </div>
+          <div className="flex justify-between items-center mb-4">
+            <FilterBar>
+              <select value={statusF} onChange={e => setStatusF(e.target.value)} className="h-10 rounded-lg border border-border px-3 text-sm"><option>All</option><option>Open</option><option>In Progress</option><option>Resolved</option></select>
+              <select value={priorityF} onChange={e => setPriorityF(e.target.value)} className="h-10 rounded-lg border border-border px-3 text-sm"><option>All</option><option>High</option><option>Medium</option><option>Low</option></select>
+            </FilterBar>
+            <button type="button" onClick={() => setNewOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold shrink-0">
+              <Plus className="h-4 w-4" /> New Ticket
+            </button>
+          </div>
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
-            <tr>{["Ticket #", "School", "Subject", "Category", "Priority", "Assigned", "Created", "Updated", "Status"].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr>
-          </thead>
-          <tbody>
-            {paginated.map(t => (
-              <tr key={t.id} onClick={() => setTicket(t)} className="border-t border-border hover:bg-muted/20 cursor-pointer">
-                <td className="px-4 py-3 font-mono text-xs">{t.id}</td>
-                <td className="px-4 py-3">{t.school}</td>
-                <td className="px-4 py-3 font-medium max-w-[200px] truncate">{t.subject}</td>
-                <td className="px-4 py-3 text-xs">{t.category}</td>
-                <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${t.priority === "High" ? "bg-destructive/10 text-destructive" : t.priority === "Medium" ? "bg-amber-100 text-amber-800" : "bg-muted"}`}>{t.priority}</span></td>
-                <td className="px-4 py-3 text-xs">{t.assigned}</td>
-                <td className="px-4 py-3 text-xs">{t.created}</td>
-                <td className="px-4 py-3 text-xs">{t.updated}</td>
-                <td className="px-4 py-3 text-xs">{t.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <Pagination total={filtered.length} page={page} pageSize={pageSize} onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
-      </div>
+          <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+                <tr>{["Ticket #", "School", "Subject", "Category", "Priority", "Assigned", "Created", "Updated", "Status"].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {paginated.map(t => (
+                  <tr key={t.id} onClick={() => setTicket(t)} className="border-t border-border hover:bg-muted/20 cursor-pointer">
+                    <td className="px-4 py-3 font-mono text-xs">{t.id}</td>
+                    <td className="px-4 py-3">{t.school}</td>
+                    <td className="px-4 py-3 font-medium max-w-[200px] truncate">{t.subject}</td>
+                    <td className="px-4 py-3 text-xs">{t.category}</td>
+                    <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${t.priority === "High" ? "bg-destructive/10 text-destructive" : t.priority === "Medium" ? "bg-amber-100 text-amber-800" : "bg-muted"}`}>{t.priority}</span></td>
+                    <td className="px-4 py-3 text-xs">{t.assigned}</td>
+                    <td className="px-4 py-3 text-xs">{t.created}</td>
+                    <td className="px-4 py-3 text-xs">{t.updated}</td>
+                    <td className="px-4 py-3 text-xs">{t.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <Pagination total={filtered.length} page={page} pageSize={pageSize} onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
+          </div>
+        </>
+      )}
 
       {ticket && <TicketDrawer ticket={ticket} onClose={() => setTicket(null)} />}
       <SaModal open={newOpen} onClose={() => setNewOpen(false)} title="New Support Ticket" footer={
@@ -87,6 +100,51 @@ function SupportPage() {
         </div>
       </SaModal>
     </SuperAdminLayout>
+  );
+}
+
+function SupportSkeleton() {
+  return (
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-border bg-card p-4">
+            <Skeleton className="h-3 w-16" />
+            <Skeleton className="mt-2 h-6 w-20" />
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between items-center mb-4">
+        <div className="flex flex-wrap gap-2">
+          <Skeleton className="h-10 w-28" />
+          <Skeleton className="h-10 w-28" />
+        </div>
+        <Skeleton className="h-9 w-28" />
+      </div>
+      <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+            <tr>
+              {Array.from({ length: 9 }).map((_, i) => (
+                <th key={i} className="text-left px-4 py-3"><Skeleton className="h-3 w-16" /></th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <tr key={i} className="border-t border-border">
+                {Array.from({ length: 9 }).map((__, j) => (
+                  <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="px-4 py-3 border-t border-border">
+          <Skeleton className="h-4 w-40" />
+        </div>
+      </div>
+    </>
   );
 }
 

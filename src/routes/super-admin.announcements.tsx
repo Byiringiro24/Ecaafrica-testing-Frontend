@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs";
 import { SaModal, SaInput, SaSelect, Pagination } from "@/components/super-admin/ui";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ANNOUNCEMENTS } from "@/lib/superAdminMockData";
 
 export const Route = createFileRoute("/super-admin/announcements")({ component: AnnouncementsPage });
@@ -14,6 +15,12 @@ function AnnouncementsPage() {
   const [detail, setDetail] = useState<(typeof ANNOUNCEMENTS)[0] | null>(null);
   const [page, setPage] = useState(1);
   const pageSize = 10;
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const paginated = ANNOUNCEMENTS.slice((page - 1) * pageSize, page * pageSize);
 
@@ -23,33 +30,39 @@ function AnnouncementsPage() {
       subtitle="Broadcast to school admin dashboards"
       breadcrumbs={<SuperAdminBreadcrumbs items={[{ label: "Super Admin", to: "/super-admin" }, { label: "Announcements" }]} />}
     >
-      <div className="flex justify-end mb-4">
-        <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold">
-          <Plus className="h-4 w-4" /> New Announcement
-        </button>
-      </div>
+      {loading ? (
+        <AnnouncementsSkeleton />
+      ) : (
+        <>
+          <div className="flex justify-end mb-4">
+            <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold">
+              <Plus className="h-4 w-4" /> New Announcement
+            </button>
+          </div>
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
-            <tr>{["Title", "Type", "Target", "Sent", "Status", "Read Rate", ""].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr>
-          </thead>
-          <tbody>
-            {paginated.map(a => (
-              <tr key={a.id} className="border-t border-border hover:bg-muted/20">
-                <td className="px-4 py-3 font-medium">{a.title}</td>
-                <td className="px-4 py-3 text-xs">{a.type}</td>
-                <td className="px-4 py-3 text-xs">{a.target}</td>
-                <td className="px-4 py-3 text-xs">{a.sentDate}</td>
-                <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${a.status === "Sent" ? "bg-emerald-100 text-emerald-800" : "bg-muted text-muted-foreground"}`}>{a.status}</span></td>
-                <td className="px-4 py-3">{a.readRate ? `${a.readRate}%` : "—"}</td>
-                <td className="px-4 py-3"><button type="button" onClick={() => setDetail(a)} className="text-xs font-semibold text-primary hover:underline">View</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <Pagination total={ANNOUNCEMENTS.length} page={page} pageSize={pageSize} onPage={setPage} onPageSize={() => {}} />
-      </div>
+          <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+                <tr>{["Title", "Type", "Target", "Sent", "Status", "Read Rate", ""].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {paginated.map(a => (
+                  <tr key={a.id} className="border-t border-border hover:bg-muted/20">
+                    <td className="px-4 py-3 font-medium">{a.title}</td>
+                    <td className="px-4 py-3 text-xs">{a.type}</td>
+                    <td className="px-4 py-3 text-xs">{a.target}</td>
+                    <td className="px-4 py-3 text-xs">{a.sentDate}</td>
+                    <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${a.status === "Sent" ? "bg-emerald-100 text-emerald-800" : "bg-muted text-muted-foreground"}`}>{a.status}</span></td>
+                    <td className="px-4 py-3">{a.readRate ? `${a.readRate}%` : "—"}</td>
+                    <td className="px-4 py-3"><button type="button" onClick={() => setDetail(a)} className="text-xs font-semibold text-primary hover:underline">View</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <Pagination total={ANNOUNCEMENTS.length} page={page} pageSize={pageSize} onPage={setPage} onPageSize={() => {}} />
+          </div>
+        </>
+      )}
 
       <SaModal
         open={createOpen}
@@ -88,5 +101,38 @@ function AnnouncementsPage() {
         </SaModal>
       )}
     </SuperAdminLayout>
+  );
+}
+
+function AnnouncementsSkeleton() {
+  return (
+    <>
+      <div className="flex justify-end mb-4">
+        <Skeleton className="h-9 w-40" />
+      </div>
+      <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+            <tr>
+              {Array.from({ length: 7 }).map((_, i) => (
+                <th key={i} className="text-left px-4 py-3"><Skeleton className="h-3 w-16" /></th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <tr key={i} className="border-t border-border">
+                {Array.from({ length: 7 }).map((__, j) => (
+                  <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="px-4 py-3 border-t border-border">
+          <Skeleton className="h-4 w-40" />
+        </div>
+      </div>
+    </>
   );
 }

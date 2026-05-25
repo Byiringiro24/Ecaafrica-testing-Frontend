@@ -189,25 +189,24 @@ export function schoolById(id: string) {
   return MOCK_PLATFORM_SCHOOLS.find(s => s.id === id);
 }
 
-export function planBadgeClass(plan: SchoolPlan) {
-  const m: Record<SchoolPlan, string> = {
-    Starter: "bg-slate-100 text-slate-700",
-    Professional: "bg-primary/10 text-primary",
-    Enterprise: "bg-amber-100 text-amber-800",
-    Trial: "bg-emerald-100 text-emerald-800",
-  };
-  return m[plan];
+export function planBadgeClass(plan: SchoolPlan | string) {
+  const key = String(plan).toLowerCase();
+  if (key === "starter" || key === "basic") return "bg-slate-100 text-slate-700";
+  if (key === "professional" || key === "standard") return "bg-primary/10 text-primary";
+  if (key === "enterprise" || key === "premium") return "bg-amber-100 text-amber-800";
+  if (key === "trial") return "bg-emerald-100 text-emerald-800";
+  return "bg-muted/40 text-muted-foreground";
 }
 
-export function statusBadgeClass(status: SchoolStatus) {
-  const m: Record<SchoolStatus, string> = {
-    active: "bg-primary/10 text-primary",
-    trial: "bg-amber-100 text-amber-800",
-    suspended: "bg-destructive/10 text-destructive",
-    expired: "bg-destructive/10 text-destructive",
-    grace: "bg-warning/30 text-warning-foreground",
-  };
-  return m[status];
+export function statusBadgeClass(status: SchoolStatus | string) {
+  const key = String(status).toLowerCase();
+  if (key === "active") return "bg-primary/10 text-primary";
+  if (key === "trial") return "bg-amber-100 text-amber-800";
+  if (key === "suspended" || key === "expired" || key === "cancelled") {
+    return "bg-destructive/10 text-destructive";
+  }
+  if (key === "grace") return "bg-warning/30 text-warning-foreground";
+  return "bg-muted/40 text-muted-foreground";
 }
 
 export function genTempPassword() {

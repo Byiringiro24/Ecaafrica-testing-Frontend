@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus, Printer } from "lucide-react";
 import { toast } from "sonner";
@@ -6,6 +6,7 @@ import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { PageTabs, SaModal, SaInput, SaSelect, Pagination, ConfirmDialog } from "@/components/super-admin/ui";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PLATFORM_INVOICES, MOCK_PLATFORM_SCHOOLS } from "@/lib/superAdminMockData";
 import { formatRWF } from "@/lib/mockData";
 
@@ -21,6 +22,12 @@ function BillingPage() {
   const [detailInv, setDetailInv] = useState<(typeof PLATFORM_INVOICES)[0] | null>(null);
   const [voidTarget, setVoidTarget] = useState<(typeof PLATFORM_INVOICES)[0] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(timer);
+  }, []);
 
   const filtered = useMemo(() => {
     if (tab === "All Invoices") return PLATFORM_INVOICES;
@@ -38,68 +45,118 @@ function BillingPage() {
       title="Billing & Invoices"
       breadcrumbs={<SuperAdminBreadcrumbs items={[{ label: "Super Admin", to: "/super-admin" }, { label: "Billing" }]} />}
     >
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <StatCard label="This Month" value={formatRWF(348000)} tone="success" />
-        <StatCard label="Last Month" value={formatRWF(312000)} />
-        <StatCard label="YTD Revenue" value={formatRWF(4200000)} tone="success" />
-        <StatCard label="Outstanding" value={formatRWF(outstanding)} tone={outstanding > 0 ? "destructive" : "primary"} />
-      </div>
+      {loading ? (
+        <BillingSkeleton />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+            <StatCard label="This Month" value={formatRWF(348000)} tone="success" />
+            <StatCard label="Last Month" value={formatRWF(312000)} />
+            <StatCard label="YTD Revenue" value={formatRWF(4200000)} tone="success" />
+            <StatCard label="Outstanding" value={formatRWF(outstanding)} tone={outstanding > 0 ? "destructive" : "primary"} />
+          </div>
 
-      <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-        <PageTabs tabs={[...TABS]} active={tab} onChange={t => { setTab(t as typeof tab); setPage(1); }} />
-        <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold shrink-0">
-          <Plus className="h-4 w-4" /> Create Invoice
-        </button>
-      </div>
+          <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+            <PageTabs tabs={[...TABS]} active={tab} onChange={t => { setTab(t as typeof tab); setPage(1); }} />
+            <button type="button" onClick={() => setCreateOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold shrink-0">
+              <Plus className="h-4 w-4" /> Create Invoice
+            </button>
+          </div>
 
-      {selected.size > 0 && (
-        <div className="mb-3 flex gap-2 text-xs">
-          <button type="button" onClick={() => toast.success("Reminders sent")} className="rounded-lg border px-3 py-1.5 font-semibold">Send Reminders</button>
-          <button type="button" className="rounded-lg border px-3 py-1.5 font-semibold">Export CSV</button>
-          <button type="button" onClick={() => toast.success("Marked paid")} className="rounded-lg border px-3 py-1.5 font-semibold">Bulk Mark Paid</button>
-        </div>
+          {selected.size > 0 && (
+            <div className="mb-3 flex gap-2 text-xs">
+              <button type="button" onClick={() => toast.success("Reminders sent")} className="rounded-lg border px-3 py-1.5 font-semibold">Send Reminders</button>
+              <button type="button" className="rounded-lg border px-3 py-1.5 font-semibold">Export CSV</button>
+              <button type="button" onClick={() => toast.success("Marked paid")} className="rounded-lg border px-3 py-1.5 font-semibold">Bulk Mark Paid</button>
+            </div>
+          )}
+
+          <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 w-8"><input type="checkbox" onChange={e => setSelected(e.target.checked ? new Set(paginated.map(i => i.id)) : new Set())} /></th>
+                  {["Invoice #", "School", "Period", "Issue", "Due", "Amount", "Status", "Paid", ""].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {paginated.length === 0 ? (
+                  <tr><td colSpan={10} className="px-4 py-12 text-center text-muted-foreground">No invoices in this tab</td></tr>
+                ) : paginated.map(inv => (
+                  <tr key={inv.id} className="border-t border-border hover:bg-muted/20">
+                    <td className="px-4 py-3"><input type="checkbox" checked={selected.has(inv.id)} onChange={e => { const n = new Set(selected); e.target.checked ? n.add(inv.id) : n.delete(inv.id); setSelected(n); }} /></td>
+                    <td className="px-4 py-3 font-mono text-xs">{inv.id}</td>
+                    <td className="px-4 py-3">{inv.schoolName}</td>
+                    <td className="px-4 py-3 text-xs">{inv.period}</td>
+                    <td className="px-4 py-3 text-xs">{inv.issueDate}</td>
+                    <td className="px-4 py-3 text-xs">{inv.dueDate}</td>
+                    <td className="px-4 py-3 font-semibold">{formatRWF(inv.amount)}</td>
+                    <td className="px-4 py-3"><InvoiceStatus status={inv.status} /></td>
+                    <td className="px-4 py-3 text-xs">{inv.paymentDate ?? "—"}</td>
+                    <td className="px-4 py-3 whitespace-nowrap space-x-2">
+                      <button type="button" onClick={() => setDetailInv(inv)} className="text-xs font-semibold text-primary hover:underline">View</button>
+                      <button type="button" onClick={() => toast.info("PDF downloaded")} className="text-xs hover:underline">Download</button>
+                      {inv.status === "overdue" && <button type="button" onClick={() => toast.success("Reminder sent")} className="text-xs hover:underline">Remind</button>}
+                      {inv.status === "pending" && <button type="button" onClick={() => toast.success("Marked paid")} className="text-xs hover:underline">Mark Paid</button>}
+                      <button type="button" onClick={() => setVoidTarget(inv)} className="text-xs text-destructive hover:underline">Void</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <Pagination total={filtered.length} page={page} pageSize={pageSize} onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
+          </div>
+        </>
       )}
-
-      <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="px-4 py-3 w-8"><input type="checkbox" onChange={e => setSelected(e.target.checked ? new Set(paginated.map(i => i.id)) : new Set())} /></th>
-              {["Invoice #", "School", "Period", "Issue", "Due", "Amount", "Status", "Paid", ""].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {paginated.length === 0 ? (
-              <tr><td colSpan={10} className="px-4 py-12 text-center text-muted-foreground">No invoices in this tab</td></tr>
-            ) : paginated.map(inv => (
-              <tr key={inv.id} className="border-t border-border hover:bg-muted/20">
-                <td className="px-4 py-3"><input type="checkbox" checked={selected.has(inv.id)} onChange={e => { const n = new Set(selected); e.target.checked ? n.add(inv.id) : n.delete(inv.id); setSelected(n); }} /></td>
-                <td className="px-4 py-3 font-mono text-xs">{inv.id}</td>
-                <td className="px-4 py-3">{inv.schoolName}</td>
-                <td className="px-4 py-3 text-xs">{inv.period}</td>
-                <td className="px-4 py-3 text-xs">{inv.issueDate}</td>
-                <td className="px-4 py-3 text-xs">{inv.dueDate}</td>
-                <td className="px-4 py-3 font-semibold">{formatRWF(inv.amount)}</td>
-                <td className="px-4 py-3"><InvoiceStatus status={inv.status} /></td>
-                <td className="px-4 py-3 text-xs">{inv.paymentDate ?? "—"}</td>
-                <td className="px-4 py-3 whitespace-nowrap space-x-2">
-                  <button type="button" onClick={() => setDetailInv(inv)} className="text-xs font-semibold text-primary hover:underline">View</button>
-                  <button type="button" onClick={() => toast.info("PDF downloaded")} className="text-xs hover:underline">Download</button>
-                  {inv.status === "overdue" && <button type="button" onClick={() => toast.success("Reminder sent")} className="text-xs hover:underline">Remind</button>}
-                  {inv.status === "pending" && <button type="button" onClick={() => toast.success("Marked paid")} className="text-xs hover:underline">Mark Paid</button>}
-                  <button type="button" onClick={() => setVoidTarget(inv)} className="text-xs text-destructive hover:underline">Void</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <Pagination total={filtered.length} page={page} pageSize={pageSize} onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
-      </div>
 
       <CreateInvoiceModal open={createOpen} onClose={() => setCreateOpen(false)} />
       {detailInv && <InvoiceDetailModal invoice={detailInv} onClose={() => setDetailInv(null)} />}
       <ConfirmDialog open={!!voidTarget} onClose={() => setVoidTarget(null)} onConfirm={() => toast.success("Invoice voided")} title="Void invoice?" description="This cannot be undone." confirmLabel="Void" destructive />
     </SuperAdminLayout>
+  );
+}
+
+function BillingSkeleton() {
+  return (
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-border bg-card p-4">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="mt-2 h-6 w-24" />
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
+        <div className="flex flex-wrap gap-1 border-b border-border overflow-x-auto">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8 w-24" />)}
+        </div>
+        <Skeleton className="h-9 w-32" />
+      </div>
+      <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+            <tr>
+              {Array.from({ length: 9 }).map((_, i) => (
+                <th key={i} className="text-left px-4 py-3"><Skeleton className="h-3 w-16" /></th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <tr key={i} className="border-t border-border">
+                {Array.from({ length: 9 }).map((__, j) => (
+                  <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="px-4 py-3 border-t border-border">
+          <Skeleton className="h-4 w-40" />
+        </div>
+      </div>
+    </>
   );
 }
 

@@ -1,344 +1,556 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Copy, Grid3X3, List, Plus, Check } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs";
-import {
-  SaModal, SaInput, SaSelect, FilterBar, ConfirmDialog, Pagination,
-} from "@/components/super-admin/ui";
-import {
-  MOCK_PLATFORM_SCHOOLS,
-  ONBOARDING_MODULES,
-  genTempPassword,
-  planBadgeClass,
-  statusBadgeClass,
-  type PlatformSchool,
-} from "@/lib/superAdminMockData";
-import { formatRWF, PLAN_OPTIONS } from "@/lib/mockData";
+import { EmptyState, FilterBar, Pagination, SaInput, SaModal, SaSelect } from "@/components/super-admin/ui";
+import { Skeleton } from "@/components/ui/skeleton";
+import { apiRequest } from "@/lib/api";
+import { planBadgeClass, statusBadgeClass } from "@/lib/superAdminMockData";
 
 export const Route = createFileRoute("/super-admin/schools/")({
-  component: SchoolsPage,
+  component: SchoolsIndexPage,
 });
 
-const PLANS = ["All", "Starter", "Professional", "Enterprise", "Trial"];
-const STATUSES = ["All", "active", "trial", "suspended", "expired", "grace"];
-const PROVINCES = ["All", "Kigali City", "Eastern", "Western", "Northern", "Southern"];
+type PlatformPlan = {
+  id: string;
+  name: string;
+  price_monthly?: number | string | null;
+  price_annual?: number | string | null;
+  student_limit?: number | null;
+  staff_limit?: number | null;
+  sms_bundle?: number | null;
+  is_active?: boolean | null;
+};
 
-function SchoolsPage() {
-  const [view, setView] = useState<"grid" | "table">("grid");
-  const [q, setQ] = useState("");
-  const [plan, setPlan] = useState("All");
-  const [status, setStatus] = useState("All");
-  const [province, setProvince] = useState("All");
-  const [sort, setSort] = useState("name");
+type PlatformSchool = {
+  id: string;
+  uuid?: string;
+  name: string;
+  school_type?: string | null;
+  province: string;
+  district: string;
+  sector?: string | null;
+  principal_name?: string | null;
+  principal_phone?: string | null;
+  principal_email?: string | null;
+  school_phone?: string | null;
+  school_email?: string | null;
+  subscription_plan_id?: string | null;
+  subscription_plan?: PlatformPlan | null;
+  status?: string | null;
+  timezone?: string | null;
+  currency?: string | null;
+  has_boarding?: boolean | null;
+  has_biometrics?: boolean | null;
+  has_gate?: boolean | null;
+  has_visitor_mgmt?: boolean | null;
+  has_exam_system?: boolean | null;
+  has_salary_mgmt?: boolean | null;
+  has_parent_app?: boolean | null;
+  has_bulk_sms?: boolean | null;
+  student_count?: number | null;
+  staff_count?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type ListResponse<T> = {
+  data: T[];
+  meta?: { page: number; limit: number; total: number };
+};
+
+type SchoolFormState = {
+  name: string;
+  school_type: string;
+  province: string;
+  district: string;
+  sector: string;
+  principal_name: string;
+  principal_phone: string;
+  principal_email: string;
+  school_phone: string;
+  school_email: string;
+  subscription_plan_id: string;
+  status: string;
+  timezone: string;
+  currency: string;
+  has_boarding: boolean;
+  has_biometrics: boolean;
+  has_gate: boolean;
+  has_visitor_mgmt: boolean;
+  has_exam_system: boolean;
+  has_salary_mgmt: boolean;
+  has_parent_app: boolean;
+  has_bulk_sms: boolean;
+};
+
+const STATUS_OPTIONS = ["active", "trial", "grace", "suspended", "expired", "cancelled"] as const;
+const SCHOOL_TYPES = ["government", "private", "international", "technical", "seminary", "other"] as const;
+type ModuleKey =
+  | "has_boarding"
+  | "has_biometrics"
+  | "has_gate"
+  | "has_visitor_mgmt"
+  | "has_exam_system"
+  | "has_salary_mgmt"
+  | "has_parent_app"
+  | "has_bulk_sms";
+
+const MODULE_FIELDS: Array<{ key: ModuleKey; label: string; description: string }> = [
+  { key: "has_boarding", label: "Boarding", description: "Dormitory management" },
+  { key: "has_biometrics", label: "Biometrics", description: "Fingerprint enrollment" },
+  { key: "has_gate", label: "Gate Management", description: "Entry/exit control" },
+  { key: "has_visitor_mgmt", label: "Visitor Management", description: "Visitor check-ins" },
+  { key: "has_exam_system", label: "Exam System", description: "Exams and results" },
+  { key: "has_salary_mgmt", label: "Salary Management", description: "Payroll for staff" },
+  { key: "has_parent_app", label: "Parent App", description: "Parent mobile access" },
+  { key: "has_bulk_sms", label: "Bulk SMS", description: "Mass messaging" },
+];
+
+const EMPTY_FORM: SchoolFormState = {
+  name: "",
+  school_type: "government",
+  province: "",
+  district: "",
+  sector: "",
+  principal_name: "",
+  principal_phone: "",
+  principal_email: "",
+  school_phone: "",
+  school_email: "",
+  subscription_plan_id: "",
+  status: "trial",
+  timezone: "Africa/Kigali",
+  currency: "RWF",
+  has_boarding: false,
+  has_biometrics: false,
+  has_gate: false,
+  has_visitor_mgmt: false,
+  has_exam_system: false,
+  has_salary_mgmt: false,
+  has_parent_app: false,
+  has_bulk_sms: false,
+};
+
+function SchoolsIndexPage() {
+  const [schools, setSchools] = useState<PlatformSchool[]>([]);
+  const [plans, setPlans] = useState<PlatformPlan[]>([]);
+  const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [onboardOpen, setOnboardOpen] = useState(false);
-  const [suspendTarget, setSuspendTarget] = useState<PlatformSchool | null>(null);
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0 });
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all");
+  const [schoolType, setSchoolType] = useState("all");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState<SchoolFormState>(() => ({ ...EMPTY_FORM }));
+  const [creating, setCreating] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const showSkeleton = loading && schools.length === 0;
 
-  const filtered = useMemo(() => {
-    let rows = [...MOCK_PLATFORM_SCHOOLS];
-    if (q) rows = rows.filter(s => s.name.toLowerCase().includes(q.toLowerCase()));
-    if (plan !== "All") rows = rows.filter(s => s.plan === plan);
-    if (status !== "All") rows = rows.filter(s => s.status === status);
-    if (province !== "All") rows = rows.filter(s => s.province === province);
-    rows.sort((a, b) => {
-      if (sort === "students") return b.students - a.students;
-      if (sort === "renewal") return a.renewal.localeCompare(b.renewal);
-      return a.name.localeCompare(b.name);
+  const totalPages = Math.max(1, Math.ceil((meta.total || 0) / pageSize));
+
+  useEffect(() => {
+    let active = true;
+    const loadPlans = async () => {
+      try {
+        const resp = await apiRequest<ListResponse<PlatformPlan>>("/platform/plans?page=1&limit=200", { returnMeta: true });
+        if (!active) return;
+        const items = Array.isArray(resp?.data) ? resp.data : [];
+        setPlans(items);
+      } catch (error) {
+        const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to load plans";
+        toast.error(message);
+      }
+    };
+
+    loadPlans();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadSchools = async () => {
+      setLoading(true);
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("limit", String(pageSize));
+      if (search.trim()) params.set("q", search.trim());
+      if (status !== "all") params.set("status", status);
+      if (schoolType !== "all") params.set("school_type", schoolType);
+
+      try {
+        const resp = await apiRequest<ListResponse<PlatformSchool>>(`/platform/schools?${params.toString()}`, { returnMeta: true });
+        if (!active) return;
+        const items = Array.isArray(resp?.data) ? resp.data : [];
+        setSchools(items);
+        setMeta(resp?.meta ?? { page, limit: pageSize, total: items.length });
+      } catch (error) {
+        if (!active) return;
+        const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to load schools";
+        toast.error(message);
+        setSchools([]);
+        setMeta({ page: 1, limit: pageSize, total: 0 });
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    loadSchools();
+    return () => {
+      active = false;
+    };
+  }, [page, pageSize, search, status, schoolType, refreshKey]);
+
+  const statusCounts = useMemo(() => {
+    const counts = { active: 0, trial: 0, suspended: 0 };
+    schools.forEach((s) => {
+      if (s.status === "active") counts.active += 1;
+      if (s.status === "trial") counts.trial += 1;
+      if (s.status === "suspended") counts.suspended += 1;
     });
-    return rows;
-  }, [q, plan, status, province, sort]);
+    return counts;
+  }, [schools]);
 
-  const stats = {
-    total: MOCK_PLATFORM_SCHOOLS.length,
-    active: MOCK_PLATFORM_SCHOOLS.filter(s => s.status === "active").length,
-    trial: MOCK_PLATFORM_SCHOOLS.filter(s => s.status === "trial").length,
-    suspended: MOCK_PLATFORM_SCHOOLS.filter(s => s.status === "suspended" || s.status === "expired").length,
+  const resetForm = () => setForm({ ...EMPTY_FORM });
+
+  const handleCreateSchool = async () => {
+    if (!form.name.trim() || !form.province.trim() || !form.district.trim()) {
+      toast.error("Name, province, and district are required.");
+      return;
+    }
+
+    const payload: Record<string, unknown> = {
+      name: form.name.trim(),
+      school_type: form.school_type || undefined,
+      province: form.province.trim(),
+      district: form.district.trim(),
+      sector: form.sector.trim() || undefined,
+      principal_name: form.principal_name.trim() || undefined,
+      principal_phone: form.principal_phone.trim() || undefined,
+      principal_email: form.principal_email.trim() || undefined,
+      school_phone: form.school_phone.trim() || undefined,
+      school_email: form.school_email.trim() || undefined,
+      subscription_plan_id: form.subscription_plan_id || undefined,
+      status: form.status || undefined,
+      timezone: form.timezone.trim() || undefined,
+      currency: form.currency.trim() || undefined,
+      has_boarding: form.has_boarding,
+      has_biometrics: form.has_biometrics,
+      has_gate: form.has_gate,
+      has_visitor_mgmt: form.has_visitor_mgmt,
+      has_exam_system: form.has_exam_system,
+      has_salary_mgmt: form.has_salary_mgmt,
+      has_parent_app: form.has_parent_app,
+      has_bulk_sms: form.has_bulk_sms,
+    };
+
+    try {
+      setCreating(true);
+      await apiRequest<PlatformSchool>("/platform/schools", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      toast.success("School created. Welcome email queued if an email was provided.");
+      setCreateOpen(false);
+      resetForm();
+      setPage(1);
+      setRefreshKey((k) => k + 1);
+    } catch (error) {
+      const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to create school";
+      toast.error(message);
+    } finally {
+      setCreating(false);
+    }
   };
-
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <SuperAdminLayout
       title="Schools"
-      subtitle="Onboard and manage tenant schools"
-      breadcrumbs={
-        <SuperAdminBreadcrumbs items={[{ label: "Super Admin", to: "/super-admin" }, { label: "Schools" }]} />
-      }
+      subtitle="Manage onboarded schools and onboarding"
+      breadcrumbs={<SuperAdminBreadcrumbs items={[{ label: "Super Admin", to: "/super-admin" }, { label: "Schools" }]} />}
     >
-      <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-        <div className="flex flex-wrap gap-2 text-xs">
-          {([["Total", stats.total], ["Active", stats.active], ["Trial", stats.trial], ["Suspended", stats.suspended]] as const).map(([l, v]) => (
-            <span key={l} className="rounded-full bg-muted px-3 py-1 font-semibold">
-              {l}: <span className="text-foreground">{v}</span>
-            </span>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => setOnboardOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold"
-        >
-          <Plus className="h-4 w-4" /> Onboard New School
-        </button>
-      </div>
-
-      <FilterBar>
-        <input
-          value={q}
-          onChange={e => { setQ(e.target.value); setPage(1); }}
-          placeholder="Search schools..."
-          className="h-10 flex-1 min-w-[200px] rounded-lg border border-border bg-background px-3 text-sm"
-        />
-        <select value={plan} onChange={e => setPlan(e.target.value)} className="h-10 rounded-lg border border-border px-3 text-sm">
-          {PLANS.map(p => <option key={p}>{p}</option>)}
-        </select>
-        <select value={status} onChange={e => setStatus(e.target.value)} className="h-10 rounded-lg border border-border px-3 text-sm">
-          {STATUSES.map(s => <option key={s}>{s}</option>)}
-        </select>
-        <select value={province} onChange={e => setProvince(e.target.value)} className="h-10 rounded-lg border border-border px-3 text-sm">
-          {PROVINCES.map(p => <option key={p}>{p}</option>)}
-        </select>
-        <select value={sort} onChange={e => setSort(e.target.value)} className="h-10 rounded-lg border border-border px-3 text-sm">
-          <option value="name">Sort: Name</option>
-          <option value="students">Sort: Students</option>
-          <option value="renewal">Sort: Renewal</option>
-        </select>
-        <div className="flex rounded-lg border border-border overflow-hidden ml-auto">
-          <button type="button" onClick={() => setView("grid")} className={`p-2 ${view === "grid" ? "bg-primary text-primary-foreground" : ""}`}><Grid3X3 className="h-4 w-4" /></button>
-          <button type="button" onClick={() => setView("table")} className={`p-2 ${view === "table" ? "bg-primary text-primary-foreground" : ""}`}><List className="h-4 w-4" /></button>
-        </div>
-      </FilterBar>
-
-      {view === "grid" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {paginated.map(s => (
-            <SchoolCard key={s.id} school={s} onSuspend={() => setSuspendTarget(s)} />
-          ))}
-        </div>
+      {showSkeleton ? (
+        <SchoolsSkeleton />
       ) : (
-        <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
-                <tr>
-                  {["", "Name", "Location", "Plan", "Status", "Students", "Staff", "Renewal", "MRR", ""].map(h => (
-                    <th key={h} className="text-left px-4 py-3">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {paginated.map(s => (
-                  <tr key={s.id} className="border-t border-border hover:bg-muted/20">
-                    <td className="px-4 py-3">
-                      <div className="grid h-9 w-9 place-items-center rounded-lg bg-amber-100 text-amber-800 font-bold text-xs">
-                        {s.name.split(" ").map(p => p[0]).join("").slice(0, 2)}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 font-medium">{s.name}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{s.location}</td>
-                    <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${planBadgeClass(s.plan)}`}>{s.plan}</span></td>
-                    <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadgeClass(s.status)}`}>{s.status}</span></td>
-                    <td className="px-4 py-3">{s.students}</td>
-                    <td className="px-4 py-3">{s.staff}</td>
-                    <td className="px-4 py-3 text-xs">{s.renewal}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{formatRWF(s.mrrRwf)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap space-x-2">
-                      <Link to="/super-admin/schools/$id" params={{ id: s.id }} className="text-xs font-semibold text-primary hover:underline">View</Link>
-                      <button type="button" onClick={() => setSuspendTarget(s)} className="text-xs text-destructive hover:underline">Suspend</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="text-xs text-muted-foreground">Total Schools</div>
+              <div className="text-2xl font-bold">{meta.total}</div>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="text-xs text-muted-foreground">Active</div>
+              <div className="text-2xl font-bold">{statusCounts.active}</div>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="text-xs text-muted-foreground">Trials</div>
+              <div className="text-2xl font-bold">{statusCounts.trial}</div>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="text-xs text-muted-foreground">Suspended</div>
+              <div className="text-2xl font-bold">{statusCounts.suspended}</div>
+            </div>
           </div>
-          <Pagination total={filtered.length} page={page} pageSize={pageSize} onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
-        </div>
+
+          <FilterBar>
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                placeholder="Search by name, province, or district"
+                className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm"
+              />
+            </div>
+            <select
+              value={status}
+              onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+              className="h-10 min-w-[140px] rounded-lg border border-border bg-background px-3 text-sm"
+            >
+              <option value="all">All Statuses</option>
+              {STATUS_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+            <select
+              value={schoolType}
+              onChange={(e) => { setSchoolType(e.target.value); setPage(1); }}
+              className="h-10 min-w-[140px] rounded-lg border border-border bg-background px-3 text-sm"
+            >
+              <option value="all">All Types</option>
+              {SCHOOL_TYPES.map((opt) => (
+                <option key={opt} value={opt}>{toTitle(opt)}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="h-10 inline-flex items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+            >
+              <Plus className="h-4 w-4" /> New School
+            </button>
+          </FilterBar>
+
+          <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+            {loading ? (
+              <div className="p-8 text-sm text-muted-foreground">Loading schools...</div>
+            ) : schools.length === 0 ? (
+              <EmptyState message="No schools found for these filters." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+                    <tr>
+                      {[
+                        "School",
+                        "Location",
+                        "Type",
+                        "Plan",
+                        "Students",
+                        "Staff",
+                        "Status",
+                        "",
+                      ].map((h) => (
+                        <th key={h} className="text-left px-4 py-3">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schools.map((s) => (
+                      <tr key={s.id} className="border-t border-border hover:bg-muted/20">
+                        <td className="px-4 py-3 font-medium">
+                          <div className="font-medium">{s.name}</div>
+                          <div className="text-[11px] text-muted-foreground">{s.school_email ?? s.principal_email ?? "—"}</div>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground">
+                          {formatLocation(s)}
+                        </td>
+                        <td className="px-4 py-3 text-xs">{toTitle(s.school_type ?? "—")}</td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${planBadgeClass(s.subscription_plan?.name ?? "")}`}>
+                            {s.subscription_plan?.name ?? "No plan"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs font-semibold">{s.student_count ?? 0}</td>
+                        <td className="px-4 py-3 text-xs font-semibold">{s.staff_count ?? 0}</td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadgeClass(s.status ?? "")}`}>
+                            {s.status ?? "—"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <Link
+                            to="/super-admin/schools/$id"
+                            params={{ id: s.id }}
+                            className="text-xs font-semibold text-primary hover:underline"
+                          >
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <Pagination
+              total={meta.total}
+              page={page}
+              pageSize={pageSize}
+              onPage={(p) => setPage(Math.min(Math.max(1, p), totalPages))}
+              onPageSize={(n) => { setPageSize(n); setPage(1); }}
+            />
+          </div>
+        </>
       )}
 
-      {view === "grid" && (
-        <div className="mt-4">
-          <Pagination total={filtered.length} page={page} pageSize={pageSize} onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
+      <SaModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="Create School"
+        subtitle="A welcome email will be sent to the school or principal email."
+        footer={
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={() => { setCreateOpen(false); resetForm(); }}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleCreateSchool}
+              disabled={creating}
+              className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold disabled:opacity-60"
+            >
+              {creating ? "Creating..." : "Create School"}
+            </button>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <SaInput label="School Name *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <SaSelect label="School Type" value={form.school_type} onChange={(e) => setForm({ ...form, school_type: e.target.value })}>
+            {SCHOOL_TYPES.map((opt) => (
+              <option key={opt} value={opt}>{toTitle(opt)}</option>
+            ))}
+          </SaSelect>
+          <SaInput label="Province *" value={form.province} onChange={(e) => setForm({ ...form, province: e.target.value })} />
+          <SaInput label="District *" value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value })} />
+          <SaInput label="Sector" value={form.sector} onChange={(e) => setForm({ ...form, sector: e.target.value })} />
+          <SaSelect label="Status" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </SaSelect>
+          <SaInput label="School Email" type="email" value={form.school_email} onChange={(e) => setForm({ ...form, school_email: e.target.value })} />
+          <SaInput label="School Phone" value={form.school_phone} onChange={(e) => setForm({ ...form, school_phone: e.target.value })} />
+          <SaInput label="Principal Name" value={form.principal_name} onChange={(e) => setForm({ ...form, principal_name: e.target.value })} />
+          <SaInput label="Principal Email" type="email" value={form.principal_email} onChange={(e) => setForm({ ...form, principal_email: e.target.value })} />
+          <SaInput label="Principal Phone" value={form.principal_phone} onChange={(e) => setForm({ ...form, principal_phone: e.target.value })} />
+          <SaSelect label="Subscription Plan" value={form.subscription_plan_id} onChange={(e) => setForm({ ...form, subscription_plan_id: e.target.value })}>
+            <option value="">No plan</option>
+            {plans.map((plan) => (
+              <option key={plan.id} value={plan.id}>{plan.name}</option>
+            ))}
+          </SaSelect>
+          <SaInput label="Timezone" value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
+          <SaInput label="Currency" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
         </div>
-      )}
 
-      {onboardOpen && <OnboardModal onClose={() => setOnboardOpen(false)} />}
-      <ConfirmDialog
-        open={!!suspendTarget}
-        onClose={() => setSuspendTarget(null)}
-        onConfirm={() => toast.success(`${suspendTarget?.name} suspended`)}
-        title="Suspend school?"
-        description={`This will restrict access for ${suspendTarget?.name}. You can reactivate later.`}
-        confirmLabel="Suspend"
-        destructive
-      />
+        <div className="mt-5">
+          <div className="text-xs font-semibold text-muted-foreground mb-2">Enabled Modules</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {MODULE_FIELDS.map((m) => (
+              <label key={m.key} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">
+                <div>
+                  <div className="font-medium">{m.label}</div>
+                  <div className="text-xs text-muted-foreground">{m.description}</div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={Boolean(form[m.key])}
+                  onChange={(e) => setForm({ ...form, [m.key]: e.target.checked })}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      </SaModal>
     </SuperAdminLayout>
   );
 }
 
-function SchoolCard({ school: s, onSuspend }: { school: PlatformSchool; onSuspend: () => void }) {
+function SchoolsSkeleton() {
   return (
-    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-      <div className="flex items-start gap-3">
-        <div className="grid h-12 w-12 place-items-center rounded-lg bg-amber-100 text-amber-800 font-bold">{s.name.split(" ").map(p => p[0]).join("").slice(0, 2)}</div>
-        <div className="flex-1 min-w-0">
-          <div className="font-bold truncate">{s.name}</div>
-          <div className="text-xs text-muted-foreground">{s.location}</div>
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-border bg-card p-4">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="mt-2 h-6 w-12" />
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2 items-center mb-4">
+        <Skeleton className="h-10 flex-1 min-w-[240px]" />
+        <Skeleton className="h-10 w-32" />
+        <Skeleton className="h-10 w-32" />
+        <Skeleton className="h-10 w-32" />
+      </div>
+
+      <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+              <tr>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <th key={i} className="text-left px-4 py-3">
+                    <Skeleton className="h-3 w-16" />
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <tr key={i} className="border-t border-border">
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-40" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-48" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-20 rounded-full" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-12" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-12" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-16 rounded-full" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-10" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadgeClass(s.status)}`}>{s.status}</span>
+        <div className="px-4 py-3 border-t border-border">
+          <Skeleton className="h-4 w-40" />
+        </div>
       </div>
-      <div className="flex gap-2 mt-2">
-        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${planBadgeClass(s.plan)}`}>{s.plan}</span>
-      </div>
-      <div className="grid grid-cols-2 gap-2 mt-4 text-sm">
-        <div><span className="text-muted-foreground text-xs">Students</span><div className="font-bold">{s.students}</div></div>
-        <div><span className="text-muted-foreground text-xs">Renewal</span><div className="font-medium text-xs">{s.renewal}</div></div>
-        <div><span className="text-muted-foreground text-xs">SMS used</span><div className="font-medium">{s.smsUsed}</div></div>
-        <div><span className="text-muted-foreground text-xs">Staff</span><div className="font-medium">{s.staff}</div></div>
-      </div>
-      <div className="flex flex-wrap gap-2 mt-4">
-        <Link to="/super-admin/schools/$id" params={{ id: s.id }} className="flex-1 text-center rounded-lg bg-primary text-primary-foreground px-2 py-1.5 text-xs font-semibold">View</Link>
-        <button type="button" className="rounded-lg border border-border px-2 py-1.5 text-xs font-semibold">Edit</button>
-        <button type="button" onClick={onSuspend} className="rounded-lg border border-destructive/30 text-destructive px-2 py-1.5 text-xs font-semibold">Suspend</button>
-        <button type="button" className="rounded-lg border border-border px-2 py-1.5 text-xs font-semibold">Contact</button>
-      </div>
-    </div>
+    </>
   );
 }
 
-function OnboardModal({ onClose }: { onClose: () => void }) {
-  const [step, setStep] = useState(1);
-  const [tempPw, setTempPw] = useState(() => genTempPassword());
-  const [copied, setCopied] = useState(false);
-  const [modules, setModules] = useState<Record<string, boolean>>({ core: true });
-  const [selectedPlan, setSelectedPlan] = useState("professional");
-  const [success, setSuccess] = useState(false);
+function toTitle(value: string) {
+  return value
+    .replace(/_/g, " ")
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
 
-  const addonTotal = ONBOARDING_MODULES.filter(m => modules[m.key]).reduce((s, m) => s + m.price, 0);
-  const base = PLAN_OPTIONS.find(p => p.id === selectedPlan)?.monthly ?? 45000;
-
-  if (success) {
-    return (
-      <SaModal open title="School created" onClose={onClose}>
-        <div className="text-center py-8">
-          <div className="text-5xl mb-4">🎉</div>
-          <h4 className="font-display text-xl font-bold text-emerald-700">School created successfully!</h4>
-          <Link to="/super-admin/schools/$id" params={{ id: "SCH001" }} className="mt-4 inline-block text-sm font-semibold text-primary hover:underline">
-            View school profile →
-          </Link>
-        </div>
-      </SaModal>
-    );
-  }
-
-  return (
-    <SaModal
-      open
-      onClose={onClose}
-      title="Onboard New School"
-      subtitle={`Step ${step} of 5`}
-      wide
-      footer={
-        <div className="flex justify-between">
-          <button type="button" onClick={() => (step > 1 ? setStep(step - 1) : onClose())} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold">
-            {step === 1 ? "Cancel" : "Back"}
-          </button>
-          {step < 5 ? (
-            <button type="button" onClick={() => setStep(step + 1)} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold">Next →</button>
-          ) : (
-            <button type="button" onClick={() => setSuccess(true)} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold">Create School</button>
-          )}
-        </div>
-      }
-    >
-      <div className="h-1 bg-muted rounded-full overflow-hidden mb-5"><div className="h-full bg-amber-500 transition-all" style={{ width: `${step * 20}%` }} /></div>
-      {step === 1 && (
-        <div className="grid grid-cols-2 gap-3">
-          <SaInput label="School Name *" />
-          <SaSelect label="School Type"><option>Government</option><option>Private</option><option>International</option><option>Technical</option><option>Seminary</option></SaSelect>
-          <SaSelect label="Province"><option>Kigali City</option><option>Eastern</option><option>Western</option><option>Northern</option><option>Southern</option></SaSelect>
-          <SaInput label="District" />
-          <SaInput label="Sector" />
-          <SaInput label="Physical Address" className="col-span-2" />
-          <SaInput label="RNE Registration Number" />
-          <SaInput label="Founded Year" type="number" />
-        </div>
-      )}
-      {step === 2 && (
-        <div className="grid grid-cols-2 gap-3">
-          <SaInput label="Principal Name *" />
-          <SaInput label="Principal Phone *" />
-          <SaInput label="Principal Email *" />
-          <SaInput label="School Phone" />
-          <SaInput label="School Email" />
-          <SaInput label="School Website" />
-          <SaInput label="Admin Name *" />
-          <SaInput label="Admin Email *" />
-          <div className="col-span-2">
-            <label className="block text-xs font-semibold mb-1.5">Temporary Password (auto-generated)</label>
-            <div className="flex gap-2">
-              <input readOnly value={tempPw} className="h-10 flex-1 rounded-lg border border-border bg-muted/30 px-3 text-sm font-mono" />
-              <button type="button" onClick={() => { navigator.clipboard.writeText(tempPw); setCopied(true); setTimeout(() => setCopied(false), 2000); }} className="h-10 px-3 rounded-lg border border-border">
-                {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
-              </button>
-              <button type="button" onClick={() => setTempPw(genTempPassword())} className="text-xs font-semibold text-primary">Regenerate</button>
-            </div>
-          </div>
-        </div>
-      )}
-      {step === 3 && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            {PLAN_OPTIONS.map(p => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setSelectedPlan(p.id)}
-                className={`rounded-xl border-2 p-4 text-left transition-colors ${selectedPlan === p.id ? "border-amber-500 bg-amber-50" : "border-border"}`}
-              >
-                <div className="font-bold">{p.name}</div>
-                <div className="text-xl font-bold text-amber-700 mt-1">{p.monthly.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">RWF/mo</span></div>
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <SaSelect label="Billing Cycle"><option>Monthly</option><option>Annual (save 10%)</option></SaSelect>
-            <SaInput label="Start Date" type="date" defaultValue="2026-05-21" />
-            <SaSelect label="Trial Period"><option>None</option><option>14 days</option><option>30 days</option></SaSelect>
-            <SaInput label="Promo Code (optional)" />
-          </div>
-          <div className="rounded-lg bg-muted/40 p-3 text-sm">Estimated MRR: <strong>{formatRWF(base + addonTotal)}</strong></div>
-        </div>
-      )}
-      {step === 4 && (
-        <div className="space-y-2">
-          {ONBOARDING_MODULES.map(m => (
-            <label key={m.key} className={`flex items-start gap-3 rounded-lg border p-3 ${m.included ? "opacity-70" : ""}`}>
-              <input
-                type="checkbox"
-                checked={!!modules[m.key]}
-                disabled={m.included}
-                onChange={e => setModules(prev => ({ ...prev, [m.key]: e.target.checked }))}
-                className="mt-1"
-              />
-              <div>
-                <div className="font-semibold text-sm">{m.label}</div>
-                <div className="text-xs text-muted-foreground">{m.desc}{m.price > 0 && ` (+${m.price.toLocaleString()} RWF/mo)`}</div>
-              </div>
-            </label>
-          ))}
-          <div className="text-sm font-semibold pt-2">Add-ons: {formatRWF(addonTotal)} · Total MRR: {formatRWF(base + addonTotal)}</div>
-        </div>
-      )}
-      {step === 5 && (
-        <div className="space-y-3 text-sm">
-          <p>Review all entered details before creating the school tenant.</p>
-          <label className="flex items-center gap-2"><input type="checkbox" defaultChecked /> Send Welcome Email to Principal</label>
-          <label className="flex items-center gap-2"><input type="checkbox" defaultChecked /> Send Setup Instructions to Admin</label>
-        </div>
-      )}
-    </SaModal>
-  );
+function formatLocation(school: PlatformSchool) {
+  const parts = [school.province, school.district, school.sector].filter(Boolean);
+  return parts.length ? parts.join(", ") : "—";
 }

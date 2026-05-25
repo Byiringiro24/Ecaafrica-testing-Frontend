@@ -1,4 +1,4 @@
-import { ReactNode, useEffect } from "react";
+import { ReactNode } from "react";
 import { Inbox, X } from "lucide-react";
 import {
   AlertDialog,
@@ -26,16 +26,9 @@ export function StaffModal({
   footer?: ReactNode;
   wide?: boolean;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div
         className={`bg-card rounded-2xl shadow-2xl w-full max-h-[90vh] flex flex-col border border-border ${wide ? "max-w-2xl" : "max-w-lg"}`}
         onClick={e => e.stopPropagation()}

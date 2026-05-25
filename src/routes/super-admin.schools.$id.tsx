@@ -1,17 +1,18 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs";
-import { PageTabs, ConfirmDialog } from "@/components/super-admin/ui";
+import { PageTabs, ConfirmDialog, SaInput, SaModal, SaSelect } from "@/components/super-admin/ui";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  schoolById,
   planBadgeClass,
   statusBadgeClass,
   SCHOOL_MODULES,
 } from "@/lib/superAdminMockData";
-import { SUBSCRIPTION_INVOICES, formatRWF } from "@/lib/mockData";
+import { formatRWF } from "@/lib/mockData";
+import { apiRequest } from "@/lib/api";
 
 export const Route = createFileRoute("/super-admin/schools/$id")({ component: SchoolDetailPage });
 
@@ -20,26 +21,383 @@ const ATTENDANCE_SPARK = Array.from({ length: 30 }, (_, i) => ({
   rate: 82 + Math.sin(i / 4) * 8 + (i % 5),
 }));
 
-const SCHOOL_USERS = [
-  { name: "Niyonzima Jean", role: "School Admin", email: "admin@school.rw", lastLogin: "2026-05-15", status: "Active" },
-  { name: "Uwase Diane", role: "Teacher", email: "diane@school.rw", lastLogin: "2026-05-14", status: "Active" },
-  { name: "Habimana Eric", role: "Accountant", email: "eric@school.rw", lastLogin: "2026-05-10", status: "Locked" },
-];
+type PlatformPlan = {
+  id: string;
+  name: string;
+  price_monthly?: number | string | null;
+  price_annual?: number | string | null;
+};
 
-const SCHOOL_AUDIT = [
-  { at: "2026-05-15 09:00", user: "Karera Thierry", action: "Enabled Biometrics module" },
-  { at: "2026-05-10 14:22", user: "Ingabire Beatrice", action: "Invoice INV-2026-0089 marked paid" },
-  { at: "2026-05-01 08:15", user: "Karera Thierry", action: "Subscription renewed — Professional" },
-];
+type SchoolOverview = {
+  school_id: string;
+  student_count: number;
+  staff_count: number;
+  class_count: number;
+  sms_sent_month: number;
+};
+
+type SchoolUser = {
+  id: string;
+  name: string;
+  email?: string | null;
+  role?: string | null;
+  status?: string | null;
+  last_login_at?: string | null;
+};
+
+type SchoolAuditLog = {
+  id: string;
+  action: string;
+  actor_name?: string | null;
+  actor_type?: string | null;
+  resource_name?: string | null;
+  created_at: string;
+};
+
+type SchoolInvoice = {
+  id: string;
+  invoice_number: string;
+  period_start: string;
+  period_end: string;
+  total: number | string;
+  status: string;
+  currency?: string | null;
+};
+
+type SchoolSubscription = {
+  id: string;
+  status: string;
+  billing_cycle?: string | null;
+  amount?: number | string | null;
+  currency?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  trial_ends_at?: string | null;
+  grace_ends_at?: string | null;
+  plan?: PlatformPlan | null;
+};
+
+type SchoolBilling = {
+  subscription: SchoolSubscription | null;
+  invoices: SchoolInvoice[];
+  meta?: { page: number; limit: number; total: number };
+};
+
+type PlatformSchool = {
+  id: string;
+  uuid?: string;
+  name: string;
+  school_type?: string | null;
+  province: string;
+  district: string;
+  sector?: string | null;
+  principal_name?: string | null;
+  principal_phone?: string | null;
+  principal_email?: string | null;
+  school_phone?: string | null;
+  school_email?: string | null;
+  subscription_plan_id?: string | null;
+  subscription_plan?: PlatformPlan | null;
+  status?: string | null;
+  timezone?: string | null;
+  currency?: string | null;
+  has_boarding?: boolean | null;
+  has_biometrics?: boolean | null;
+  has_gate?: boolean | null;
+  has_visitor_mgmt?: boolean | null;
+  has_exam_system?: boolean | null;
+  has_salary_mgmt?: boolean | null;
+  has_parent_app?: boolean | null;
+  has_bulk_sms?: boolean | null;
+  student_count?: number | null;
+  staff_count?: number | null;
+  trial_ends_at?: string | null;
+  grace_ends_at?: string | null;
+};
+
+type SchoolFormState = {
+  name: string;
+  school_type: string;
+  province: string;
+  district: string;
+  sector: string;
+  principal_name: string;
+  principal_phone: string;
+  principal_email: string;
+  school_phone: string;
+  school_email: string;
+  subscription_plan_id: string;
+  status: string;
+  timezone: string;
+  currency: string;
+  has_boarding: boolean;
+  has_biometrics: boolean;
+  has_gate: boolean;
+  has_visitor_mgmt: boolean;
+  has_exam_system: boolean;
+  has_salary_mgmt: boolean;
+  has_parent_app: boolean;
+  has_bulk_sms: boolean;
+};
+
+const SCHOOL_TYPES = ["government", "private", "international", "technical", "seminary", "other"] as const;
+const STATUS_OPTIONS = ["active", "trial", "grace", "suspended", "expired", "cancelled"] as const;
+
+const toFormState = (s: PlatformSchool): SchoolFormState => ({
+  name: s.name ?? "",
+  school_type: s.school_type ?? "government",
+  province: s.province ?? "",
+  district: s.district ?? "",
+  sector: s.sector ?? "",
+  principal_name: s.principal_name ?? "",
+  principal_phone: s.principal_phone ?? "",
+  principal_email: s.principal_email ?? "",
+  school_phone: s.school_phone ?? "",
+  school_email: s.school_email ?? "",
+  subscription_plan_id: s.subscription_plan_id ?? "",
+  status: s.status ?? "trial",
+  timezone: s.timezone ?? "Africa/Kigali",
+  currency: s.currency ?? "RWF",
+  has_boarding: Boolean(s.has_boarding),
+  has_biometrics: Boolean(s.has_biometrics),
+  has_gate: Boolean(s.has_gate),
+  has_visitor_mgmt: Boolean(s.has_visitor_mgmt),
+  has_exam_system: Boolean(s.has_exam_system),
+  has_salary_mgmt: Boolean(s.has_salary_mgmt),
+  has_parent_app: Boolean(s.has_parent_app),
+  has_bulk_sms: Boolean(s.has_bulk_sms)
+});
+
+const buildModuleState = (school?: PlatformSchool | null) => ({
+  core: true,
+  boarding: Boolean(school?.has_boarding),
+  biometrics: Boolean(school?.has_biometrics),
+  gate: Boolean(school?.has_gate),
+  visitor: Boolean(school?.has_visitor_mgmt),
+  exam: Boolean(school?.has_exam_system),
+  salary: Boolean(school?.has_salary_mgmt),
+  parent_app: Boolean(school?.has_parent_app),
+});
+
+const formatDate = (value?: string | null) => {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) return "—";
+  return parsed.toISOString().slice(0, 10);
+};
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) return "—";
+  return parsed.toLocaleString();
+};
+
+const formatInvoicePeriod = (start?: string | null, end?: string | null) => {
+  if (!start && !end) return "—";
+  return `${formatDate(start)} — ${formatDate(end)}`;
+};
+
+const formatLocation = (school: PlatformSchool) => {
+  const parts = [school.province, school.district, school.sector].filter(Boolean);
+  return parts.length ? parts.join(", ") : "—";
+};
+
+const planMonthlyPrice = (plan?: PlatformPlan | null) => {
+  if (!plan?.price_monthly) return 0;
+  const value = typeof plan.price_monthly === "string" ? Number(plan.price_monthly) : plan.price_monthly;
+  return Number.isFinite(value) ? value : 0;
+};
+
+const formatAmount = (value?: number | string | null) => {
+  if (value === undefined || value === null) return "—";
+  const parsed = typeof value === "string" ? Number(value) : value;
+  return Number.isFinite(parsed) ? formatRWF(parsed) : "—";
+};
 
 function SchoolDetailPage() {
   const { id } = Route.useParams();
-  const school = schoolById(id);
+  const [school, setSchool] = useState<PlatformSchool | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [overview, setOverview] = useState<SchoolOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [billing, setBilling] = useState<SchoolBilling | null>(null);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [users, setUsers] = useState<SchoolUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [auditLogs, setAuditLogs] = useState<SchoolAuditLog[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
   const [tab, setTab] = useState("Overview");
   const [suspendOpen, setSuspendOpen] = useState(false);
-  const [moduleState, setModuleState] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(SCHOOL_MODULES.map(m => [m.key, m.locked || false])),
-  );
+  const [editOpen, setEditOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [plans, setPlans] = useState<PlatformPlan[]>([]);
+  const [editForm, setEditForm] = useState<SchoolFormState | null>(null);
+  const moduleDefaults = useMemo(() => buildModuleState(school), [school]);
+  const [moduleState, setModuleState] = useState<Record<string, boolean>>(() => buildModuleState(null));
+
+  useEffect(() => {
+    setModuleState(moduleDefaults);
+  }, [moduleDefaults]);
+
+  useEffect(() => {
+    let active = true;
+    const loadPlans = async () => {
+      try {
+        const resp = await apiRequest<{ data: PlatformPlan[] }>("/platform/plans?page=1&limit=200", { returnMeta: true });
+        if (!active) return;
+        setPlans(Array.isArray(resp?.data) ? resp.data : []);
+      } catch (error) {
+        const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to load plans";
+        toast.error(message);
+      }
+    };
+
+    loadPlans();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadSchool = async () => {
+      setLoading(true);
+      try {
+        const data = await apiRequest<PlatformSchool>(`/platform/schools/${id}`);
+        if (!active) return;
+        setSchool(data);
+      } catch (error) {
+        const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to load school";
+        toast.error(message);
+        if (active) setSchool(null);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    loadSchool();
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    setOverview(null);
+    setBilling(null);
+    setUsers([]);
+    setAuditLogs([]);
+  }, [id]);
+
+  useEffect(() => {
+    let active = true;
+    const loadOverview = async () => {
+      setOverviewLoading(true);
+      try {
+        const data = await apiRequest<SchoolOverview>(`/platform/schools/${id}/overview`);
+        if (!active) return;
+        setOverview(data);
+      } catch (error) {
+        const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to load overview";
+        toast.error(message);
+        if (active) setOverview(null);
+      } finally {
+        if (active) setOverviewLoading(false);
+      }
+    };
+
+    loadOverview();
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (tab !== "Billing") return;
+    let active = true;
+    const loadBilling = async () => {
+      setBillingLoading(true);
+      try {
+        const data = await apiRequest<SchoolBilling>(`/platform/schools/${id}/billing?page=1&limit=5`);
+        if (!active) return;
+        setBilling(data);
+      } catch (error) {
+        const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to load billing";
+        toast.error(message);
+        if (active) setBilling(null);
+      } finally {
+        if (active) setBillingLoading(false);
+      }
+    };
+
+    loadBilling();
+    return () => {
+      active = false;
+    };
+  }, [id, tab]);
+
+  useEffect(() => {
+    if (tab !== "Users") return;
+    let active = true;
+    const loadUsers = async () => {
+      setUsersLoading(true);
+      try {
+        const resp = await apiRequest<{ data: SchoolUser[] }>(
+          `/platform/schools/${id}/users?page=1&limit=20`,
+          { returnMeta: true }
+        );
+        if (!active) return;
+        setUsers(Array.isArray(resp?.data) ? resp.data : []);
+      } catch (error) {
+        const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to load users";
+        toast.error(message);
+        if (active) setUsers([]);
+      } finally {
+        if (active) setUsersLoading(false);
+      }
+    };
+
+    loadUsers();
+    return () => {
+      active = false;
+    };
+  }, [id, tab]);
+
+  useEffect(() => {
+    if (tab !== "Audit Log") return;
+    let active = true;
+    const loadAuditLogs = async () => {
+      setAuditLoading(true);
+      try {
+        const resp = await apiRequest<{ data: SchoolAuditLog[] }>(
+          `/platform/schools/${id}/audit-logs?page=1&limit=10`,
+          { returnMeta: true }
+        );
+        if (!active) return;
+        setAuditLogs(Array.isArray(resp?.data) ? resp.data : []);
+      } catch (error) {
+        const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to load audit logs";
+        toast.error(message);
+        if (active) setAuditLogs([]);
+      } finally {
+        if (active) setAuditLoading(false);
+      }
+    };
+
+    loadAuditLogs();
+    return () => {
+      active = false;
+    };
+  }, [id, tab]);
+
+  if (loading) {
+    return (
+      <SuperAdminLayout title="School details">
+        <SchoolDetailSkeleton />
+      </SuperAdminLayout>
+    );
+  }
 
   if (!school) {
     return (
@@ -50,10 +408,109 @@ function SchoolDetailPage() {
     );
   }
 
+  const planName = school.subscription_plan?.name ?? "No plan";
+  const studentCount = overview?.student_count ?? school.student_count ?? 0;
+  const staffCount = overview?.staff_count ?? school.staff_count ?? 0;
+  const classCount = overview?.class_count ?? (studentCount ? Math.ceil(studentCount / 35) : 0);
+  const smsMonth = overview?.sms_sent_month ?? 0;
+  const location = formatLocation(school);
+  const enabledModules = SCHOOL_MODULES.filter((m) => {
+    if (m.key === "core") return true;
+    if (m.key === "boarding") return Boolean(school.has_boarding);
+    if (m.key === "biometrics") return Boolean(school.has_biometrics);
+    if (m.key === "gate") return Boolean(school.has_gate);
+    if (m.key === "visitor") return Boolean(school.has_visitor_mgmt);
+    if (m.key === "exam") return Boolean(school.has_exam_system);
+    if (m.key === "salary") return Boolean(school.has_salary_mgmt);
+    if (m.key === "parent_app") return Boolean(school.has_parent_app);
+    return false;
+  });
+  const monthlyPrice = planMonthlyPrice(school.subscription_plan);
+  const billingPlanName = billing?.subscription?.plan?.name ?? planName;
+  const billingStatus = billing?.subscription?.status ?? school.status ?? "—";
+  const billingAmount = billing?.subscription?.amount ?? monthlyPrice;
+  const trialEnds = formatDate(billing?.subscription?.trial_ends_at ?? school.trial_ends_at);
+  const graceEnds = formatDate(billing?.subscription?.grace_ends_at ?? school.grace_ends_at);
+
+  const openEdit = () => {
+    setEditForm(toFormState(school));
+    setEditOpen(true);
+  };
+
+  const handleUpdateSchool = async () => {
+    if (!editForm) return;
+    if (!editForm.name.trim() || !editForm.province.trim() || !editForm.district.trim()) {
+      toast.error("Name, province, and district are required.");
+      return;
+    }
+
+    const payload: Record<string, unknown> = {
+      name: editForm.name.trim(),
+      school_type: editForm.school_type || undefined,
+      province: editForm.province.trim(),
+      district: editForm.district.trim(),
+      sector: editForm.sector.trim() || undefined,
+      principal_name: editForm.principal_name.trim() || undefined,
+      principal_phone: editForm.principal_phone.trim() || undefined,
+      principal_email: editForm.principal_email.trim() || undefined,
+      school_phone: editForm.school_phone.trim() || undefined,
+      school_email: editForm.school_email.trim() || undefined,
+      subscription_plan_id: editForm.subscription_plan_id || undefined,
+      status: editForm.status || undefined,
+      timezone: editForm.timezone.trim() || undefined,
+      currency: editForm.currency.trim() || undefined,
+      has_boarding: editForm.has_boarding,
+      has_biometrics: editForm.has_biometrics,
+      has_gate: editForm.has_gate,
+      has_visitor_mgmt: editForm.has_visitor_mgmt,
+      has_exam_system: editForm.has_exam_system,
+      has_salary_mgmt: editForm.has_salary_mgmt,
+      has_parent_app: editForm.has_parent_app,
+      has_bulk_sms: editForm.has_bulk_sms
+    };
+
+    try {
+      setSaving(true);
+      const updated = await apiRequest<PlatformSchool>(`/platform/schools/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload)
+      });
+      setSchool(updated);
+      toast.success("School updated");
+      setEditOpen(false);
+    } catch (error) {
+      const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to update school";
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResetPassword = async (user: SchoolUser) => {
+    if (!user.email) {
+      toast.error("User has no email address.");
+      return;
+    }
+
+    try {
+      setResettingUserId(user.id);
+      await apiRequest("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email: user.email })
+      });
+      toast.success("Reset link sent.");
+    } catch (error) {
+      const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to send reset link";
+      toast.error(message);
+    } finally {
+      setResettingUserId(null);
+    }
+  };
+
   return (
     <SuperAdminLayout
       title={school.name}
-      subtitle={school.location}
+      subtitle={location}
       breadcrumbs={
         <SuperAdminBreadcrumbs
           items={[
@@ -72,15 +529,15 @@ function SchoolDetailPage() {
             </div>
             <div>
               <h2 className="font-display text-xl font-bold">{school.name}</h2>
-              <p className="text-sm text-muted-foreground">{school.location}</p>
+              <p className="text-sm text-muted-foreground">{location}</p>
               <div className="flex gap-2 mt-2">
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${planBadgeClass(school.plan)}`}>{school.plan}</span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadgeClass(school.status)}`}>{school.status}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${planBadgeClass(planName)}`}>{planName}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadgeClass(school.status ?? "")}`}>{school.status ?? "—"}</span>
               </div>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold">Edit</button>
+            <button type="button" onClick={openEdit} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold">Edit</button>
             <button type="button" onClick={() => setSuspendOpen(true)} className="rounded-lg border border-destructive/40 text-destructive px-3 py-1.5 text-xs font-semibold">Suspend</button>
             <button type="button" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold">Export</button>
           </div>
@@ -95,12 +552,12 @@ function SchoolDetailPage() {
             <h3 className="font-semibold mb-3">School Information</h3>
             <dl className="grid grid-cols-2 gap-2 text-sm">
               {[
-                ["Address", school.address ?? "—"],
-                ["Principal", school.principal ?? "—"],
-                ["Phone", school.phone ?? "—"],
-                ["Email", school.email ?? "—"],
-                ["RNE #", school.rne ?? "—"],
-                ["Type", school.type],
+                ["Province", school.province ?? "—"],
+                ["District", school.district ?? "—"],
+                ["Sector", school.sector ?? "—"],
+                ["Principal", school.principal_name ?? "—"],
+                ["School Email", school.school_email ?? school.principal_email ?? "—"],
+                ["School Phone", school.school_phone ?? school.principal_phone ?? "—"],
               ].map(([k, v]) => (
                 <div key={k}><dt className="text-muted-foreground text-xs">{k}</dt><dd className="font-medium">{v}</dd></div>
               ))}
@@ -108,19 +565,30 @@ function SchoolDetailPage() {
           </div>
           <div className="rounded-xl border border-border bg-card p-5">
             <h3 className="font-semibold mb-3">Usage Metrics</h3>
-            <div className="grid grid-cols-2 gap-3 text-center">
-              {[
-                ["Students", school.students],
-                ["Staff", school.staff],
-                ["Classes", Math.ceil(school.students / 35)],
-                ["SMS (month)", school.smsUsed],
-              ].map(([l, v]) => (
-                <div key={l as string} className="rounded-lg bg-muted/30 p-3">
-                  <div className="text-2xl font-bold">{v}</div>
-                  <div className="text-[10px] uppercase text-muted-foreground">{l}</div>
-                </div>
-              ))}
-            </div>
+            {overviewLoading ? (
+              <div className="grid grid-cols-2 gap-3 text-center">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="rounded-lg bg-muted/30 p-3">
+                    <Skeleton className="h-6 w-16 mx-auto" />
+                    <Skeleton className="mt-2 h-3 w-20 mx-auto" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 text-center">
+                {[
+                  ["Students", studentCount],
+                  ["Staff", staffCount],
+                  ["Classes", classCount],
+                  ["SMS (month)", smsMonth],
+                ].map(([l, v]) => (
+                  <div key={l as string} className="rounded-lg bg-muted/30 p-3">
+                    <div className="text-2xl font-bold">{v}</div>
+                    <div className="text-[10px] uppercase text-muted-foreground">{l}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             <p className="text-xs font-semibold mt-4 mb-2">Attendance (30 days)</p>
             <ResponsiveContainer width="100%" height={80}>
               <LineChart data={ATTENDANCE_SPARK}>
@@ -132,8 +600,8 @@ function SchoolDetailPage() {
           <div className="lg:col-span-2 rounded-xl border border-border bg-card p-5">
             <h3 className="font-semibold mb-2">Feature flags enabled</h3>
             <div className="flex flex-wrap gap-2">
-              {school.modules.length ? school.modules.map(m => (
-                <span key={m} className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold capitalize">{m}</span>
+              {enabledModules.length ? enabledModules.map(m => (
+                <span key={m.key} className="rounded-full bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold capitalize">{m.label}</span>
               )) : <span className="text-sm text-muted-foreground">Core only</span>}
             </div>
           </div>
@@ -171,7 +639,21 @@ function SchoolDetailPage() {
         <div className="space-y-4">
           <div className="rounded-xl border border-border bg-card p-5">
             <h3 className="font-semibold mb-2">Current Subscription</h3>
-            <p className="text-sm">{school.plan} · Renews {school.renewal} · MRR {formatRWF(school.mrrRwf)}</p>
+            {billingLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-72" />
+                <Skeleton className="h-3 w-64" />
+              </div>
+            ) : (
+              <>
+                <p className="text-sm">
+                  {billingPlanName} · Status {billingStatus} · Monthly {formatAmount(billingAmount)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Trial ends: {trialEnds} · Grace ends: {graceEnds}
+                </p>
+              </>
+            )}
             <div className="flex gap-2 mt-3">
               <button type="button" className="text-xs font-semibold text-primary hover:underline">Create manual invoice</button>
               <button type="button" className="text-xs font-semibold text-primary hover:underline">Override renewal</button>
@@ -182,14 +664,29 @@ function SchoolDetailPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-xs uppercase"><tr>{["Invoice", "Period", "Amount", "Status"].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr></thead>
               <tbody>
-                {SUBSCRIPTION_INVOICES.slice(0, 5).map(inv => (
-                  <tr key={inv.id} className="border-t border-border">
-                    <td className="px-4 py-3 font-mono text-xs">{inv.id}</td>
-                    <td className="px-4 py-3">{inv.period}</td>
-                    <td className="px-4 py-3">{formatRWF(inv.amount)}</td>
-                    <td className="px-4 py-3 capitalize">{inv.status}</td>
+                {billingLoading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <tr key={i} className="border-t border-border">
+                      <td className="px-4 py-3"><Skeleton className="h-3 w-20" /></td>
+                      <td className="px-4 py-3"><Skeleton className="h-3 w-28" /></td>
+                      <td className="px-4 py-3"><Skeleton className="h-3 w-16" /></td>
+                      <td className="px-4 py-3"><Skeleton className="h-3 w-16" /></td>
+                    </tr>
+                  ))
+                ) : billing?.invoices?.length ? (
+                  billing.invoices.map(inv => (
+                    <tr key={inv.id} className="border-t border-border">
+                      <td className="px-4 py-3 font-mono text-xs">{inv.invoice_number}</td>
+                      <td className="px-4 py-3">{formatInvoicePeriod(inv.period_start, inv.period_end)}</td>
+                      <td className="px-4 py-3">{formatAmount(inv.total)}</td>
+                      <td className="px-4 py-3 capitalize">{inv.status}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr className="border-t border-border">
+                    <td className="px-4 py-6 text-center text-muted-foreground" colSpan={4}>No invoices yet.</td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -201,19 +698,43 @@ function SchoolDetailPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs uppercase"><tr>{["Name", "Role", "Email", "Last Login", "Status", ""].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr></thead>
             <tbody>
-              {SCHOOL_USERS.map(u => (
-                <tr key={u.email} className="border-t border-border">
-                  <td className="px-4 py-3 font-medium">{u.name}</td>
-                  <td className="px-4 py-3">{u.role}</td>
-                  <td className="px-4 py-3 text-xs">{u.email}</td>
-                  <td className="px-4 py-3 text-xs">{u.lastLogin}</td>
-                  <td className="px-4 py-3">{u.status}</td>
-                  <td className="px-4 py-3 space-x-2 whitespace-nowrap">
-                    <button type="button" onClick={() => toast.info("Password reset email sent")} className="text-xs text-primary font-semibold hover:underline">Reset Password</button>
-                    <button type="button" className="text-xs text-destructive font-semibold hover:underline">Deactivate</button>
-                  </td>
+              {usersLoading ? (
+                Array.from({ length: 4 }).map((_, i) => (
+                  <tr key={i} className="border-t border-border">
+                    <td className="px-4 py-3"><Skeleton className="h-3 w-28" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-3 w-20" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-3 w-32" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-3 w-20" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-3 w-16" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-3 w-24" /></td>
+                  </tr>
+                ))
+              ) : users.length ? (
+                users.map(u => (
+                  <tr key={u.id} className="border-t border-border">
+                    <td className="px-4 py-3 font-medium">{u.name}</td>
+                    <td className="px-4 py-3">{u.role ?? "—"}</td>
+                    <td className="px-4 py-3 text-xs">{u.email ?? "—"}</td>
+                    <td className="px-4 py-3 text-xs">{formatDateTime(u.last_login_at)}</td>
+                    <td className="px-4 py-3 capitalize">{u.status ?? "—"}</td>
+                    <td className="px-4 py-3 space-x-2 whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => handleResetPassword(u)}
+                        disabled={!u.email || resettingUserId === u.id}
+                        className="text-xs text-primary font-semibold hover:underline disabled:opacity-50"
+                      >
+                        {resettingUserId === u.id ? "Sending..." : "Reset Password"}
+                      </button>
+                      <button type="button" className="text-xs text-destructive font-semibold hover:underline">Deactivate</button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="border-t border-border">
+                  <td className="px-4 py-6 text-center text-muted-foreground" colSpan={6}>No users found.</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>
@@ -221,15 +742,29 @@ function SchoolDetailPage() {
 
       {tab === "Audit Log" && (
         <div className="rounded-xl border border-border bg-card divide-y divide-border">
-          {SCHOOL_AUDIT.map((e, i) => (
-            <div key={i} className="px-5 py-3 text-sm flex justify-between gap-4">
-              <div>
-                <div className="font-medium">{e.action}</div>
-                <div className="text-xs text-muted-foreground">{e.user}</div>
+          {auditLoading ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="px-5 py-3 text-sm flex justify-between gap-4">
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-56" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+                <Skeleton className="h-3 w-24" />
               </div>
-              <div className="text-xs text-muted-foreground shrink-0">{e.at}</div>
-            </div>
-          ))}
+            ))
+          ) : auditLogs.length ? (
+            auditLogs.map((e) => (
+              <div key={e.id} className="px-5 py-3 text-sm flex justify-between gap-4">
+                <div>
+                  <div className="font-medium">{e.action}</div>
+                  <div className="text-xs text-muted-foreground">{e.actor_name ?? e.actor_type ?? "System"}</div>
+                </div>
+                <div className="text-xs text-muted-foreground shrink-0">{formatDateTime(e.created_at)}</div>
+              </div>
+            ))
+          ) : (
+            <div className="px-5 py-6 text-sm text-muted-foreground">No audit log entries yet.</div>
+          )}
         </div>
       )}
 
@@ -242,6 +777,134 @@ function SchoolDetailPage() {
         confirmLabel="Suspend"
         destructive
       />
+
+      <SaModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit School"
+        wide
+        footer={
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={() => setEditOpen(false)} className="rounded-lg border px-4 py-2 text-sm font-semibold">Cancel</button>
+            <button type="button" disabled={saving} onClick={handleUpdateSchool} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold disabled:opacity-60">
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        }
+      >
+        {editForm && (
+          <div className="grid grid-cols-2 gap-3">
+            <SaInput label="School Name *" value={editForm.name} onChange={e => setEditForm(s => s ? { ...s, name: e.target.value } : s)} className="col-span-2" />
+            <SaSelect label="School Type" value={editForm.school_type} onChange={e => setEditForm(s => s ? { ...s, school_type: e.target.value } : s)}>
+              {SCHOOL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </SaSelect>
+            <SaSelect label="Status" value={editForm.status} onChange={e => setEditForm(s => s ? { ...s, status: e.target.value } : s)}>
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </SaSelect>
+            <SaInput label="Province *" value={editForm.province} onChange={e => setEditForm(s => s ? { ...s, province: e.target.value } : s)} />
+            <SaInput label="District *" value={editForm.district} onChange={e => setEditForm(s => s ? { ...s, district: e.target.value } : s)} />
+            <SaInput label="Sector" value={editForm.sector} onChange={e => setEditForm(s => s ? { ...s, sector: e.target.value } : s)} />
+            <SaSelect label="Plan" value={editForm.subscription_plan_id} onChange={e => setEditForm(s => s ? { ...s, subscription_plan_id: e.target.value } : s)}>
+              <option value="">No plan</option>
+              {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </SaSelect>
+            <SaInput label="School Email" value={editForm.school_email} onChange={e => setEditForm(s => s ? { ...s, school_email: e.target.value } : s)} />
+            <SaInput label="School Phone" value={editForm.school_phone} onChange={e => setEditForm(s => s ? { ...s, school_phone: e.target.value } : s)} />
+            <SaInput label="Principal Name" value={editForm.principal_name} onChange={e => setEditForm(s => s ? { ...s, principal_name: e.target.value } : s)} />
+            <SaInput label="Principal Email" value={editForm.principal_email} onChange={e => setEditForm(s => s ? { ...s, principal_email: e.target.value } : s)} />
+            <SaInput label="Principal Phone" value={editForm.principal_phone} onChange={e => setEditForm(s => s ? { ...s, principal_phone: e.target.value } : s)} />
+            <SaInput label="Timezone" value={editForm.timezone} onChange={e => setEditForm(s => s ? { ...s, timezone: e.target.value } : s)} />
+            <SaInput label="Currency" value={editForm.currency} onChange={e => setEditForm(s => s ? { ...s, currency: e.target.value } : s)} />
+
+            <div className="col-span-2">
+              <div className="text-xs font-semibold mb-2">Modules</div>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ["has_boarding", "Boarding"],
+                  ["has_biometrics", "Biometrics"],
+                  ["has_gate", "Gate"],
+                  ["has_visitor_mgmt", "Visitor Mgmt"],
+                  ["has_exam_system", "Exam"],
+                  ["has_salary_mgmt", "Salary"],
+                  ["has_parent_app", "Parent App"],
+                  ["has_bulk_sms", "Bulk SMS"],
+                ].map(([key, label]) => (
+                  <label key={key as string} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={editForm[key as keyof SchoolFormState] as boolean}
+                      onChange={e => setEditForm(s => s ? { ...s, [key]: e.target.checked } : s)}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </SaModal>
     </SuperAdminLayout>
+  );
+}
+
+function SchoolDetailSkeleton() {
+  return (
+    <>
+      <div className="rounded-xl border border-border bg-card p-5 mb-5 shadow-sm">
+        <div className="flex flex-wrap gap-4 items-start justify-between">
+          <div className="flex gap-4 items-center">
+            <Skeleton className="h-16 w-16 rounded-xl" />
+            <div>
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="mt-2 h-4 w-40" />
+              <div className="flex gap-2 mt-2">
+                <Skeleton className="h-4 w-20 rounded-full" />
+                <Skeleton className="h-4 w-16 rounded-full" />
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Skeleton className="h-8 w-16" />
+            <Skeleton className="h-8 w-20" />
+            <Skeleton className="h-8 w-16" />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1 border-b border-border mb-5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-8 w-24" />
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="rounded-xl border border-border bg-card p-5">
+          <Skeleton className="h-4 w-40" />
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-4 w-full" />
+            ))}
+          </div>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-5">
+          <Skeleton className="h-4 w-36" />
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+          <Skeleton className="mt-4 h-3 w-32" />
+          <Skeleton className="mt-2 h-12 w-full" />
+        </div>
+        <div className="lg:col-span-2 rounded-xl border border-border bg-card p-5">
+          <Skeleton className="h-4 w-40" />
+          <div className="mt-3 flex flex-wrap gap-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-4 w-20 rounded-full" />
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

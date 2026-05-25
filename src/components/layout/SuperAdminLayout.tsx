@@ -8,6 +8,7 @@ import {
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
 import { SUPER_ADMIN_USER } from "@/lib/superAdminMockData";
+import { clearPlatformAuth, getPlatformAuth } from "@/lib/platformAuth";
 
 type NavItem = { to: string; label: string; icon: typeof Globe; exact?: boolean };
 type NavSection = { label: string; items: NavItem[] };
@@ -58,6 +59,9 @@ interface Props {
 export function SuperAdminLayout({ title, subtitle, headerExtra, breadcrumbs, children }: Props) {
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: s => s.location.pathname });
+  const platformUser = getPlatformAuth()?.user;
+  const displayName = platformUser?.name ?? SUPER_ADMIN_USER.name;
+  const displayRole = platformUser?.role ?? SUPER_ADMIN_USER.role;
 
   return (
     <div className="flex min-h-screen bg-background super-admin-shell">
@@ -122,18 +126,22 @@ export function SuperAdminLayout({ title, subtitle, headerExtra, breadcrumbs, ch
 
         <div className="border-t border-white/10 p-4">
           <Link
-            to="/dashboard"
+            to="/login"
+            onClick={() => {
+              clearPlatformAuth();
+              setOpen(false);
+            }}
             className="flex items-center gap-2 text-xs text-white/50 hover:text-white mb-3 transition-colors"
           >
-            <LogOut className="h-3.5 w-3.5" /> Exit to School Admin
+            <LogOut className="h-3.5 w-3.5" /> Logout
           </Link>
           <div className="flex items-center gap-3">
             <div className="grid h-10 w-10 place-items-center rounded-full bg-amber-500 text-amber-950 font-bold text-sm">
-              {SUPER_ADMIN_USER.name.split(" ").map(p => p[0]).join("").slice(0, 2)}
+              {displayName.split(" ").map(p => p[0]).join("").slice(0, 2)}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-white truncate">{SUPER_ADMIN_USER.name}</div>
-              <div className="text-[11px] text-amber-200/70">{SUPER_ADMIN_USER.role}</div>
+              <div className="text-sm font-semibold text-white truncate">{displayName}</div>
+              <div className="text-[11px] text-amber-200/70">{displayRole}</div>
             </div>
           </div>
         </div>

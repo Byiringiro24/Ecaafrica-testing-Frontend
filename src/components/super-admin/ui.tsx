@@ -51,16 +51,9 @@ export function SaModal({
   footer?: ReactNode;
   wide?: boolean;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div
         className={cn(
           "bg-card rounded-2xl shadow-2xl w-full max-h-[90vh] flex flex-col border border-border",

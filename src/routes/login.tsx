@@ -4,23 +4,34 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  GraduationCap, Loader2, ShieldCheck, Building2, Users, ArrowLeft,
+  Loader2, ArrowLeft,
 } from "lucide-react";
 import logo from "@/assets/netrack-logo.png";
-import { MOCK_USERS } from "@/lib/teacherStaffData";
 import { toast } from "sonner";
+import { apiRequest } from "@/lib/api";
+import { setPlatformAuth } from "@/lib/platformAuth";
 
-export const Route = createFileRoute("/login")({ component: LoginPage });
+type LoginResponse = {
+  user: { id: string; name?: string | null; email?: string | null; role?: string | null };
+  accessToken: string;
+  refreshToken?: string | null;
+};
 
-const DEMO_ROLES = [
-  { label: "School Admin", sub: "View Demo", to: "/dashboard", icon: Building2 },
-  { label: "Teacher Panel", sub: "View Demo", to: "/teacher/dashboard", icon: GraduationCap },
-  { label: "Staff Panel", sub: "View Demo", to: "/staff/dashboard", icon: ShieldCheck },
-  { label: "Super Admin", sub: "View Demo", to: "/super-admin", icon: Users },
-];
+type LoginMode = "school" | "platform";
+
+export const Route = createFileRoute("/login")({
+  component: LoginPage,
+  validateSearch: (search) => ({
+    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+    mode: search.mode === "platform" ? "platform" : "school"
+  })
+});
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { redirect, mode } = Route.useSearch();
+  const loginMode: LoginMode = mode ?? "school";
+  const isPlatform = loginMode === "platform";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -31,22 +42,47 @@ function LoginPage() {
     setError("");
     if (!email || !password) { setError("Please enter both email and password."); return; }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 700));
-    const user = MOCK_USERS.find(u => u.email === email && u.password === password);
-    if (!user) {
-      setError("Invalid email or password. Please try again.");
-      setLoading(false);
-      return;
-    }
-    try { localStorage.setItem("ecareafrica_user", JSON.stringify(user)); } catch {}
-    toast.success(`Welcome back, ${user.name}!`);
-    setTimeout(() => navigate({ to: user.redirectTo }), 400);
-  };
+    try {
+      const result = await apiRequest<LoginResponse>(
+        isPlatform ? "/auth/platform/login" : "/auth/login",
+        {
+          method: "POST",
+          body: JSON.stringify({ email, password }),
+          auth: "none"
+        }
+      );
 
-  const goDemo = (to: string, label: string) => {
-    if (to === "#") return;
-    toast.success(`Loading ${label} demo…`);
-    setTimeout(() => navigate({ to }), 300);
+      if (isPlatform) {
+        setPlatformAuth({
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken ?? null,
+          user: result.user
+        });
+      } else {
+        window.localStorage.setItem(
+          "eca_school_auth",
+          JSON.stringify({
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken ?? null,
+            user: result.user
+          })
+        );
+      }
+
+      toast.success(
+        `Welcome back, ${result.user?.name ?? (isPlatform ? "Platform Admin" : "School Admin")}!`
+      );
+      const fallbackRoute = isPlatform ? "/super-admin" : "/dashboard";
+      navigate({ to: isPlatform ? (redirect || fallbackRoute) : fallbackRoute });
+    } catch (err) {
+      const message =
+        typeof err === "object" && err !== null && "message" in err
+          ? String((err as { message: string }).message)
+          : "Login failed. Please try again.";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -72,8 +108,14 @@ function LoginPage() {
             <div className="w-16 h-16 bg-[#0A3D91]/5 rounded-2xl mx-auto flex items-center justify-center mb-4 text-[#0A3D91]">
               <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.0" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></svg>
             </div>
-            <h1 className="font-display text-2xl font-bold text-[#0A3D91] mb-2">Welcome back</h1>
-            <p className="text-xs text-[#5F6B7A]">Enter your credentials to access your academic dashboard</p>
+            <h1 className="font-display text-2xl font-bold text-[#0A3D91] mb-2">
+              {isPlatform ? "Platform Login" : "School Login"}
+            </h1>
+            <p className="text-xs text-[#5F6B7A]">
+              {isPlatform
+                ? "Sign in with your platform admin credentials"
+                : "Sign in with your school admin credentials"}
+            </p>
           </div>
 
           {error && (
@@ -85,12 +127,12 @@ function LoginPage() {
           <form onSubmit={onSubmit} className="space-y-5">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-[10px] uppercase tracking-wider text-[#5F6B7A] font-bold">Email address</Label>
-              <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} disabled={loading} placeholder="admin@gspk.rw" required className="bg-[#F4F7FC]/50 h-11 border-[#EEF4FF] focus-visible:ring-[#0A3D91] rounded-xl" />
+              <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} disabled={loading} placeholder={isPlatform ? "admin@platform.test" : "admin@school.rw"} required className="bg-[#F4F7FC]/50 h-11 border-[#EEF4FF] focus-visible:ring-[#0A3D91] rounded-xl" />
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password" className="text-[10px] uppercase tracking-wider text-[#5F6B7A] font-bold">Password</Label>
-                <span className="text-xs text-[#42A5F5] font-semibold cursor-pointer hover:underline">Forgot password?</span>
+                <Link to="/forgot-password" className="text-xs text-[#42A5F5] font-semibold hover:underline">Forgot password?</Link>
               </div>
               <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} disabled={loading} required className="bg-[#F4F7FC]/50 h-11 border-[#EEF4FF] focus-visible:ring-[#0A3D91] rounded-xl" />
             </div>
@@ -100,30 +142,21 @@ function LoginPage() {
             </Button>
           </form>
 
-          <div className="my-6 flex items-center gap-3 text-xs text-[#EEF4FF]">
-            <div className="flex-1 h-px bg-[#EEF4FF]" /> <span className="text-[#5F6B7A]">OR</span> <div className="flex-1 h-px bg-[#EEF4FF]" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5">
-            {DEMO_ROLES.map((r) => {
-              const Icon = r.icon;
-              return (
-                <button key={r.label} type="button"
-                  onClick={() => goDemo(r.to, r.label)}
-                  className="group rounded-lg border border-[#EEF4FF] bg-white px-3 py-2.5 text-left transition-all hover:border-[#0A3D91] hover:text-[#0A3D91] flex items-center gap-2.5 shadow-sm hover:shadow-md">
-                  <Icon className="h-4 w-4 shrink-0 text-[#5F6B7A] group-hover:text-[#0A3D91]" />
-                  <div>
-                    <div className="text-xs font-semibold leading-tight text-[#1A1A1A] group-hover:text-[#0A3D91]">{r.label}</div>
-                    <div className="text-[10px] text-[#8A94A6]">{r.sub}</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-8 text-center text-xs text-[#5F6B7A] pt-6 border-t border-[#EEF4FF]">
-            Need a school account?{" "}
-            <Link to="/contact" className="text-[#42A5F5] font-bold hover:underline">Contact sales</Link>
+          <div className="mt-8 text-center text-xs text-[#5F6B7A] pt-6 border-t border-[#EEF4FF] space-y-2">
+            <div>
+              Need a school account?{" "}
+              <Link to="/contact" className="text-[#42A5F5] font-bold hover:underline">Contact sales</Link>
+            </div>
+            <div>
+              {isPlatform ? "School login?" : "Platform admin?"}{" "}
+              <Link
+                to="/login"
+                search={{ redirect, mode: isPlatform ? "school" : "platform" }}
+                className="text-[#42A5F5] font-bold hover:underline"
+              >
+                {isPlatform ? "School Login" : "Platform Login"}
+              </Link>
+            </div>
           </div>
         </div>
       </div>

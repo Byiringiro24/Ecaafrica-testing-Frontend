@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Menu } from "lucide-react";
 import { toast } from "sonner";
+import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 
 interface Props {
   title: string;
@@ -11,6 +12,7 @@ interface Props {
 
 export function AppHeader({ title, subtitle, onMenuClick }: Props) {
   const [profileOpen, setProfileOpen] = useState(false);
+  const currentUser = useCurrentUser();
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur-md">
       <div className="flex items-center gap-4 px-4 md:px-8 py-4">
@@ -36,12 +38,24 @@ export function AppHeader({ title, subtitle, onMenuClick }: Props) {
             className="hidden sm:flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted"
           >
             <div className="text-right leading-tight">
-              <div className="text-sm font-semibold">Mugisha Jean</div>
-              <div className="text-[11px] text-muted-foreground">Super Admin</div>
+              <div className="text-sm font-semibold">
+                {currentUser?.name ?? "Loading…"}
+              </div>
+              <div className="text-[11px] text-muted-foreground">
+                {currentUser?.role ? formatRole(currentUser.role) : ""}
+              </div>
             </div>
-            <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground text-sm font-bold">
-              MJ
-            </div>
+            {currentUser?.avatar_url ? (
+              <img
+                src={currentUser.avatar_url}
+                alt={currentUser.name}
+                className="h-10 w-10 rounded-full object-cover shrink-0"
+              />
+            ) : (
+              <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground text-sm font-bold shrink-0">
+                {currentUser ? getInitials(currentUser.name) : "…"}
+              </div>
+            )}
           </button>
 
           {profileOpen && (

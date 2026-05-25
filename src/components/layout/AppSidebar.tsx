@@ -8,6 +8,7 @@ import {
 import { cn } from "@/lib/utils";
 import { schoolConfig } from "@/lib/mockData";
 import logo from "@/assets/logo.png";
+import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 
 interface NavItem { to: string; label: string; icon: any; module: string; }
 interface Section { id: string; label: string; items: NavItem[]; }
@@ -48,6 +49,7 @@ interface Props { open: boolean; onClose: () => void; }
 export function AppSidebar({ open, onClose }: Props) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const currentUser = useCurrentUser();
 
   const toggle = (id: string) => setCollapsed(p => ({ ...p, [id]: !p[id] }));
 
@@ -129,10 +131,24 @@ export function AppSidebar({ open, onClose }: Props) {
 
         <div className="border-t border-sidebar-border p-4">
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground font-semibold text-sm">MJ</div>
+            {currentUser?.avatar_url ? (
+              <img
+                src={currentUser.avatar_url}
+                alt={currentUser.name}
+                className="h-10 w-10 rounded-full object-cover shrink-0"
+              />
+            ) : (
+              <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground font-semibold text-sm shrink-0">
+                {currentUser ? getInitials(currentUser.name) : "…"}
+              </div>
+            )}
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-sidebar-foreground truncate">Mugisha Jean</div>
-              <div className="text-[11px] text-sidebar-foreground/60">School Admin</div>
+              <div className="text-sm font-semibold text-sidebar-foreground truncate">
+                {currentUser?.name ?? "Loading…"}
+              </div>
+              <div className="text-[11px] text-sidebar-foreground/60">
+                {currentUser?.role ? formatRole(currentUser.role) : ""}
+              </div>
             </div>
             <button className="rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-foreground" aria-label="Logout">
               <LogOut className="h-4 w-4" />

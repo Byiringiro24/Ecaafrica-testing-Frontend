@@ -566,6 +566,8 @@ function RegisterStaffModal({
 }) {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const roleOptions = [
     { label: "Teacher", value: "teacher" },
     { label: "Staff", value: "staff" },
@@ -611,7 +613,11 @@ function RegisterStaffModal({
     }
   }, [departments, data.department]);
 
-  const update = (k: string, v: any) => setData(p => ({ ...p, [k]: v }));
+  const update = (k: string, v: any) => {
+    setData(p => ({ ...p, [k]: v }));
+    if (submissionError) setSubmissionError(null);
+    if (k === "email" && emailError) setEmailError(null);
+  };
   const valid1 = data.name.trim() && (data.phone.trim() || data.email.trim());
   const valid2 = data.joinDate;
   const valid3 = !data.generateLogin || data.password.trim().length >= 8;
@@ -623,6 +629,8 @@ function RegisterStaffModal({
 
   const submit = async () => {
     if (!valid1 || !valid2 || !valid3) return;
+    setSubmissionError(null);
+    setEmailError(null);
     setSubmitting(true);
     try {
       const password = data.password.trim();
@@ -672,7 +680,22 @@ function RegisterStaffModal({
       onSuccess();
       onClose();
     } catch (error: any) {
-      toast.error(error?.message ?? "Failed to register staff");
+      const rawMessage = error?.message ?? "Failed to register staff";
+      const isEmailConflict =
+        error?.status === 409 ||
+        error?.code === "conflict" ||
+        /email already in use/i.test(rawMessage);
+
+      if (isEmailConflict) {
+        const message = "Email already in use. Use a different email or update the existing staff account.";
+        setEmailError(message);
+        setSubmissionError(message);
+        setStep(1);
+        toast.error(message);
+      } else {
+        setSubmissionError(rawMessage);
+        toast.error(rawMessage);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -715,6 +738,11 @@ function RegisterStaffModal({
         </div>
         <div className="px-6 py-2"><div className="h-1 bg-muted rounded-full overflow-hidden"><div className="h-full bg-primary transition-all" style={{ width: `${step * 25}%` }} /></div></div>
         <div className="px-6 py-5 max-h-[60vh] overflow-y-auto">
+          {submissionError && (
+            <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {submissionError}
+            </div>
+          )}
           {step === 1 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Full Name *" value={data.name} onChange={(v: any) => update("name", v)} required />
@@ -722,7 +750,7 @@ function RegisterStaffModal({
               <Field label="Date of Birth" type="date" value={data.dob} onChange={(v: any) => update("dob", v)} />
               <Field label="National ID" value={data.nationalId} onChange={(v: any) => update("nationalId", v)} />
               <Field label="Phone" value={data.phone} onChange={(v: any) => update("phone", v)} placeholder="+250 7XX XXX XXX" />
-              <Field label="Email" value={data.email} onChange={(v: any) => update("email", v)} />
+              <Field label="Email" value={data.email} onChange={(v: any) => update("email", v)} error={emailError ?? undefined} />
               <Field label="Address" value={data.address} onChange={(v: any) => update("address", v)} />
               <Field label="Emergency Contact" value={data.emergency} onChange={(v: any) => update("emergency", v)} />
             </div>
@@ -792,20 +820,22 @@ function RegisterStaffModal({
   );
 }
 
-function Field({ label, value, onChange, type = "text", options, optionLabels, placeholder, required, disabled }: any) {
+function Field({ label, value, onChange, type = "text", options, optionLabels, placeholder, required, disabled, error }: any) {
+  const borderClass = error || (required && !value) ? "border-destructive" : "border-border";
   return (
     <div>
       <label className="block text-xs font-semibold text-muted-foreground mb-1.5">{label}</label>
       {type === "select" ? (
-        <select value={value} onChange={e => onChange(e.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm">
+        <select value={value} onChange={e => onChange(e.target.value)} className={`h-10 w-full rounded-lg border ${borderClass} bg-background px-3 text-sm`}>
           {options.map((o: string) => (
             <option key={o} value={o}>{optionLabels?.[o] ?? o}</option>
           ))}
         </select>
       ) : (
         <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
-          className={`h-10 w-full rounded-lg border bg-background px-3 text-sm disabled:opacity-60 ${required && !value ? "border-destructive" : "border-border"}`} />
+          className={`h-10 w-full rounded-lg border bg-background px-3 text-sm disabled:opacity-60 ${borderClass}`} />
       )}
+      {error && <div className="mt-1 text-xs text-destructive">{error}</div>}
     </div>
   );
 }

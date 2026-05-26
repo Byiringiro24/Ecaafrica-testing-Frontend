@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Search, Send, History, Megaphone, Download, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -6,26 +6,176 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { SMSComposeModal } from "@/components/modals/SMSComposeModal";
 import { ConfirmModal } from "@/components/modals/ConfirmModal";
-import {
-  PARENTS, STUDENTS, SMS_LOGS, DISTRICT_LIST, TODAY_ATTENDANCE, type Parent,
-} from "@/lib/mockData";
+import { apiRequest } from "@/lib/api";
+import { SMS_LOGS, TODAY_ATTENDANCE } from "@/lib/mockData";
 
 export const Route = createFileRoute("/parents")({ component: ParentsPage });
+
+type ParentRecord = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+  phone_alt?: string | null;
+  email?: string | null;
+  address?: string | null;
+};
+
+type StudentRecord = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  current_section?: { name?: string | null; full_name?: string | null } | null;
+  primary_parent?: { first_name?: string | null; last_name?: string | null; phone?: string | null } | null;
+};
+
+type StudentView = {
+  id: string;
+  name: string;
+  class: string;
+  parentName: string;
+  parentPhone: string;
+};
+
+type ParentRow = {
+  id: string;
+  name: string;
+  phone: string;
+  district: string;
+  studentIds: string[];
+  lastSMSSent: string;
+  totalSMSCount: number;
+};
+
+const UNKNOWN_DISTRICT = "Unknown";
+
+const buildFullName = (first?: string | null, last?: string | null) =>
+  [first, last].filter(Boolean).join(" ").trim();
+
+const extractDistrict = (address?: string | null) => {
+  if (!address) return UNKNOWN_DISTRICT;
+  const parts = address.split(",").map((p) => p.trim()).filter(Boolean);
+  if (!parts.length) return UNKNOWN_DISTRICT;
+  return parts[parts.length - 1];
+};
 
 function ParentsPage() {
   const [q, setQ] = useState("");
   const [district, setDistrict] = useState("All");
   const [smsStatus, setSmsStatus] = useState("All");
   const [composeFor, setComposeFor] = useState<string | null>(null);
-  const [historyFor, setHistoryFor] = useState<Parent | null>(null);
+  const [historyFor, setHistoryFor] = useState<ParentRow | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [parents, setParents] = useState<ParentRecord[]>([]);
+  const [students, setStudents] = useState<StudentRecord[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const filtered = PARENTS.filter(p => {
-    if (district !== "All" && p.district !== district) return false;
+  const studentViews = useMemo<StudentView[]>(() =>
+    students.map((student) => {
+      const name = buildFullName(student.first_name, student.last_name) || "Unnamed";
+      const className = student.current_section?.name ?? student.current_section?.full_name ?? "—";
+      const parentName = buildFullName(student.primary_parent?.first_name, student.primary_parent?.last_name);
+      return {
+        id: student.id,
+        name,
+        class: className,
+        parentName,
+        parentPhone: student.primary_parent?.phone ?? ""
+      };
+    }),
+    [students]
+  );
+
+  const studentsById = useMemo(() =>
+    new Map(studentViews.map((student) => [student.id, student])),
+    [studentViews]
+  );
+
+  const parentRows = useMemo<ParentRow[]>(() => {
+    const studentsByParentPhone = new Map<string, string[]>();
+    studentViews.forEach((student) => {
+      if (!student.parentPhone) return;
+      const existing = studentsByParentPhone.get(student.parentPhone) ?? [];
+      existing.push(student.id);
+      studentsByParentPhone.set(student.parentPhone, existing);
+    });
+
+    return parents.map((parent) => {
+      const name = buildFullName(parent.first_name, parent.last_name) || "Unnamed";
+      const smsLogs = SMS_LOGS.filter(
+        (log) => log.phone === parent.phone || log.parentName === name
+      );
+
+      return {
+        id: parent.id,
+        name,
+        phone: parent.phone,
+        district: extractDistrict(parent.address),
+        studentIds: studentsByParentPhone.get(parent.phone) ?? [],
+        lastSMSSent: smsLogs[0]?.timestamp ?? "—",
+        totalSMSCount: smsLogs.length
+      };
+    });
+  }, [parents, studentViews]);
+
+  const districtOptions = useMemo(() => {
+    const districts = new Set<string>();
+    parentRows.forEach((parent) => {
+      if (parent.district) districts.add(parent.district);
+    });
+    return Array.from(districts).sort();
+  }, [parentRows]);
+
+  const smsParents = useMemo(() =>
+    parentRows.map((parent) => ({
+      id: parent.id,
+      name: parent.name,
+      phone: parent.phone,
+      studentIds: parent.studentIds
+    })),
+    [parentRows]
+  );
+
+  const smsStudents = useMemo(() =>
+    studentViews.map((student) => ({
+      id: student.id,
+      name: student.name,
+      class: student.class,
+      parentName: student.parentName,
+      parentPhone: student.parentPhone
+    })),
+    [studentViews]
+  );
+
+  const loadParents = async () => {
+    setLoading(true);
+    try {
+      const [parentData, studentData] = await Promise.all([
+        apiRequest<ParentRecord[]>("/parents?limit=1000", { auth: "school" }),
+        apiRequest<StudentRecord[]>("/students?limit=2000", { auth: "school" })
+      ]);
+
+      setParents(Array.isArray(parentData) ? parentData : []);
+      setStudents(Array.isArray(studentData) ? studentData : []);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load parent records");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadParents();
+  }, []);
+
+  const filtered = parentRows.filter((parent) => {
+    if (district !== "All" && parent.district !== district) return false;
     if (q) {
       const t = q.toLowerCase();
-      const childMatch = p.studentIds.some(id => STUDENTS.find(s => s.id === id)?.name.toLowerCase().includes(t));
-      if (!p.name.toLowerCase().includes(t) && !p.phone.includes(t) && !childMatch) return false;
+      const childMatch = parent.studentIds.some((id) =>
+        studentsById.get(id)?.name.toLowerCase().includes(t)
+      );
+      if (!parent.name.toLowerCase().includes(t) && !parent.phone.includes(t) && !childMatch) return false;
     }
     return true;
   });
@@ -34,9 +184,9 @@ function ParentsPage() {
   const sentToday = SMS_LOGS.filter(s => s.status === "sent").length;
 
   return (
-    <AppLayout title="Parent Management" subtitle={`${PARENTS.length} parents registered`}>
+    <AppLayout title="Parent Management" subtitle={`${parentRows.length} parents registered`}>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-        <Stat label="Total Parents" value={PARENTS.length} />
+        <Stat label="Total Parents" value={parentRows.length} />
         <Stat label="SMS Sent Today" value={sentToday} tone="success" />
         <Stat label="Failed Deliveries" value={failedToday} tone="destructive"
           extra={failedToday > 0 && <button onClick={() => toast.success("Retrying failed SMS…")} className="text-xs font-semibold text-destructive hover:underline">Retry All</button>} />
@@ -49,7 +199,7 @@ function ParentsPage() {
             className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
         </div>
         <select value={district} onChange={e => setDistrict(e.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm">
-          <option>All</option>{DISTRICT_LIST.map(d => <option key={d}>{d}</option>)}
+          <option>All</option>{districtOptions.map(d => <option key={d}>{d}</option>)}
         </select>
         <select value={smsStatus} onChange={e => setSmsStatus(e.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm">
           <option>All</option><option>Sent</option><option>Failed</option><option>Pending</option>
@@ -70,46 +220,78 @@ function ParentsPage() {
                 <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr>
             </thead>
             <tbody>
-              {filtered.map(p => {
-                const children = p.studentIds.map(id => STUDENTS.find(s => s.id === id)).filter(Boolean);
-                return (
-                  <tr key={p.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5"><Avatar name={p.name} size="sm" />
-                        <span className="font-medium">{p.name}</span></div>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs">{p.phone}</td>
-                    <td className="px-4 py-3">{p.district}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
-                        {children.map(c => c && (
-                          <span key={c.id} className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold">
-                            {c.name.split(" ")[0]} <span className="opacity-70">({c.class})</span>
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{p.lastSMSSent}</td>
-                    <td className="px-4 py-3">{p.totalSMSCount}</td>
-                    <td className="px-4 py-3 space-x-2 whitespace-nowrap">
-                      <button onClick={() => setComposeFor(p.id)} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
-                        <Send className="h-3 w-3" /> Send SMS
-                      </button>
-                      <button onClick={() => setHistoryFor(p)} className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:underline">
-                        <History className="h-3 w-3" /> History
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    <Loader2 className="inline-flex h-4 w-4 animate-spin mr-2" /> Loading parents…
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                    No parents found.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((parent) => {
+                  const children = parent.studentIds
+                    .map((id) => studentsById.get(id))
+                    .filter(Boolean);
+
+                  return (
+                    <tr key={parent.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5"><Avatar name={parent.name} size="sm" />
+                          <span className="font-medium">{parent.name}</span></div>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs">{parent.phone}</td>
+                      <td className="px-4 py-3">{parent.district}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {children.length === 0 && (
+                            <span className="text-xs text-muted-foreground">No linked students</span>
+                          )}
+                          {children.map((child) => child && (
+                            <span key={child.id} className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold">
+                              {child.name.split(" ")[0]} <span className="opacity-70">({child.class})</span>
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{parent.lastSMSSent}</td>
+                      <td className="px-4 py-3">{parent.totalSMSCount}</td>
+                      <td className="px-4 py-3 space-x-2 whitespace-nowrap">
+                        <button onClick={() => setComposeFor(parent.id)} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+                          <Send className="h-3 w-3" /> Send SMS
+                        </button>
+                        <button onClick={() => setHistoryFor(parent)} className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:underline">
+                          <History className="h-3 w-3" /> History
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      <SMSComposeModal open={!!composeFor} parentId={composeFor || undefined} onClose={() => setComposeFor(null)} />
+      <SMSComposeModal
+        open={!!composeFor}
+        parentId={composeFor || undefined}
+        parents={smsParents}
+        students={smsStudents}
+        onClose={() => setComposeFor(null)}
+      />
       {historyFor && <HistoryDrawer parent={historyFor} onClose={() => setHistoryFor(null)} />}
-      {bulkOpen && <BulkSMSModal onClose={() => setBulkOpen(false)} />}
+      {bulkOpen && (
+        <BulkSMSModal
+          onClose={() => setBulkOpen(false)}
+          parentCount={parentRows.length}
+          students={smsStudents}
+        />
+      )}
     </AppLayout>
   );
 }
@@ -125,8 +307,8 @@ function Stat({ label, value, tone = "primary", extra }: { label: string; value:
   );
 }
 
-function HistoryDrawer({ parent, onClose }: { parent: Parent; onClose: () => void }) {
-  const logs = SMS_LOGS.filter(l => l.parentName === parent.name);
+function HistoryDrawer({ parent, onClose }: { parent: ParentRow; onClose: () => void }) {
+  const logs = SMS_LOGS.filter((log) => log.phone === parent.phone || log.parentName === parent.name);
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/50" onClick={onClose} />
@@ -165,7 +347,15 @@ function HistoryDrawer({ parent, onClose }: { parent: Parent; onClose: () => voi
   );
 }
 
-function BulkSMSModal({ onClose }: { onClose: () => void }) {
+function BulkSMSModal({
+  onClose,
+  parentCount,
+  students
+}: {
+  onClose: () => void;
+  parentCount: number;
+  students: StudentView[];
+}) {
   const [target, setTarget] = useState<"all"|"absent"|"risk"|"class">("absent");
   const [cls, setCls] = useState("S1A");
   const [message, setMessage] = useState("Mubyeyi, umwana wanyu yagombye kuza ku ishuri uyu munsi. Murakoze. — SmartAttend");
@@ -173,11 +363,11 @@ function BulkSMSModal({ onClose }: { onClose: () => void }) {
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
 
   const targetCount = useMemo(() => {
-    if (target === "all") return PARENTS.length;
+    if (target === "all") return parentCount;
     if (target === "absent") return TODAY_ATTENDANCE.filter(a => a.status === "Absent").length;
-    if (target === "risk") return STUDENTS.filter(s => s.attendanceRate < 70).length;
-    return STUDENTS.filter(s => s.class === cls).length;
-  }, [target, cls]);
+    if (target === "risk") return 0;
+    return students.filter(s => s.class === cls).length;
+  }, [target, cls, parentCount, students]);
 
   const start = () => {
     setProgress({ current: 0, total: targetCount });

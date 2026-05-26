@@ -9,27 +9,55 @@ interface Props {
   parentId?: string;
   studentId?: string;
   defaultStatus?: "Present" | "Absent" | "Late";
+  parents?: {
+    id: string;
+    name: string;
+    phone: string;
+    studentIds?: string[];
+  }[];
+  students?: {
+    id: string;
+    name: string;
+    class?: string;
+    parentName?: string;
+    parentPhone?: string;
+  }[];
 }
 
-export function SMSComposeModal({ open, onClose, parentId, studentId, defaultStatus = "Absent" }: Props) {
+export function SMSComposeModal({
+  open,
+  onClose,
+  parentId,
+  studentId,
+  defaultStatus = "Absent",
+  parents,
+  students
+}: Props) {
   const [lang, setLang] = useState<"en" | "rw">("rw");
   const [status, setStatus] = useState(defaultStatus);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
 
+  const parentSource = parents ?? PARENTS;
+  const studentSource = students ?? STUDENTS;
+
   const student = useMemo(() => {
-    if (studentId) return STUDENTS.find(s => s.id === studentId);
+    if (studentId) return studentSource.find(s => s.id === studentId);
     if (parentId) {
-      const p = PARENTS.find(x => x.id === parentId);
-      return p ? STUDENTS.find(s => s.id === p.studentIds[0]) : undefined;
+      const p = parentSource.find(x => x.id === parentId);
+      const firstChildId = p?.studentIds?.[0];
+      return firstChildId ? studentSource.find(s => s.id === firstChildId) : undefined;
     }
     return undefined;
-  }, [studentId, parentId]);
+  }, [studentId, parentId, parentSource, studentSource]);
 
   const parent = useMemo(() => {
-    if (parentId) return PARENTS.find(p => p.id === parentId);
-    return student ? PARENTS.find(p => p.name === student.parentName) : undefined;
-  }, [parentId, student]);
+    if (parentId) return parentSource.find(p => p.id === parentId);
+    if (!student) return undefined;
+    return parentSource.find(
+      (p) => p.name === student.parentName || (student.parentPhone && p.phone === student.parentPhone)
+    );
+  }, [parentId, student, parentSource]);
 
   useEffect(() => {
     if (!open || !student || !parent) return;
@@ -37,7 +65,7 @@ export function SMSComposeModal({ open, onClose, parentId, studentId, defaultSta
     setMessage(fillTemplate(tpl, {
       parentName: parent.name,
       studentName: student.name,
-      class: student.class,
+      class: student.class ?? "—",
       date: new Date().toLocaleDateString("en-GB"),
       time: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
       status: status.toLowerCase(),

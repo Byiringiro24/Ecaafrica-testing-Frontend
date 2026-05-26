@@ -104,6 +104,7 @@ function StudentsPage() {
   const female = students.filter(s => s.gender === "female").length;
   const boarding = students.filter(s => s.student_type === "boarding").length;
   const day = students.filter(s => s.student_type === "day").length;
+  const isEmpty = total === 0;
 
   const handleEditSuccess = async () => {
     setProfile(null);
@@ -168,7 +169,17 @@ function StudentsPage() {
             </button>
           </div>
 
-          {view === "grid" ? (
+          {isEmpty ? (
+            <div className="mt-10 rounded-xl border border-border bg-card p-8 text-center">
+              <p className="text-sm text-muted-foreground">No students recorded yet.</p>
+              <button
+                onClick={() => setOpen(true)}
+                className="mt-4 h-10 inline-flex items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+              >
+                <UserPlus className="h-4 w-4" /> Register Student
+              </button>
+            </div>
+          ) : view === "grid" ? (
             <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filtered.map(s => {
                 const fullName = `${s.first_name} ${s.last_name}`;
@@ -206,7 +217,7 @@ function StudentsPage() {
                   </div>
                 );
               })}
-              {filtered.length === 0 && (
+              {filtered.length === 0 && total > 0 && (
                 <div className="col-span-full text-center py-16 text-muted-foreground">No students match your search.</div>
               )}
             </div>
@@ -242,7 +253,7 @@ function StudentsPage() {
                         </tr>
                       );
                     })}
-                    {filtered.length === 0 && (
+                    {filtered.length === 0 && total > 0 && (
                       <tr>
                         <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">No students match your search.</td>
                       </tr>

@@ -1,49 +1,530 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { UserCheck, Plus, X, Search, LogOut, Eye, Printer, ChevronRight, ChevronLeft, Calendar, CheckCircle2, Clock, Users } from "lucide-react";
+import { UserCheck, Plus, X, Search, LogOut, Eye, ChevronRight, ChevronLeft, Calendar, CheckCircle2, Clock, Users } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { VISITORS, STAFF, STUDENTS, type Visitor, type Staff, type Student } from "@/lib/mockData";
+import { apiRequest } from "@/lib/api";
 
 export const Route = createFileRoute("/visitors")({ component: VisitorsPage });
 
 const TABS = ["Active Visitors", "Scheduled", "History", "Logs"] as const;
 type Tab = typeof TABS[number];
 
-const hostTitleFor = (role: Staff["role"]) => {
-  if (role === "Admin") return "Head Teacher";
-  if (role === "Teacher") return "Teacher";
-  return "HOD";
+type ApiVisitorType = "parent_guardian" | "organization";
+type ApiVisitorPurpose = "parent_visit" | "official_business" | "delivery" | "inspection" | "other";
+type ApiAppointmentStatus = "pending" | "confirmed" | "cancelled" | "completed";
+
+type ApiVisitor = {
+  id: string;
+  full_name: string;
+  phone?: string | null;
+  email?: string | null;
+  national_id?: string | null;
+  organization?: string | null;
+  visitor_type: ApiVisitorType;
+  created_at: string;
 };
 
-const hostDisplayName = (staff: Staff) => `${hostTitleFor(staff.role)} ${staff.name}`;
+type ApiVisitorSummary = Pick<ApiVisitor, "id" | "full_name" | "visitor_type"> & {
+  phone?: string | null;
+  national_id?: string | null;
+  organization?: string | null;
+};
 
-const VISITOR_TYPES = ["Parent/Guardian", "Organization"] as const;
-type VisitorType = typeof VISITOR_TYPES[number];
+type ApiAppointment = {
+  id: string;
+  visitor_id: string;
+  student_id?: string | null;
+  host_id?: string | null;
+  purpose?: ApiVisitorPurpose | null;
+  appointment_at?: string | null;
+  expected_duration_min?: number | null;
+  notes?: string | null;
+  status?: ApiAppointmentStatus;
+  visitor?: ApiVisitorSummary | null;
+  student?: { id: string; first_name: string; last_name: string } | null;
+  host?: { id: string; name?: string | null; email?: string | null } | null;
+};
 
-const studentLabel = (student: Student) => `${student.name} - ${student.class}`;
+type ApiVisit = {
+  id: string;
+  visitor_id: string;
+  appointment_id?: string | null;
+  student_id?: string | null;
+  host_id?: string | null;
+  purpose?: string | null;
+  checked_in_at?: string | null;
+  expected_out_at?: string | null;
+  checked_out_at?: string | null;
+  checked_in_by?: string | null;
+  checked_out_by?: string | null;
+  notes?: string | null;
+  badge_printed?: boolean | null;
+  sms_sent_host?: boolean | null;
+  visitor?: ApiVisitorSummary | null;
+  appointment?: { id: string; purpose?: ApiVisitorPurpose | null; appointment_at?: string | null } | null;
+  student?: { id: string; first_name: string; last_name: string } | null;
+};
+
+type ApiStudent = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  current_section?: { full_name: string } | null;
+};
+
+type ApiUser = {
+  id: string;
+  name?: string | null;
+  role?: string | null;
+};
+
+type VisitRow = {
+  visitId: string;
+  visitorId: string;
+  appointmentId?: string | null;
+  name: string;
+  nationalId: string;
+  phone: string;
+  organization: string;
+  purpose: string;
+  host: string;
+  visitDate: string;
+  checkinTime: string;
+  checkoutTime?: string;
+  checkinAt?: string | null;
+  checkoutAt?: string | null;
+  checkinBy?: string;
+  checkoutBy?: string;
+  status: "on-campus" | "checked-out";
+  notes?: string;
+};
+
+type AppointmentRow = {
+  appointmentId: string;
+  visitorId: string;
+  studentId?: string | null;
+  hostId?: string | null;
+  name: string;
+  organization: string;
+  host: string;
+  purpose: string;
+  purposeValue?: ApiVisitorPurpose | null;
+  expectedDurationMin?: number | null;
+  appointmentDate: string;
+  appointmentTime: string;
+  status: ApiAppointmentStatus;
+};
+
+type RegisterPayload = {
+  fullName: string;
+  nationalId: string;
+  phone: string;
+  organization: string;
+  visitorType: ApiVisitorType;
+  studentId?: string | null;
+  hostId?: string | null;
+  purpose: ApiVisitorPurpose;
+  appointmentAt: string;
+  expectedDurationMin: number;
+  notes?: string;
+};
+
+const VISITOR_TYPE_OPTIONS = [
+  { label: "Parent/Guardian", value: "parent_guardian" },
+  { label: "Organization", value: "organization" }
+] as const;
+
+const PURPOSE_OPTIONS = [
+  { label: "Parent Visit", value: "parent_visit" },
+  { label: "Official Business", value: "official_business" },
+  { label: "Delivery", value: "delivery" },
+  { label: "Inspection", value: "inspection" },
+  { label: "Other", value: "other" }
+] as const;
+
+const PURPOSE_LABEL: Record<ApiVisitorPurpose, string> = {
+  parent_visit: "Parent Visit",
+  official_business: "Official Business",
+  delivery: "Delivery",
+  inspection: "Inspection",
+  other: "Other"
+};
+
+const hostTitleFor = (role?: string | null) => {
+  if (!role) return "";
+  const normalized = role.toLowerCase();
+  if (normalized.includes("admin")) return "Head Teacher";
+  if (normalized.includes("teacher")) return "Teacher";
+  if (normalized.includes("hod")) return "HOD";
+  return "";
+};
+
+const hostDisplayName = (staff?: ApiUser | null) => {
+  if (!staff?.name) return "—";
+  const title = hostTitleFor(staff.role);
+  return title ? `${title} ${staff.name}` : staff.name;
+};
+
+const studentLabel = (student: ApiStudent) => {
+  const name = `${student.first_name} ${student.last_name}`.trim();
+  const section = student.current_section?.full_name ?? "—";
+  return `${name} - ${section}`;
+};
+
+const formatTime = (value?: string | null) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+};
+
+const formatDate = (value?: string | null) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString();
+};
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString([], {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+};
+
+const toPurposeLabel = (value?: string | null) => {
+  if (!value) return "Other";
+  if (value in PURPOSE_LABEL) return PURPOSE_LABEL[value as ApiVisitorPurpose];
+  return value;
+};
+
+const buildOrganizationLabel = (
+  visitor?: ApiVisitor | ApiVisitorSummary | null,
+  student?: { first_name: string; last_name: string } | null
+) => {
+  if (!visitor) return "—";
+  if (visitor.visitor_type === "parent_guardian" && student) {
+    const name = `${student.first_name} ${student.last_name}`.trim();
+    return name ? `Parent of ${name}` : "Parent/Guardian";
+  }
+  return visitor.organization ?? "—";
+};
+
+const isSameDay = (a: Date, b: Date) =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+const isWithinDays = (value: Date, days: number) => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - (days - 1));
+  return value >= start;
+};
+
+const durationToMinutes = (label: string) => {
+  switch (label) {
+    case "30 min":
+      return 30;
+    case "1 hr":
+      return 60;
+    case "2 hrs":
+      return 120;
+    case "Half day":
+      return 240;
+    case "Full day":
+      return 480;
+    default:
+      return 60;
+  }
+};
 
 function VisitorsPage() {
   const [tab, setTab] = useState<Tab>("Active Visitors");
-  const [list, setList] = useState<Visitor[]>(VISITORS);
+  const [visitors, setVisitors] = useState<ApiVisitor[]>([]);
+  const [appointments, setAppointments] = useState<ApiAppointment[]>([]);
+  const [visits, setVisits] = useState<ApiVisit[]>([]);
+  const [students, setStudents] = useState<ApiStudent[]>([]);
+  const [hosts, setHosts] = useState<ApiUser[]>([]);
   const [registerOpen, setRegisterOpen] = useState(false);
-  const [checkoutTarget, setCheckoutTarget] = useState<Visitor | null>(null);
-  const [viewing, setViewing] = useState<Visitor | null>(null);
+  const [checkoutTarget, setCheckoutTarget] = useState<VisitRow | null>(null);
+  const [viewing, setViewing] = useState<VisitRow | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadVisitorData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [visitorData, appointmentData, visitData, studentData, hostData] = await Promise.all([
+        apiRequest<ApiVisitor[]>("/visitors?limit=1000", { auth: "school" }),
+        apiRequest<ApiAppointment[]>("/visitor-appointments?limit=1000", { auth: "school" }),
+        apiRequest<ApiVisit[]>("/visitor-visits?limit=1000", { auth: "school" }),
+        apiRequest<ApiStudent[]>("/students?limit=1000", { auth: "school" }),
+        apiRequest<ApiUser[]>("/users?limit=300", { auth: "school" })
+      ]);
+      setVisitors(Array.isArray(visitorData) ? visitorData : []);
+      setAppointments(Array.isArray(appointmentData) ? appointmentData : []);
+      setVisits(Array.isArray(visitData) ? visitData : []);
+      setStudents(Array.isArray(studentData) ? studentData : []);
+      setHosts(Array.isArray(hostData) ? hostData : []);
+    } catch (err: any) {
+      const msg = err?.message ?? "Failed to load visitor data";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => setLoading(false), 600);
-    return () => clearTimeout(timeoutId);
+    void loadVisitorData();
   }, []);
 
-  const today = list.filter(v => v.date === "today");
-  const onCampus = list.filter(v => v.status === "on-campus").length;
+  const visitorMap = useMemo(
+    () => new Map(visitors.map((visitor) => [visitor.id, visitor])),
+    [visitors]
+  );
+  const hostMap = useMemo(
+    () => new Map(hosts.map((host) => [host.id, host])),
+    [hosts]
+  );
+  const studentMap = useMemo(
+    () => new Map(students.map((student) => [student.id, student])),
+    [students]
+  );
+
+  const visitRows = useMemo<VisitRow[]>(() => {
+    return visits.map((visit) => {
+      const visitorDetails = visitorMap.get(visit.visitor_id) ?? null;
+      const visitor = visitorDetails ?? visit.visitor ?? null;
+      const student =
+        visit.student ?? (visit.student_id ? studentMap.get(visit.student_id) ?? null : null);
+      const host = visit.host_id ? hostMap.get(visit.host_id) ?? null : null;
+      const checkinBy = visit.checked_in_by
+        ? hostDisplayName(hostMap.get(visit.checked_in_by) ?? null)
+        : "—";
+      const checkoutBy = visit.checked_out_by
+        ? hostDisplayName(hostMap.get(visit.checked_out_by) ?? null)
+        : "—";
+      const purposeLabel = toPurposeLabel(visit.purpose ?? visit.appointment?.purpose ?? null);
+      return {
+        visitId: visit.id,
+        visitorId: visit.visitor_id,
+        appointmentId: visit.appointment_id ?? null,
+        name: visitor?.full_name ?? "Unknown Visitor",
+        nationalId: visitorDetails?.national_id ?? "—",
+        phone: visitorDetails?.phone ?? "—",
+        organization: buildOrganizationLabel(visitor, student),
+        purpose: purposeLabel,
+        host: hostDisplayName(host),
+        visitDate: formatDate(visit.checked_in_at ?? visit.checked_out_at ?? null),
+        checkinTime: formatTime(visit.checked_in_at),
+        checkoutTime: visit.checked_out_at ? formatTime(visit.checked_out_at) : undefined,
+        checkinAt: visit.checked_in_at ?? null,
+        checkoutAt: visit.checked_out_at ?? null,
+        checkinBy,
+        checkoutBy,
+        status: visit.checked_out_at ? "checked-out" : "on-campus",
+        notes: visit.notes ?? undefined
+      };
+    });
+  }, [visits, visitorMap, studentMap, hostMap]);
+
+  const scheduledRows = useMemo<AppointmentRow[]>(() => {
+    return appointments
+      .filter((appointment) =>
+        appointment.status !== "cancelled" && appointment.status !== "completed"
+      )
+      .map((appointment) => {
+        const visitor = visitorMap.get(appointment.visitor_id) ?? appointment.visitor ?? null;
+        const student = appointment.student ?? (appointment.student_id ? studentMap.get(appointment.student_id) ?? null : null);
+        const host = appointment.host
+          ? { id: appointment.host.id, name: appointment.host.name ?? null, role: null }
+          : appointment.host_id
+            ? hostMap.get(appointment.host_id) ?? null
+            : null;
+        const appointmentAt = appointment.appointment_at ?? null;
+        const appointmentDate = formatDate(appointmentAt);
+        const appointmentTime = formatTime(appointmentAt);
+        return {
+          appointmentId: appointment.id,
+          visitorId: appointment.visitor_id,
+          studentId: appointment.student_id ?? null,
+          hostId: appointment.host_id ?? appointment.host?.id ?? null,
+          name: visitor?.full_name ?? "Unknown Visitor",
+          organization: buildOrganizationLabel(visitor, student),
+          host: hostDisplayName(host),
+          purpose: toPurposeLabel(appointment.purpose ?? null),
+          purposeValue: appointment.purpose ?? null,
+          expectedDurationMin: appointment.expected_duration_min ?? null,
+          appointmentDate,
+          appointmentTime,
+          status: appointment.status ?? "pending"
+        };
+      });
+  }, [appointments, visitorMap, studentMap, hostMap]);
+
+  const activeVisits = visitRows.filter((row) => row.status === "on-campus");
+  const historyVisits = visitRows.filter((row) => row.status === "checked-out");
+
+  const today = new Date();
+  const todaysCount = visits.filter((visit) => {
+    if (!visit.checked_in_at) return false;
+    const date = new Date(visit.checked_in_at);
+    return !Number.isNaN(date.getTime()) && isSameDay(date, today);
+  }).length;
+  const onCampus = activeVisits.length;
   const pendingCheckout = onCampus;
-  const todaysCount = today.length;
-  const weekTotal = list.filter(v => v.date !== "tomorrow").length;
+  const weekTotal = visits.filter((visit) => {
+    if (!visit.checked_in_at) return false;
+    const date = new Date(visit.checked_in_at);
+    return !Number.isNaN(date.getTime()) && isWithinDays(date, 7);
+  }).length;
+
+  const handleRegister = async (payload: RegisterPayload) => {
+    const appointmentAt = new Date(payload.appointmentAt);
+    if (Number.isNaN(appointmentAt.getTime())) {
+      toast.error("Invalid appointment date/time");
+      return;
+    }
+
+    const visitor = await apiRequest<ApiVisitor>("/visitors", {
+      method: "POST",
+      auth: "school",
+      body: JSON.stringify({
+        full_name: payload.fullName,
+        phone: payload.phone || undefined,
+        national_id: payload.nationalId || undefined,
+        organization: payload.organization || undefined,
+        visitor_type: payload.visitorType
+      })
+    });
+
+    const visitorId = visitor?.id;
+    if (!visitorId) {
+      toast.error("Visitor registration failed");
+      return;
+    }
+
+    const now = new Date();
+    const scheduleOnly = appointmentAt.getTime() > now.getTime();
+
+    if (scheduleOnly) {
+      const appointment = await apiRequest<ApiAppointment>("/visitor-appointments", {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({
+          visitor_id: visitorId,
+          student_id: payload.studentId || undefined,
+          host_id: payload.hostId || undefined,
+          purpose: payload.purpose,
+          appointment_at: appointmentAt.toISOString(),
+          expected_duration_min: payload.expectedDurationMin,
+          notes: payload.notes || undefined
+        })
+      });
+
+      if (appointment?.id) {
+        await apiRequest(`/visitor-appointments/${appointment.id}/confirm`, {
+          method: "PATCH",
+          auth: "school"
+        });
+      }
+
+      toast.success("Visitor scheduled successfully");
+    } else {
+      const expectedOutAt = new Date(now.getTime() + payload.expectedDurationMin * 60_000);
+      await apiRequest("/visitor-visits", {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({
+          visitor_id: visitorId,
+          student_id: payload.studentId || undefined,
+          host_id: payload.hostId || undefined,
+          purpose: payload.purpose,
+          checked_in_at: now.toISOString(),
+          expected_out_at: expectedOutAt.toISOString(),
+          notes: payload.notes || undefined,
+          badge_printed: true,
+          sms_sent_host: true
+        })
+      });
+      toast.success("Visitor checked in successfully");
+    }
+
+    await loadVisitorData();
+  };
+
+  const handleCheckInAppointment = async (row: AppointmentRow) => {
+    if (row.status === "pending") {
+      await apiRequest(`/visitor-appointments/${row.appointmentId}/confirm`, {
+        method: "PATCH",
+        auth: "school"
+      });
+    }
+
+    const now = new Date();
+    const expectedOutAt = row.expectedDurationMin
+      ? new Date(now.getTime() + row.expectedDurationMin * 60_000)
+      : null;
+
+    await apiRequest("/visitor-visits", {
+      method: "POST",
+      auth: "school",
+      body: JSON.stringify({
+        visitor_id: row.visitorId,
+        appointment_id: row.appointmentId,
+        student_id: row.studentId || undefined,
+        host_id: row.hostId || undefined,
+        purpose: row.purposeValue || undefined,
+        checked_in_at: now.toISOString(),
+        expected_out_at: expectedOutAt ? expectedOutAt.toISOString() : undefined
+      })
+    });
+
+    toast.success("Visitor checked in");
+    await loadVisitorData();
+  };
+
+  const handleCancelAppointment = async (appointmentId: string) => {
+    await apiRequest(`/visitor-appointments/${appointmentId}/cancel`, {
+      method: "PATCH",
+      auth: "school"
+    });
+    toast.success("Appointment cancelled");
+    await loadVisitorData();
+  };
+
+  const handleCheckout = async (row: VisitRow, notes: string) => {
+    await apiRequest(`/visitor-visits/${row.visitId}/check-out`, {
+      method: "PATCH",
+      auth: "school",
+      body: JSON.stringify({ notes: notes || undefined })
+    });
+
+    if (row.appointmentId) {
+      try {
+        await apiRequest(`/visitor-appointments/${row.appointmentId}/complete`, {
+          method: "PATCH",
+          auth: "school"
+        });
+      } catch {
+        // Ignore appointment completion errors on checkout
+      }
+    }
+
+    toast.success("Visitor checked out");
+    await loadVisitorData();
+  };
 
   return (
     <AppLayout title="Visitor Management" subtitle="Campus visitor check-in & check-out">
@@ -55,6 +536,16 @@ function VisitorsPage() {
 
       {loading ? (
         <VisitorsSkeleton />
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center text-muted-foreground">
+          <p className="text-sm">{error}</p>
+          <button
+            onClick={() => void loadVisitorData()}
+            className="mt-3 text-sm font-semibold text-primary hover:underline"
+          >
+            Retry
+          </button>
+        </div>
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
@@ -66,30 +557,57 @@ function VisitorsPage() {
 
           <div className="flex flex-wrap gap-1 border-b border-border mb-4 overflow-x-auto">
             {TABS.map(t => (
-              <button key={t} onClick={() => setTab(t)}
-                className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+              >
                 {t}
               </button>
             ))}
           </div>
 
-          {tab === "Active Visitors" && <ActiveTab list={list.filter(v => v.status === "on-campus")} onCheckout={setCheckoutTarget} onView={setViewing} />}
-          {tab === "Scheduled" && <ScheduledTab list={list.filter(v => v.status === "scheduled")} onConfirm={(id) => { setList(prev => prev.map(v => v.id === id ? { ...v, status: "on-campus", checkinTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), date: "today" } : v)); toast.success("Visitor confirmed & checked in"); }} onCancel={(id) => { setList(prev => prev.filter(v => v.id !== id)); toast.success("Appointment cancelled"); }} />}
-          {tab === "History" && <HistoryTab list={list.filter(v => v.status === "checked-out")} />}
-          {tab === "Logs" && <LogsTab list={list} />}
+          {tab === "Active Visitors" && (
+            <ActiveTab list={activeVisits} onCheckout={setCheckoutTarget} onView={setViewing} />
+          )}
+          {tab === "Scheduled" && (
+            <ScheduledTab
+              list={scheduledRows}
+              onConfirm={handleCheckInAppointment}
+              onCancel={(id) => void handleCancelAppointment(id)}
+            />
+          )}
+          {tab === "History" && <HistoryTab list={historyVisits} />}
+          {tab === "Logs" && <LogsTab list={visitRows} />}
         </>
       )}
 
-      {registerOpen && <RegisterModal onClose={() => setRegisterOpen(false)} onSave={(v) => { setList(prev => [v, ...prev]); setRegisterOpen(false); toast.success("Visitor checked in successfully"); }} />}
-      {checkoutTarget && <CheckoutModal visitor={checkoutTarget} onClose={() => setCheckoutTarget(null)} onConfirm={() => { setList(prev => prev.map(v => v.id === checkoutTarget.id ? { ...v, status: "checked-out", checkoutTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) } : v)); setCheckoutTarget(null); toast.success("Visitor checked out"); }} />}
+      {registerOpen && (
+        <RegisterModal
+          students={students}
+          hosts={hosts}
+          onClose={() => setRegisterOpen(false)}
+          onSubmit={async (payload) => {
+            await handleRegister(payload);
+            setRegisterOpen(false);
+          }}
+        />
+      )}
+      {checkoutTarget && (
+        <CheckoutModal
+          visitor={checkoutTarget}
+          onClose={() => setCheckoutTarget(null)}
+          onConfirm={(notes) => void handleCheckout(checkoutTarget, notes)}
+        />
+      )}
       {viewing && <ViewModal visitor={viewing} onClose={() => setViewing(null)} />}
     </AppLayout>
   );
 }
 
-function StatusPill({ status }: { status: Visitor["status"] }) {
-  const map = { "on-campus": "bg-success/15 text-success", "checked-out": "bg-muted text-muted-foreground", "scheduled": "bg-amber-100 text-amber-700" };
-  const label = { "on-campus": "On Campus", "checked-out": "Checked Out", "scheduled": "Scheduled" };
+function StatusPill({ status }: { status: VisitRow["status"] }) {
+  const map = { "on-campus": "bg-success/15 text-success", "checked-out": "bg-muted text-muted-foreground" };
+  const label = { "on-campus": "On Campus", "checked-out": "Checked Out" };
   return <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${map[status]}`}>{label[status]}</span>;
 }
 
@@ -102,7 +620,15 @@ function EmptyState({ msg }: { msg: string }) {
   );
 }
 
-function ActiveTab({ list, onCheckout, onView }: { list: Visitor[]; onCheckout: (v: Visitor) => void; onView: (v: Visitor) => void }) {
+function ActiveTab({
+  list,
+  onCheckout,
+  onView
+}: {
+  list: VisitRow[];
+  onCheckout: (v: VisitRow) => void;
+  onView: (v: VisitRow) => void;
+}) {
   if (list.length === 0) return <EmptyState msg="No visitors currently on campus." />;
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -119,7 +645,7 @@ function ActiveTab({ list, onCheckout, onView }: { list: Visitor[]; onCheckout: 
         </thead>
         <tbody>
           {list.map((v, i) => (
-            <tr key={v.id} className={`border-t border-border hover:bg-muted/40 ${i % 2 ? "bg-muted/20" : ""}`}>
+            <tr key={v.visitId} className={`border-t border-border hover:bg-muted/40 ${i % 2 ? "bg-muted/20" : ""}`}>
               <td className="px-4 py-3">
                 <div className="flex items-center gap-3">
                   <Avatar name={v.name} />
@@ -147,7 +673,15 @@ function ActiveTab({ list, onCheckout, onView }: { list: Visitor[]; onCheckout: 
   );
 }
 
-function ScheduledTab({ list, onConfirm, onCancel }: { list: Visitor[]; onConfirm: (id: string) => void; onCancel: (id: string) => void }) {
+function ScheduledTab({
+  list,
+  onConfirm,
+  onCancel
+}: {
+  list: AppointmentRow[];
+  onConfirm: (row: AppointmentRow) => void;
+  onCancel: (id: string) => void;
+}) {
   if (list.length === 0) return <EmptyState msg="No upcoming scheduled visits." />;
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -163,28 +697,36 @@ function ScheduledTab({ list, onConfirm, onCancel }: { list: Visitor[]; onConfir
           </tr>
         </thead>
         <tbody>
-          {list.map((v, i) => (
-            <tr key={v.id} className={`border-t border-border hover:bg-muted/40 ${i % 2 ? "bg-muted/20" : ""}`}>
-              <td className="px-4 py-3 font-semibold">{v.name}</td>
-              <td className="px-4 py-3">{v.host}</td>
-              <td className="px-4 py-3">{v.appointmentDate} {v.appointmentTime}</td>
-              <td className="px-4 py-3">{v.purpose}</td>
-              <td className="px-4 py-3"><span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-blue-100 text-blue-700">Confirmed</span></td>
-              <td className="px-4 py-3 text-right">
-                <div className="inline-flex items-center gap-2">
-                  <button onClick={() => onConfirm(v.id)} className="rounded-md bg-success/15 text-success px-3 py-1.5 text-xs font-semibold hover:bg-success/25">Check in</button>
-                  <button onClick={() => onCancel(v.id)} className="rounded-md bg-destructive/15 text-destructive px-3 py-1.5 text-xs font-semibold hover:bg-destructive/25">Cancel</button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {list.map((v, i) => {
+            const statusLabel = v.status === "pending" ? "Pending" : "Confirmed";
+            const statusClass = v.status === "pending"
+              ? "bg-amber-100 text-amber-700"
+              : "bg-blue-100 text-blue-700";
+            return (
+              <tr key={v.appointmentId} className={`border-t border-border hover:bg-muted/40 ${i % 2 ? "bg-muted/20" : ""}`}>
+                <td className="px-4 py-3 font-semibold">{v.name}</td>
+                <td className="px-4 py-3">{v.host}</td>
+                <td className="px-4 py-3">{v.appointmentDate} {v.appointmentTime}</td>
+                <td className="px-4 py-3">{v.purpose}</td>
+                <td className="px-4 py-3">
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusClass}`}>{statusLabel}</span>
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <div className="inline-flex items-center gap-2">
+                    <button onClick={() => onConfirm(v)} className="rounded-md bg-success/15 text-success px-3 py-1.5 text-xs font-semibold hover:bg-success/25">Check in</button>
+                    <button onClick={() => onCancel(v.appointmentId)} className="rounded-md bg-destructive/15 text-destructive px-3 py-1.5 text-xs font-semibold hover:bg-destructive/25">Cancel</button>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function HistoryTab({ list }: { list: Visitor[] }) {
+function HistoryTab({ list }: { list: VisitRow[] }) {
   const [q, setQ] = useState("");
   const filtered = useMemo(() => list.filter(v => v.name.toLowerCase().includes(q.toLowerCase()) || v.host.toLowerCase().includes(q.toLowerCase())), [list, q]);
   if (list.length === 0) return <EmptyState msg="No visitor history yet." />;
@@ -212,10 +754,10 @@ function HistoryTab({ list }: { list: Visitor[] }) {
           </thead>
           <tbody>
             {filtered.map((v, i) => (
-              <tr key={v.id} className={`border-t border-border hover:bg-muted/40 ${i % 2 ? "bg-muted/20" : ""}`}>
+              <tr key={v.visitId} className={`border-t border-border hover:bg-muted/40 ${i % 2 ? "bg-muted/20" : ""}`}>
                 <td className="px-4 py-3 font-semibold">{v.name}</td>
                 <td className="px-4 py-3">{v.host}</td>
-                <td className="px-4 py-3 capitalize">{v.date}</td>
+                <td className="px-4 py-3">{v.visitDate}</td>
                 <td className="px-4 py-3 font-mono text-xs">{v.checkinTime}</td>
                 <td className="px-4 py-3 font-mono text-xs">{v.checkoutTime || "—"}</td>
                 <td className="px-4 py-3">{computeDuration(v.checkinTime, v.checkoutTime)}</td>
@@ -229,13 +771,13 @@ function HistoryTab({ list }: { list: Visitor[] }) {
   );
 }
 
-function LogsTab({ list }: { list: Visitor[] }) {
-  const events: { time: string; name: string; action: "Entry" | "Exit"; officer: string }[] = [];
+function LogsTab({ list }: { list: VisitRow[] }) {
+  const events: { timestamp: string; name: string; action: "Entry" | "Exit"; officer: string }[] = [];
   list.forEach(v => {
-    if (v.checkinTime && v.checkinTime !== "—") events.push({ time: v.checkinTime, name: v.name, action: "Entry", officer: "Officer Niyonzima" });
-    if (v.checkoutTime) events.push({ time: v.checkoutTime, name: v.name, action: "Exit", officer: "Officer Niyonzima" });
+    if (v.checkinAt) events.push({ timestamp: v.checkinAt, name: v.name, action: "Entry", officer: v.checkinBy ?? "—" });
+    if (v.checkoutAt) events.push({ timestamp: v.checkoutAt, name: v.name, action: "Exit", officer: v.checkoutBy ?? "—" });
   });
-  events.sort((a, b) => b.time.localeCompare(a.time));
+  events.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   if (events.length === 0) return <EmptyState msg="No gate events recorded." />;
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -246,7 +788,7 @@ function LogsTab({ list }: { list: Visitor[] }) {
         <tbody>
           {events.map((e, i) => (
             <tr key={i} className={`border-t border-border ${i % 2 ? "bg-muted/20" : ""}`}>
-              <td className="px-4 py-3 font-mono text-xs">{e.time}</td>
+              <td className="px-4 py-3 font-mono text-xs">{formatDateTime(e.timestamp)}</td>
               <td className="px-4 py-3 font-semibold">{e.name}</td>
               <td className="px-4 py-3">
                 <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${e.action === "Entry" ? "bg-success/15 text-success" : "bg-blue-100 text-blue-700"}`}>{e.action}</span>
@@ -334,59 +876,100 @@ function ModalShell({ onClose, children, size = "lg" }: { onClose: () => void; c
   );
 }
 
-function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: Visitor) => void }) {
+function RegisterModal({
+  students,
+  hosts,
+  onClose,
+  onSubmit
+}: {
+  students: ApiStudent[];
+  hosts: ApiUser[];
+  onClose: () => void;
+  onSubmit: (payload: RegisterPayload) => Promise<void>;
+}) {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [data, setData] = useState({
     name: "", nationalId: "", phone: "", organization: "",
-    visitorType: "Parent/Guardian" as VisitorType,
+    visitorType: "parent_guardian" as ApiVisitorType,
     studentSearch: "",
-    purpose: "Parent Visit" as Visitor["purpose"], host: STAFF[0] ? hostDisplayName(STAFF[0]) : "",
+    purpose: "parent_visit" as ApiVisitorPurpose,
+    hostId: hosts[0]?.id ?? "",
     appointmentDate: new Date().toISOString().slice(0, 10), appointmentTime: "09:00",
     duration: "1 hr", notes: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const studentOptions = useMemo(() => STUDENTS.map(s => ({ id: s.id, label: studentLabel(s) })), []);
+  const studentOptions = useMemo(
+    () => students.map((s) => ({ id: s.id, label: studentLabel(s) })),
+    [students]
+  );
+  const hostOptions = useMemo(
+    () => hosts.map((h) => ({ id: h.id, label: hostDisplayName(h) })),
+    [hosts]
+  );
   const matchedStudent = useMemo(() => {
     const q = data.studentSearch.trim().toLowerCase();
     if (!q) return null;
     const match = studentOptions.find(o => o.label.toLowerCase() === q);
-    return match ? STUDENTS.find(s => s.id === match.id) ?? null : null;
+    return match ? students.find(s => s.id === match.id) ?? null : null;
   }, [data.studentSearch, studentOptions]);
-  const relationshipOrg = data.visitorType === "Parent/Guardian"
-    ? (matchedStudent ? `Parent of ${matchedStudent.name} (${matchedStudent.class})` : "")
+  const relationshipOrg = data.visitorType === "parent_guardian"
+    ? (matchedStudent ? `Parent of ${matchedStudent.first_name} ${matchedStudent.last_name}` : "")
     : data.organization;
   const organizationValue = relationshipOrg.trim() || "—";
+  const hostLabel = hostOptions.find(h => h.id === data.hostId)?.label ?? "—";
+
+  useEffect(() => {
+    if (!data.hostId && hosts.length > 0) {
+      setData(prev => ({ ...prev, hostId: hosts[0].id }));
+    }
+  }, [hosts, data.hostId]);
 
   const validateStep = (s: number) => {
     const e: Record<string, string> = {};
     if (s === 1) {
       if (!data.name.trim()) e.name = "Required";
       if (!data.nationalId.trim()) e.nationalId = "Required";
-      if (data.visitorType === "Parent/Guardian" && !matchedStudent) e.studentSearch = "Select a student";
-      if (data.visitorType === "Organization" && !data.organization.trim()) e.organization = "Required";
+      if (!data.phone.trim()) e.phone = "Required";
+      if (data.visitorType === "parent_guardian" && !matchedStudent) e.studentSearch = "Select a student";
+      if (data.visitorType === "organization" && !data.organization.trim()) e.organization = "Required";
     }
     if (s === 2) {
-      if (!data.host) e.host = "Required";
+      if (!data.hostId) e.host = "Required";
     }
     setErrors(e); return Object.keys(e).length === 0;
   };
 
   const next = () => { if (validateStep(step)) setStep(s => s + 1); };
 
-  const submit = () => {
+  const submit = async () => {
     setSubmitting(true);
-    setTimeout(() => {
-      const id = `V${String(Math.floor(Math.random() * 9000) + 1000)}`;
-      const v: Visitor = {
-        id, name: data.name, nationalId: data.nationalId, phone: data.phone,
-        organization: organizationValue, purpose: data.purpose, host: data.host,
-        checkinTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        status: "on-campus", date: "today", notes: data.notes,
-      };
-      onSave(v);
-    }, 600);
+    try {
+      const appointmentAt = new Date(`${data.appointmentDate}T${data.appointmentTime}`);
+      if (Number.isNaN(appointmentAt.getTime())) {
+        toast.error("Invalid appointment date/time");
+        return;
+      }
+
+      await onSubmit({
+        fullName: data.name,
+        nationalId: data.nationalId,
+        phone: data.phone,
+        organization: organizationValue,
+        visitorType: data.visitorType,
+        studentId: matchedStudent?.id ?? null,
+        hostId: data.hostId || null,
+        purpose: data.purpose,
+        appointmentAt: appointmentAt.toISOString(),
+        expectedDurationMin: durationToMinutes(data.duration),
+        notes: data.notes || undefined
+      });
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to register visitor");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -432,17 +1015,17 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
                   className={inputCls(false)}
                   value={data.visitorType}
                   onChange={e => {
-                    const visitorType = e.target.value as VisitorType;
-                    const nextPurpose = visitorType === "Parent/Guardian"
-                      ? "Parent Visit"
-                      : data.purpose === "Parent Visit" ? "Official Business" : data.purpose;
+                    const visitorType = e.target.value as ApiVisitorType;
+                    const nextPurpose = visitorType === "parent_guardian"
+                      ? "parent_visit"
+                      : data.purpose === "parent_visit" ? "official_business" : data.purpose;
                     setData({ ...data, visitorType, purpose: nextPurpose });
                   }}
                 >
-                  {VISITOR_TYPES.map(o => <option key={o} value={o}>{o}</option>)}
+                  {VISITOR_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </Field>
-              {data.visitorType === "Parent/Guardian" ? (
+              {data.visitorType === "parent_guardian" ? (
                 <Field label="Student (Search)" required error={errors.studentSearch}>
                   <input
                     list="visitor-students"
@@ -455,7 +1038,9 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
                     {studentOptions.map(o => <option key={o.id} value={o.label} />)}
                   </datalist>
                   {matchedStudent && (
-                    <p className="mt-1 text-xs text-muted-foreground">Saved as: Parent of {matchedStudent.name} ({matchedStudent.class})</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Saved as: Parent of {matchedStudent.first_name} {matchedStudent.last_name} ({matchedStudent.current_section?.full_name ?? "—"})
+                    </p>
                   )}
                 </Field>
               ) : (
@@ -475,16 +1060,15 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="Purpose of Visit" required>
-                <select className={inputCls(false)} value={data.purpose} onChange={e => setData({ ...data, purpose: e.target.value as Visitor["purpose"] })}>
-                  {["Parent Visit", "Official Business", "Delivery", "Inspection", "Other"].map(o => <option key={o}>{o}</option>)}
+                <select className={inputCls(false)} value={data.purpose} onChange={e => setData({ ...data, purpose: e.target.value as ApiVisitorPurpose })}>
+                  {PURPOSE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </Field>
               <Field label="Host (Staff)" required error={errors.host}>
-                <select className={inputCls(!!errors.host)} value={data.host} onChange={e => setData({ ...data, host: e.target.value })}>
-                  {STAFF.map(s => {
-                    const label = hostDisplayName(s);
-                    return <option key={s.id} value={label}>{label}</option>;
-                  })}
+                <select className={inputCls(!!errors.host)} value={data.hostId} onChange={e => setData({ ...data, hostId: e.target.value })}>
+                  {hostOptions.map((h) => (
+                    <option key={h.id} value={h.id}>{h.label}</option>
+                  ))}
                 </select>
               </Field>
             </div>
@@ -512,12 +1096,12 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
               <Row k="Visitor" v={data.name} />
               <Row k="National ID" v={data.nationalId} />
               <Row k="Phone" v={data.phone} />
-              {data.visitorType === "Parent/Guardian" && matchedStudent && (
-                <Row k="Student" v={`${matchedStudent.name} (${matchedStudent.class})`} />
+              {data.visitorType === "parent_guardian" && matchedStudent && (
+                <Row k="Student" v={`${matchedStudent.first_name} ${matchedStudent.last_name}`} />
               )}
               <Row k="Organization / Relationship" v={organizationValue} />
-              <Row k="Purpose" v={data.purpose} />
-              <Row k="Host" v={data.host} />
+              <Row k="Purpose" v={PURPOSE_LABEL[data.purpose]} />
+              <Row k="Host" v={hostLabel} />
               <Row k="When" v={`${data.appointmentDate} • ${data.appointmentTime} (${data.duration})`} />
               {data.notes && <Row k="Notes" v={data.notes} />}
             </div>
@@ -547,8 +1131,8 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
           <p className="text-4xl font-bold tracking-widest">VISITOR</p>
           <div className="mx-auto my-6 h-32 w-32 bg-muted grid place-items-center text-muted-foreground">PHOTO</div>
           <p className="text-2xl font-bold">{data.name}</p>
-          <p className="mt-2 text-sm">Host: {data.host}</p>
-          <p className="text-sm">Purpose: {data.purpose}</p>
+          <p className="mt-2 text-sm">Host: {hostLabel}</p>
+          <p className="text-sm">Purpose: {PURPOSE_LABEL[data.purpose]}</p>
           <p className="text-sm">Date: {data.appointmentDate}</p>
         </div>
       </div>
@@ -556,9 +1140,17 @@ function RegisterModal({ onClose, onSave }: { onClose: () => void; onSave: (v: V
   );
 }
 
-function CheckoutModal({ visitor, onClose, onConfirm }: { visitor: Visitor; onClose: () => void; onConfirm: () => void }) {
+function CheckoutModal({
+  visitor,
+  onClose,
+  onConfirm
+}: {
+  visitor: VisitRow;
+  onClose: () => void;
+  onConfirm: (notes: string) => void;
+}) {
   const [notes, setNotes] = useState("");
-  const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const now = formatTime(new Date().toISOString());
   return (
     <ModalShell onClose={onClose} size="md">
       <div className="flex items-center justify-between border-b border-border px-6 py-4">
@@ -576,7 +1168,7 @@ function CheckoutModal({ visitor, onClose, onConfirm }: { visitor: Visitor; onCl
       </div>
       <div className="flex justify-end gap-2 border-t border-border px-6 py-4 bg-muted/20">
         <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
-        <button onClick={onConfirm} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
+        <button onClick={() => onConfirm(notes)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
           <CheckCircle2 className="h-4 w-4" /> Complete Check-out
         </button>
       </div>
@@ -584,7 +1176,8 @@ function CheckoutModal({ visitor, onClose, onConfirm }: { visitor: Visitor; onCl
   );
 }
 
-function ViewModal({ visitor, onClose }: { visitor: Visitor; onClose: () => void }) {
+function ViewModal({ visitor, onClose }: { visitor: VisitRow; onClose: () => void }) {
+  const statusLabel = visitor.status === "on-campus" ? "On Campus" : "Checked Out";
   return (
     <ModalShell onClose={onClose} size="md">
       <div className="flex items-center justify-between border-b border-border px-6 py-4">
@@ -602,7 +1195,8 @@ function ViewModal({ visitor, onClose }: { visitor: Visitor; onClose: () => void
         <Row k="Host" v={visitor.host} />
         <Row k="Check-in" v={visitor.checkinTime} />
         <Row k="Check-out" v={visitor.checkoutTime || "—"} />
-        <Row k="Status" v={visitor.status} />
+        <Row k="Status" v={statusLabel} />
+        {visitor.notes && <Row k="Notes" v={visitor.notes} />}
       </div>
     </ModalShell>
   );

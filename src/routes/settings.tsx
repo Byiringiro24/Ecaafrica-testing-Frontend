@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import {
   Building2, MessageSquare, Calendar, User, Database,
@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
-import { getSchoolAuth } from "@/lib/schoolAuth";
+import { getSchoolAuth, isSchoolAdminRole } from "@/lib/schoolAuth";
 
 export const Route = createFileRoute("/settings")({ component: SettingsPage });
 
@@ -22,16 +22,30 @@ const TABS = [
 
 function SettingsPage() {
   const search = useRouterState({ select: (s) => s.location.search });
+  const role = getSchoolAuth()?.user?.role ?? null;
+  const isSchoolAdmin = isSchoolAdminRole(role);
+  const visibleTabs = useMemo(
+    () => (isSchoolAdmin ? TABS.filter(t => t.id !== "logs") : TABS),
+    [isSchoolAdmin]
+  );
   const [tab, setTab] = useState<typeof TABS[number]["id"]>(() => {
     const tabParam = new URLSearchParams(search ?? "").get("tab");
-    return TABS.some(t => t.id === tabParam) ? (tabParam as typeof TABS[number]["id"]) : "school";
+    return visibleTabs.some(t => t.id === tabParam)
+      ? (tabParam as typeof TABS[number]["id"])
+      : (visibleTabs[0]?.id ?? "school");
   });
+
+  useEffect(() => {
+    if (!visibleTabs.some(t => t.id === tab)) {
+      setTab(visibleTabs[0]?.id ?? "school");
+    }
+  }, [tab, visibleTabs]);
 
   return (
     <AppLayout title="System Settings" subtitle="Configure school, SMS, and user access">
       <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-5">
         <nav className="rounded-xl border border-border bg-card p-2 shadow-sm h-fit">
-          {TABS.map(t => {
+          {visibleTabs.map(t => {
             const Icon = t.icon;
             return (
               <button key={t.id} onClick={() => setTab(t.id)}
@@ -49,7 +63,7 @@ function SettingsPage() {
           {tab === "sms" && <SMSTab />}
           {tab === "calendar" && <CalendarTab />}
           {tab === "profile" && <ProfileTab />}
-          {tab === "logs" && <UserLogsTab />}
+          {!isSchoolAdmin && tab === "logs" && <UserLogsTab />}
         </div>
       </div>
     </AppLayout>

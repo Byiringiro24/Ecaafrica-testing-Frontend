@@ -4,12 +4,18 @@ import {
   LayoutDashboard, ScanLine, Users, BookOpen, BarChart3,
   Heart, MessageSquare, Settings, LogOut, X,
   Home, DoorOpen, FileText, Wallet, Briefcase, ChevronDown, UserCheck,
+  Cpu, UserPlus, ListChecks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { schoolConfig } from "@/lib/mockData";
 import logo from "@/assets/logo.png";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
-import { isSchoolAdminRole } from "@/lib/schoolAuth";
+import { clearSchoolAuth, isSchoolAdminRole } from "@/lib/schoolAuth";
+
+function handleLogout() {
+  clearSchoolAuth();
+  window.location.replace("/login");
+}
 
 interface NavItem { to: string; label: string; icon: any; module: string; }
 interface Section { id: string; label: string; items: NavItem[]; }
@@ -23,9 +29,14 @@ const SECTIONS: Section[] = [
     { to: "/visitors", label: "Visitors", icon: UserCheck, module: "visitors" },
   ]},
   { id: "boarding", label: "Boarding", items: [
-    { to: "/boarding", label: "Boarding", icon: Home, module: "boarding" },
+    { to: "/boarding/", label: "Boarding", icon: Home, module: "boarding" },
     { to: "/gate", label: "Gate", icon: DoorOpen, module: "gate" },
     { to: "/leaves", label: "Leaves", icon: FileText, module: "leaves" },
+  ]},
+  { id: "devices", label: "Device Management", items: [
+    { to: "/boarding/devices", label: "Device Management", icon: Cpu, module: "boarding" },
+    { to: "/boarding/device-students", label: "Device Students", icon: UserPlus, module: "boarding" },
+    { to: "/boarding/device-logs", label: "Device Logs", icon: ListChecks, module: "boarding" },
   ]},
   { id: "finance", label: "Finance", items: [
     { to: "/fees", label: "Fees", icon: Wallet, module: "fees" },
@@ -153,7 +164,7 @@ export function AppSidebar({ open, onClose }: Props) {
                 {currentUser?.role ? formatRole(currentUser.role) : ""}
               </div>
             </div>
-            <button className="rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-foreground" aria-label="Logout">
+            <button onClick={handleLogout} className="rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-foreground" aria-label="Logout">
               <LogOut className="h-4 w-4" />
             </button>
           </div>

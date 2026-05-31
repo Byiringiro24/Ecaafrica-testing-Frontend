@@ -1,8 +1,13 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Menu } from "lucide-react";
-import { toast } from "sonner";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
+import { clearSchoolAuth } from "@/lib/schoolAuth";
+
+function handleLogout() {
+  clearSchoolAuth();
+  window.location.replace("/login");
+}
 
 interface Props {
   title: string;
@@ -75,7 +80,7 @@ export function AppHeader({ title, subtitle, onMenuClick }: Props) {
                 Account Settings
               </Link>
               <button
-                onClick={() => { toast.success("Signed out"); setProfileOpen(false); }}
+                onClick={handleLogout}
                 className="w-full text-left px-4 py-2 text-sm text-destructive hover:bg-muted"
               >
                 Sign Out

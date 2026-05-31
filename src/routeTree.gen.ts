@@ -35,6 +35,7 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SuperAdminIndexRouteImport } from './routes/super-admin.index'
 import { Route as StaffIndexRouteImport } from './routes/staff.index'
+import { Route as BoardingIndexRouteImport } from './routes/boarding.index'
 import { Route as TeacherScheduleRouteImport } from './routes/teacher.schedule'
 import { Route as TeacherProgressRouteImport } from './routes/teacher.progress'
 import { Route as TeacherProfileRouteImport } from './routes/teacher.profile'
@@ -64,6 +65,9 @@ import { Route as StaffGateRouteImport } from './routes/staff.gate'
 import { Route as StaffDashboardRouteImport } from './routes/staff.dashboard'
 import { Route as StaffBoardingRouteImport } from './routes/staff.boarding'
 import { Route as StaffAlertsRouteImport } from './routes/staff.alerts'
+import { Route as BoardingDevicesRouteImport } from './routes/boarding.devices'
+import { Route as BoardingDeviceStudentsRouteImport } from './routes/boarding.device-students'
+import { Route as BoardingDeviceLogsRouteImport } from './routes/boarding.device-logs'
 import { Route as SuperAdminSchoolsIndexRouteImport } from './routes/super-admin.schools.index'
 import { Route as SuperAdminSchoolsIdRouteImport } from './routes/super-admin.schools.$id'
 
@@ -196,6 +200,11 @@ const StaffIndexRoute = StaffIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => StaffRoute,
+} as any)
+const BoardingIndexRoute = BoardingIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => BoardingRoute,
 } as any)
 const TeacherScheduleRoute = TeacherScheduleRouteImport.update({
   id: '/teacher/schedule',
@@ -342,6 +351,21 @@ const StaffAlertsRoute = StaffAlertsRouteImport.update({
   path: '/alerts',
   getParentRoute: () => StaffRoute,
 } as any)
+const BoardingDevicesRoute = BoardingDevicesRouteImport.update({
+  id: '/devices',
+  path: '/devices',
+  getParentRoute: () => BoardingRoute,
+} as any)
+const BoardingDeviceStudentsRoute = BoardingDeviceStudentsRouteImport.update({
+  id: '/device-students',
+  path: '/device-students',
+  getParentRoute: () => BoardingRoute,
+} as any)
+const BoardingDeviceLogsRoute = BoardingDeviceLogsRouteImport.update({
+  id: '/device-logs',
+  path: '/device-logs',
+  getParentRoute: () => BoardingRoute,
+} as any)
 const SuperAdminSchoolsIndexRoute = SuperAdminSchoolsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -357,7 +381,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/attendance': typeof AttendanceRoute
-  '/boarding': typeof BoardingRoute
+  '/boarding': typeof BoardingRouteWithChildren
   '/classes': typeof ClassesRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
@@ -378,6 +402,9 @@ export interface FileRoutesByFullPath {
   '/students': typeof StudentsRoute
   '/super-admin': typeof SuperAdminRouteWithChildren
   '/visitors': typeof VisitorsRoute
+  '/boarding/device-logs': typeof BoardingDeviceLogsRoute
+  '/boarding/device-students': typeof BoardingDeviceStudentsRoute
+  '/boarding/devices': typeof BoardingDevicesRoute
   '/staff/alerts': typeof StaffAlertsRoute
   '/staff/boarding': typeof StaffBoardingRoute
   '/staff/dashboard': typeof StaffDashboardRoute
@@ -407,6 +434,7 @@ export interface FileRoutesByFullPath {
   '/teacher/profile': typeof TeacherProfileRoute
   '/teacher/progress': typeof TeacherProgressRoute
   '/teacher/schedule': typeof TeacherScheduleRoute
+  '/boarding/': typeof BoardingIndexRoute
   '/staff/': typeof StaffIndexRoute
   '/super-admin/': typeof SuperAdminIndexRoute
   '/super-admin/schools/$id': typeof SuperAdminSchoolsIdRoute
@@ -416,7 +444,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/attendance': typeof AttendanceRoute
-  '/boarding': typeof BoardingRoute
   '/classes': typeof ClassesRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
@@ -435,6 +462,9 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/students': typeof StudentsRoute
   '/visitors': typeof VisitorsRoute
+  '/boarding/device-logs': typeof BoardingDeviceLogsRoute
+  '/boarding/device-students': typeof BoardingDeviceStudentsRoute
+  '/boarding/devices': typeof BoardingDevicesRoute
   '/staff/alerts': typeof StaffAlertsRoute
   '/staff/boarding': typeof StaffBoardingRoute
   '/staff/dashboard': typeof StaffDashboardRoute
@@ -463,6 +493,7 @@ export interface FileRoutesByTo {
   '/teacher/profile': typeof TeacherProfileRoute
   '/teacher/progress': typeof TeacherProgressRoute
   '/teacher/schedule': typeof TeacherScheduleRoute
+  '/boarding': typeof BoardingIndexRoute
   '/staff': typeof StaffIndexRoute
   '/super-admin': typeof SuperAdminIndexRoute
   '/super-admin/schools/$id': typeof SuperAdminSchoolsIdRoute
@@ -473,7 +504,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/attendance': typeof AttendanceRoute
-  '/boarding': typeof BoardingRoute
+  '/boarding': typeof BoardingRouteWithChildren
   '/classes': typeof ClassesRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
@@ -494,6 +525,9 @@ export interface FileRoutesById {
   '/students': typeof StudentsRoute
   '/super-admin': typeof SuperAdminRouteWithChildren
   '/visitors': typeof VisitorsRoute
+  '/boarding/device-logs': typeof BoardingDeviceLogsRoute
+  '/boarding/device-students': typeof BoardingDeviceStudentsRoute
+  '/boarding/devices': typeof BoardingDevicesRoute
   '/staff/alerts': typeof StaffAlertsRoute
   '/staff/boarding': typeof StaffBoardingRoute
   '/staff/dashboard': typeof StaffDashboardRoute
@@ -523,6 +557,7 @@ export interface FileRoutesById {
   '/teacher/profile': typeof TeacherProfileRoute
   '/teacher/progress': typeof TeacherProgressRoute
   '/teacher/schedule': typeof TeacherScheduleRoute
+  '/boarding/': typeof BoardingIndexRoute
   '/staff/': typeof StaffIndexRoute
   '/super-admin/': typeof SuperAdminIndexRoute
   '/super-admin/schools/$id': typeof SuperAdminSchoolsIdRoute
@@ -555,6 +590,9 @@ export interface FileRouteTypes {
     | '/students'
     | '/super-admin'
     | '/visitors'
+    | '/boarding/device-logs'
+    | '/boarding/device-students'
+    | '/boarding/devices'
     | '/staff/alerts'
     | '/staff/boarding'
     | '/staff/dashboard'
@@ -584,6 +622,7 @@ export interface FileRouteTypes {
     | '/teacher/profile'
     | '/teacher/progress'
     | '/teacher/schedule'
+    | '/boarding/'
     | '/staff/'
     | '/super-admin/'
     | '/super-admin/schools/$id'
@@ -593,7 +632,6 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/attendance'
-    | '/boarding'
     | '/classes'
     | '/contact'
     | '/dashboard'
@@ -612,6 +650,9 @@ export interface FileRouteTypes {
     | '/settings'
     | '/students'
     | '/visitors'
+    | '/boarding/device-logs'
+    | '/boarding/device-students'
+    | '/boarding/devices'
     | '/staff/alerts'
     | '/staff/boarding'
     | '/staff/dashboard'
@@ -640,6 +681,7 @@ export interface FileRouteTypes {
     | '/teacher/profile'
     | '/teacher/progress'
     | '/teacher/schedule'
+    | '/boarding'
     | '/staff'
     | '/super-admin'
     | '/super-admin/schools/$id'
@@ -670,6 +712,9 @@ export interface FileRouteTypes {
     | '/students'
     | '/super-admin'
     | '/visitors'
+    | '/boarding/device-logs'
+    | '/boarding/device-students'
+    | '/boarding/devices'
     | '/staff/alerts'
     | '/staff/boarding'
     | '/staff/dashboard'
@@ -699,6 +744,7 @@ export interface FileRouteTypes {
     | '/teacher/profile'
     | '/teacher/progress'
     | '/teacher/schedule'
+    | '/boarding/'
     | '/staff/'
     | '/super-admin/'
     | '/super-admin/schools/$id'
@@ -709,7 +755,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   AttendanceRoute: typeof AttendanceRoute
-  BoardingRoute: typeof BoardingRoute
+  BoardingRoute: typeof BoardingRouteWithChildren
   ClassesRoute: typeof ClassesRoute
   ContactRoute: typeof ContactRoute
   DashboardRoute: typeof DashboardRoute
@@ -925,6 +971,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StaffIndexRouteImport
       parentRoute: typeof StaffRoute
     }
+    '/boarding/': {
+      id: '/boarding/'
+      path: '/'
+      fullPath: '/boarding/'
+      preLoaderRoute: typeof BoardingIndexRouteImport
+      parentRoute: typeof BoardingRoute
+    }
     '/teacher/schedule': {
       id: '/teacher/schedule'
       path: '/teacher/schedule'
@@ -1128,6 +1181,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StaffAlertsRouteImport
       parentRoute: typeof StaffRoute
     }
+    '/boarding/devices': {
+      id: '/boarding/devices'
+      path: '/devices'
+      fullPath: '/boarding/devices'
+      preLoaderRoute: typeof BoardingDevicesRouteImport
+      parentRoute: typeof BoardingRoute
+    }
+    '/boarding/device-students': {
+      id: '/boarding/device-students'
+      path: '/device-students'
+      fullPath: '/boarding/device-students'
+      preLoaderRoute: typeof BoardingDeviceStudentsRouteImport
+      parentRoute: typeof BoardingRoute
+    }
+    '/boarding/device-logs': {
+      id: '/boarding/device-logs'
+      path: '/device-logs'
+      fullPath: '/boarding/device-logs'
+      preLoaderRoute: typeof BoardingDeviceLogsRouteImport
+      parentRoute: typeof BoardingRoute
+    }
     '/super-admin/schools/': {
       id: '/super-admin/schools/'
       path: '/'
@@ -1144,6 +1218,24 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface BoardingRouteChildren {
+  BoardingDeviceLogsRoute: typeof BoardingDeviceLogsRoute
+  BoardingDeviceStudentsRoute: typeof BoardingDeviceStudentsRoute
+  BoardingDevicesRoute: typeof BoardingDevicesRoute
+  BoardingIndexRoute: typeof BoardingIndexRoute
+}
+
+const BoardingRouteChildren: BoardingRouteChildren = {
+  BoardingDeviceLogsRoute: BoardingDeviceLogsRoute,
+  BoardingDeviceStudentsRoute: BoardingDeviceStudentsRoute,
+  BoardingDevicesRoute: BoardingDevicesRoute,
+  BoardingIndexRoute: BoardingIndexRoute,
+}
+
+const BoardingRouteWithChildren = BoardingRoute._addFileChildren(
+  BoardingRouteChildren,
+)
 
 interface StaffRouteChildren {
   StaffAlertsRoute: typeof StaffAlertsRoute
@@ -1224,7 +1316,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   AttendanceRoute: AttendanceRoute,
-  BoardingRoute: BoardingRoute,
+  BoardingRoute: BoardingRouteWithChildren,
   ClassesRoute: ClassesRoute,
   ContactRoute: ContactRoute,
   DashboardRoute: DashboardRoute,

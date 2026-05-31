@@ -73,12 +73,41 @@ type StudentCountResponse = {
   meta?: { total?: number };
 };
 
+type ApiStatus = "present" | "absent" | "late" | "excused";
+
+type ApiRecord = {
+  id: string;
+  session_id: string;
+  status: ApiStatus;
+  scanned_at?: string | null;
+  created_at?: string | null;
+};
+
+type ApiSession = {
+  id: string;
+  section_id: string;
+  session_date: string;
+};
+
 const normalizeSectionKey = (value: string) => value.toLowerCase().replace(/\s+/g, "");
 const parseLevelNumber = (value: string) => {
   const match = value.match(/\d+/);
   return match ? Number(match[0]) : 1;
 };
 const toClassName = (levelNumber: number) => `S${levelNumber}`;
+const isPresentStatus = (status: ApiStatus) => status !== "absent";
+const formatDayLabel = (value: string) =>
+  new Date(value).toLocaleDateString("en-US", { weekday: "short" });
+const getLastDates = (days: number) => {
+  const result: string[] = [];
+  const base = new Date();
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const next = new Date(base);
+    next.setDate(base.getDate() - i);
+    result.push(next.toISOString().slice(0, 10));
+  }
+  return result;
+};
 
 function ClassesPage() {
   const [list, setList] = useState<ClassInfo[]>([]);
@@ -89,6 +118,7 @@ function ClassesPage() {
   const [currentYear, setCurrentYear] = useState<AcademicYearRecord | null>(null);
   const [teachers, setTeachers] = useState<TeacherRecord[]>([]);
   const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
+  const [todayAttendance, setTodayAttendance] = useState<Record<string, { present: number; total: number }>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -229,6 +259,49 @@ function ClassesPage() {
   }, []);
 
   useEffect(() => {
+    if (sectionRecords.length === 0) {
+      setTodayAttendance({});
+      return;
+    }
+
+    let active = true;
+    const loadAttendance = async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      try {
+        const [sessions, records] = await Promise.all([
+          apiRequest<ApiSession[]>(`/attendance/sessions?date=${today}&limit=500`, {
+            auth: "school"
+          }).catch(() => []),
+          apiRequest<ApiRecord[]>(`/attendance/records?date=${today}&limit=5000`, {
+            auth: "school"
+          }).catch(() => [])
+        ]);
+
+        if (!active) return;
+
+        const sessionMap = new Map(sessions.map((item) => [item.id, item.section_id]));
+        const next: Record<string, { present: number; total: number }> = {};
+        records.forEach((record) => {
+          const sectionId = sessionMap.get(record.session_id);
+          if (!sectionId) return;
+          const current = next[sectionId] ?? { present: 0, total: 0 };
+          current.total += 1;
+          if (isPresentStatus(record.status)) current.present += 1;
+          next[sectionId] = current;
+        });
+        setTodayAttendance(next);
+      } catch (error: any) {
+        if (active) toast.error(error?.message ?? "Failed to load attendance");
+      }
+    };
+
+    loadAttendance();
+    return () => {
+      active = false;
+    };
+  }, [sectionRecords]);
+
+  useEffect(() => {
     setList(buildClassList(classRecords, sectionRecords, teacherMap, studentCounts));
   }, [classRecords, sectionRecords, teacherMap, studentCounts]);
 
@@ -238,7 +311,10 @@ function ClassesPage() {
   );
   const showSkeleton = loading && list.length === 0;
 
-  const todayPresent = (_clsName: string) => 0;
+  const todayPresent = (sectionId?: string | null) => {
+    if (!sectionId) return 0;
+    return todayAttendance[sectionId]?.present ?? 0;
+  };
 
   const handleSaveClass = async (payload: ClassFormPayload, target?: ClassInfo) => {
     const levelNumber = parseLevelNumber(payload.level);
@@ -394,7 +470,7 @@ function ClassesPage() {
           ))
         ) : (
           filtered.map(c => {
-            const present = todayPresent(c.name);
+            const present = todayPresent(c.sectionId);
             const pct = c.studentCount ? Math.round((present / c.studentCount) * 100) : 0;
             return (
               <div key={c.id} className={`rounded-xl border border-l-4 border-border bg-card p-5 shadow-sm hover:shadow-md transition ${levelBorderClass(c.level)}`}>
@@ -443,6 +519,12 @@ function ClassesPage() {
           })
         )}
       </div>
+
+      {!showSkeleton && filtered.length === 0 && (
+        <div className="mt-6 rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
+          No class records found.
+        </div>
+      )}
 
       {addOpen && (
         <ClassFormModal
@@ -525,6 +607,8 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
   const [q, setQ] = useState("");
   const [students, setStudents] = useState<StudentLite[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
+  const [trend, setTrend] = useState<Array<{ day: string; rate: number }>>([]);
+  const [trendLoading, setTrendLoading] = useState(false);
 
   useEffect(() => {
     if (!cls.sectionId) return;
@@ -533,6 +617,62 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
       .then((data) => setStudents(Array.isArray(data) ? data : []))
       .catch(() => setStudents([]))
       .finally(() => setStudentsLoading(false));
+  }, [cls.sectionId]);
+
+  useEffect(() => {
+    if (!cls.sectionId) {
+      setTrend([]);
+      return;
+    }
+
+    let active = true;
+    const loadTrend = async () => {
+      setTrendLoading(true);
+      try {
+        const dates = getLastDates(14);
+        const [sessionsByDate, recordsByDate] = await Promise.all([
+          Promise.all(
+            dates.map((date) =>
+              apiRequest<ApiSession[]>(`/attendance/sessions?date=${date}&limit=500`, {
+                auth: "school"
+              }).catch(() => [])
+            )
+          ),
+          Promise.all(
+            dates.map((date) =>
+              apiRequest<ApiRecord[]>(`/attendance/records?date=${date}&limit=5000`, {
+                auth: "school"
+              }).catch(() => [])
+            )
+          )
+        ]);
+
+        if (!active) return;
+
+        const nextTrend = dates.map((date, idx) => {
+          const sessions = sessionsByDate[idx].filter(
+            (session) => session.section_id === cls.sectionId
+          );
+          const sessionIds = new Set(sessions.map((session) => session.id));
+          const records = recordsByDate[idx].filter((record) => sessionIds.has(record.session_id));
+          const total = records.length;
+          const present = records.filter((record) => isPresentStatus(record.status)).length;
+          const rate = total ? Math.round((present / total) * 100) : 0;
+          return { day: formatDayLabel(date), rate };
+        });
+
+        setTrend(nextTrend);
+      } catch (error: any) {
+        if (active) toast.error(error?.message ?? "Failed to load attendance trend");
+      } finally {
+        if (active) setTrendLoading(false);
+      }
+    };
+
+    loadTrend();
+    return () => {
+      active = false;
+    };
   }, [cls.sectionId]);
 
   const fullName = (s: StudentLite) =>
@@ -545,7 +685,6 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
     return name.includes(search) || id.includes(search);
   });
 
-  const trend: Array<{ day: string; rate: number }> = [];
   const hasTrend = trend.length > 0;
   const hasStudents = students.length > 0;
   const best = hasTrend ? trend.reduce((a, b) => a.rate > b.rate ? a : b) : null;
@@ -621,7 +760,16 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
           )}
           {tab === "trend" && (
             <>
-              {hasTrend ? (
+              {trendLoading ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-64 w-full" />
+                  <div className="grid grid-cols-3 gap-3">
+                    <Skeleton className="h-16 w-full" />
+                    <Skeleton className="h-16 w-full" />
+                    <Skeleton className="h-16 w-full" />
+                  </div>
+                </div>
+              ) : hasTrend ? (
                 <>
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">

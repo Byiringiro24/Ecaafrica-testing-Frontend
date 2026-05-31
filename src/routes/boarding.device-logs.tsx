@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Search, Wifi, WifiOff, RefreshCw, AlertTriangle, Database } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -65,6 +65,8 @@ function DeviceLogsPage() {
   const [statusFilter, setStatusFilter] = useState<"All" | Status>("All");
   const [syncFilter, setSyncFilter] = useState<"All" | "Synced" | "Queued" | "Failed">("All");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   const filteredLogs = useMemo(() => {
     return DEVICE_LOGS.filter((log) => {
@@ -86,6 +88,13 @@ function DeviceLogsPage() {
     const online = DEVICES.filter((d) => d.status === "online").length;
     return { total, synced, queued, failed, online };
   }, []);
+
+  useEffect(() => {
+    setPage(1);
+  }, [deviceFilter, methodFilter, statusFilter, syncFilter, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / PAGE_SIZE));
+  const pageLogs = filteredLogs.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <AppLayout title="Device Logs" subtitle="Attendance logs and monitoring from boarding devices">
@@ -134,7 +143,7 @@ function DeviceLogsPage() {
           <option value="Queued">Queued</option>
           <option value="Failed">Failed</option>
         </select>
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-50">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={search}
@@ -159,7 +168,9 @@ function DeviceLogsPage() {
               <h3 className="font-display font-bold">Attendance Logs</h3>
               <p className="text-xs text-muted-foreground">Live attendance logs across all boarding devices.</p>
             </div>
-            <div className="text-xs text-muted-foreground">Showing {filteredLogs.length} records</div>
+            <div className="text-xs text-muted-foreground">
+              Showing {pageLogs.length} of {filteredLogs.length} records
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -172,11 +183,10 @@ function DeviceLogsPage() {
                   <th className="text-left px-5 py-3">Method</th>
                   <th className="text-left px-5 py-3">Direction</th>
                   <th className="text-left px-5 py-3">Status</th>
-                  <th className="text-left px-5 py-3">Sync</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredLogs.map((log) => (
+                {pageLogs.map((log) => (
                   <tr key={log.id} className="border-t border-border odd:bg-background even:bg-muted/20">
                     <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{log.time}</td>
                     <td className="px-5 py-3">
@@ -195,16 +205,34 @@ function DeviceLogsPage() {
                     <td className="px-5 py-3 text-xs">{log.method}</td>
                     <td className="px-5 py-3 text-xs">{log.direction}</td>
                     <td className="px-5 py-3"><StatusBadge status={log.status} /></td>
-                    <td className="px-5 py-3"><SyncBadge state={log.syncState} /></td>
                   </tr>
                 ))}
                 {filteredLogs.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-5 py-10 text-center text-muted-foreground">No logs match your filters.</td>
+                    <td colSpan={7} className="px-5 py-10 text-center text-muted-foreground">No logs match your filters.</td>
                   </tr>
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="flex items-center justify-between px-5 py-3 border-t border-border text-sm">
+            <span className="text-muted-foreground">Page {page} of {totalPages}</span>
+            <div className="space-x-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1.5 rounded-md border border-border disabled:opacity-50 hover:bg-muted"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-3 py-1.5 rounded-md border border-border disabled:opacity-50 hover:bg-muted"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
 

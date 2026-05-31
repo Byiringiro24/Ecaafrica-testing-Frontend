@@ -1,282 +1,733 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect, useMemo } from "react";
-import { Search, CheckCircle2, X, FileText, Save } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
-import { TEACHER_ME, studentsInClass } from "@/lib/teacherStaffData";
+import { Avatar } from "@/components/ui-kit/Avatar";
+import { StatusBadge } from "@/components/ui-kit/StatusBadge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { apiRequest } from "@/lib/api";
 
 export const Route = createFileRoute("/teacher/attendance")({ component: TeacherAttendance });
 
-type AttStatus = "Present" | "Absent" | "Late" | "Excused";
-const NEXT: Record<AttStatus, AttStatus> = { Present: "Absent", Absent: "Late", Late: "Excused", Excused: "Present" };
-const COLORS: Record<AttStatus, string> = {
-  Present: "bg-indigo-100 text-indigo-800 border-indigo-200",
-  Absent: "bg-red-100 text-red-700 border-red-300",
-  Late: "bg-amber-100 text-amber-700 border-amber-300",
-  Excused: "bg-blue-100 text-blue-700 border-blue-300",
+type UiStatus = "Present" | "Absent" | "Late" | "Excused";
+type ApiStatus = "present" | "absent" | "late" | "excused";
+
+type ClassRecord = {
+  id: string;
+  name: string;
+  level: number;
+  academic_year_id?: string | null;
+};
+
+type SectionRecord = {
+  id: string;
+  name: string;
+  full_name: string;
+  class_id: string;
+};
+
+type ApiStudent = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  student_id_number?: string | null;
+  student_type?: "boarding" | "day";
+  current_section?: { name: string; full_name: string } | null;
+};
+
+type ApiSession = {
+  id: string;
+  section_id: string;
+  session_date: string;
+  session_type?: string | null;
+};
+
+type ApiRecord = {
+  id: string;
+  session_id: string;
+  student_id: string;
+  status: ApiStatus;
+  scan_method?: string | null;
+  scanned_at?: string | null;
+  created_at?: string | null;
+};
+
+type AttendanceRow = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  cardId: string;
+  className: string;
+  timeIn: string;
+  status: UiStatus;
+  sessionId: string;
+  sectionId: string;
+};
+
+const STATUS_LABEL: Record<ApiStatus, UiStatus> = {
+  present: "Present",
+  absent: "Absent",
+  late: "Late",
+  excused: "Excused"
+};
+
+const STATUS_TO_API: Record<UiStatus, ApiStatus> = {
+  Present: "present",
+  Absent: "absent",
+  Late: "late",
+  Excused: "excused"
+};
+
+const MANUAL_STATUS_CLASSES: Record<ApiStatus, string> = {
+  present: "bg-success/15 text-success border-success/30",
+  absent: "bg-destructive/15 text-destructive border-destructive/30",
+  late: "bg-amber-100 text-amber-700 border-amber-200",
+  excused: "bg-blue-100 text-blue-700 border-blue-200"
+};
+
+const formatLongDate = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  });
+};
+
+const formatTime = (value?: string | null, status?: ApiStatus) => {
+  if (!value || status === "absent") return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+};
+
+const nextManualStatus = (current?: ApiStatus) => {
+  const order: ApiStatus[] = ["present", "absent", "late", "excused"];
+  if (!current) return order[0];
+  const idx = order.indexOf(current);
+  return order[(idx + 1) % order.length];
 };
 
 function TeacherAttendance() {
-  const [tab, setTab] = useState<"take" | "history">("take");
-  const [cls, setCls] = useState(TEACHER_ME.classes[0]);
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [loaded, setLoaded] = useState(false);
-  const [marks, setMarks] = useState<Record<string, AttStatus>>({});
+  const todayValue = new Date().toISOString().slice(0, 10);
+  const [tab, setTab] = useState<"live" | "manual">("live");
+  const [classRecords, setClassRecords] = useState<ClassRecord[]>([]);
+  const [sectionRecords, setSectionRecords] = useState<SectionRecord[]>([]);
+  const [studentsById, setStudentsById] = useState<Record<string, ApiStudent>>({});
+  const [sessions, setSessions] = useState<ApiSession[]>([]);
+  const [records, setRecords] = useState<ApiRecord[]>([]);
+  const [dateFilter, setDateFilter] = useState(todayValue);
+  const [sectionFilter, setSectionFilter] = useState("");
   const [search, setSearch] = useState("");
-  const [confirm, setConfirm] = useState(false);
-  const [notify, setNotify] = useState(true);
-  const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [listOpen, setListOpen] = useState<{ mode: "current" | "history"; cls: string; date: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [recordsLoading, setRecordsLoading] = useState(false);
 
-  const students = useMemo(() => studentsInClass(cls), [cls]);
-  const filtered = students.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
+  const [manualSectionId, setManualSectionId] = useState("");
+  const [manualDate, setManualDate] = useState(todayValue);
+  const [manualStudents, setManualStudents] = useState<ApiStudent[]>([]);
+  const [manualMarks, setManualMarks] = useState<Record<string, ApiStatus>>({});
+  const [manualLoaded, setManualLoaded] = useState(false);
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualSearch, setManualSearch] = useState("");
+  const [manualSessionId, setManualSessionId] = useState<string | null>(null);
+
+  const classMap = useMemo(() => new Map(classRecords.map((item) => [item.id, item])), [classRecords]);
+  const sectionMap = useMemo(() => new Map(sectionRecords.map((item) => [item.id, item])), [sectionRecords]);
+
+  const classOptions = useMemo(() => {
+    return sectionRecords.map((section) => {
+      const cls = classMap.get(section.class_id);
+      const label = cls ? `${cls.name}${section.name}` : section.full_name || section.name;
+      return { id: section.id, label };
+    });
+  }, [sectionRecords, classMap]);
+
+  const classLabelForSection = (sectionId?: string) => {
+    if (!sectionId) return "--";
+    const section = sectionMap.get(sectionId);
+    if (!section) return "--";
+    const cls = classMap.get(section.class_id);
+    if (cls) return `${cls.name}${section.name}`;
+    return section.full_name || section.name;
+  };
+
+  const mergeStudents = (items: ApiStudent[]) => {
+    if (!items.length) return;
+    setStudentsById((prev) => {
+      const next = { ...prev };
+      items.forEach((student) => {
+        next[student.id] = student;
+      });
+      return next;
+    });
+  };
+
+  const loadClassData = async () => {
+    setLoading(true);
+    try {
+      const [classes, sections] = await Promise.all([
+        apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }),
+        apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" })
+      ]);
+      setClassRecords(classes);
+      setSectionRecords(sections);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load classes");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStudentsForSection = async (sectionId: string) => {
+    if (!sectionId) return;
+    try {
+      const students = await apiRequest<ApiStudent[]>(
+        `/students?section_id=${sectionId}&limit=1000`,
+        { auth: "school" }
+      );
+      mergeStudents(students);
+    } catch {
+      // Ignore failures here; manual load will retry and show toast
+    }
+  };
+
+  const loadAttendanceData = async (targetDate: string, targetSectionId: string) => {
+    if (!targetSectionId) return;
+    setRecordsLoading(true);
+    try {
+      const sessionList = await apiRequest<ApiSession[]>(
+        `/attendance/sessions?date=${targetDate}&section_id=${targetSectionId}&limit=200`,
+        { auth: "school" }
+      );
+      setSessions(sessionList);
+
+      if (sessionList.length === 0) {
+        setRecords([]);
+      } else {
+        const recordBatches = await Promise.all(
+          sessionList.map((session) =>
+            apiRequest<ApiRecord[]>(`/attendance/records?session_id=${session.id}&limit=2000`, {
+              auth: "school"
+            }).catch(() => [])
+          )
+        );
+        setRecords(recordBatches.flat());
+      }
+
+      await fetchStudentsForSection(targetSectionId);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load attendance records");
+    } finally {
+      setRecordsLoading(false);
+    }
+  };
+
+  const loadManualStudents = async () => {
+    if (!manualSectionId) {
+      toast.error("Select a class first");
+      return;
+    }
+
+    setManualLoading(true);
+    setManualLoaded(false);
+    try {
+      const [students, existingSessions] = await Promise.all([
+        apiRequest<ApiStudent[]>(`/students?section_id=${manualSectionId}&limit=500`, {
+          auth: "school"
+        }),
+        apiRequest<ApiSession[]>(
+          `/attendance/sessions?section_id=${manualSectionId}&date=${manualDate}&limit=1`,
+          { auth: "school" }
+        )
+      ]);
+
+      mergeStudents(students);
+      setManualStudents(students);
+
+      const existingSession = existingSessions[0] ?? null;
+      setManualSessionId(existingSession?.id ?? null);
+
+      if (existingSession) {
+        const existingRecords = await apiRequest<ApiRecord[]>(
+          `/attendance/records?session_id=${existingSession.id}&limit=2000`,
+          { auth: "school" }
+        );
+        const nextMarks: Record<string, ApiStatus> = {};
+        existingRecords.forEach((record) => {
+          nextMarks[record.student_id] = record.status;
+        });
+        setManualMarks(nextMarks);
+      } else {
+        setManualMarks({});
+      }
+
+      setManualLoaded(true);
+      toast.success(`Loaded ${students.length} students`);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load students");
+    } finally {
+      setManualLoading(false);
+    }
+  };
+
+  const manualAllMarked =
+    manualStudents.length > 0 && manualStudents.every((student) => manualMarks[student.id]);
+
+  const submitManualAttendance = async () => {
+    if (!manualSectionId) {
+      toast.error("Select a class first");
+      return;
+    }
+
+    if (!manualAllMarked) {
+      toast.error("Mark all students before saving");
+      return;
+    }
+
+    setManualSaving(true);
+    try {
+      let sessionId = manualSessionId;
+      if (!sessionId) {
+        const session = await apiRequest<ApiSession>("/attendance/sessions", {
+          method: "POST",
+          auth: "school",
+          body: JSON.stringify({
+            section_id: manualSectionId,
+            session_date: manualDate,
+            session_type: "class",
+            started_at: new Date().toISOString()
+          })
+        });
+        sessionId = session.id;
+        setManualSessionId(sessionId);
+      }
+
+      const payload = manualStudents.map((student) => ({
+        student_id: student.id,
+        status: manualMarks[student.id]
+      }));
+
+      await apiRequest("/attendance/records/bulk", {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({
+          session_id: sessionId,
+          scan_method: "manual",
+          records: payload
+        })
+      });
+
+      toast.success("Attendance saved");
+      setDateFilter(manualDate);
+      setSectionFilter(manualSectionId);
+      await loadAttendanceData(manualDate, manualSectionId);
+      setTab("live");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to save attendance");
+    } finally {
+      setManualSaving(false);
+    }
+  };
 
   useEffect(() => {
-    if (!loaded) return;
-    const t = setInterval(() => setSavedAt(new Date().toLocaleTimeString()), 30000);
-    return () => clearInterval(t);
-  }, [loaded]);
+    loadClassData();
+  }, []);
+
+  useEffect(() => {
+    if (!sectionFilter && classOptions.length) {
+      setSectionFilter(classOptions[0].id);
+    }
+    if (!manualSectionId && classOptions.length) {
+      setManualSectionId(classOptions[0].id);
+    }
+  }, [classOptions, sectionFilter, manualSectionId]);
+
+  useEffect(() => {
+    if (sectionFilter) {
+      loadAttendanceData(dateFilter, sectionFilter);
+    }
+  }, [dateFilter, sectionFilter]);
+
+  useEffect(() => {
+    setManualSessionId(null);
+    setManualLoaded(false);
+  }, [manualSectionId, manualDate]);
+
+  const todayLabel = useMemo(() => formatLongDate(dateFilter), [dateFilter]);
+
+  const sessionMap = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);
+
+  const rows = useMemo<AttendanceRow[]>(() => {
+    return records.map((record) => {
+      const session = sessionMap.get(record.session_id);
+      const sectionId = session?.section_id ?? "";
+      const student = studentsById[record.student_id];
+      const studentName = student
+        ? `${student.first_name} ${student.last_name}`.trim()
+        : "Unknown student";
+      const cardId = student?.student_id_number ?? "--";
+      const status = STATUS_LABEL[record.status];
+      const timeIn = formatTime(record.scanned_at ?? record.created_at, record.status);
+      const className = classLabelForSection(sectionId);
+
+      return {
+        id: record.id,
+        studentId: record.student_id,
+        studentName,
+        cardId,
+        className,
+        timeIn,
+        status,
+        sessionId: record.session_id,
+        sectionId
+      };
+    });
+  }, [records, sessionMap, studentsById, classMap, sectionMap]);
 
   const counts = useMemo(() => {
-    const c = { Present: 0, Absent: 0, Late: 0, Excused: 0 };
-    Object.values(marks).forEach(s => c[s]++);
-    return c;
-  }, [marks]);
+    return records.reduce(
+      (acc, record) => {
+        acc.total += 1;
+        if (record.status === "present") acc.present += 1;
+        if (record.status === "absent") acc.absent += 1;
+        if (record.status === "late") acc.late += 1;
+        if (record.status === "excused") acc.excused += 1;
+        return acc;
+      },
+      { total: 0, present: 0, absent: 0, late: 0, excused: 0 }
+    );
+  }, [records]);
 
-  const allMarked = students.length > 0 && Object.keys(marks).length === students.length;
+  const filtered = useMemo(() => {
+    if (!search) return rows;
+    const target = search.toLowerCase();
+    return rows.filter((row) =>
+      `${row.studentName} ${row.cardId}`.toLowerCase().includes(target)
+    );
+  }, [rows, search]);
 
-  const load = () => {
-    setLoaded(true);
-    setMarks({});
-    setSavedAt(null);
-    toast.success(`Loaded ${students.length} students for ${cls} on ${date}`);
-  };
+  const manualFiltered = useMemo(() => {
+    if (!manualSearch) return manualStudents;
+    const target = manualSearch.toLowerCase();
+    return manualStudents.filter((student) => {
+      const name = `${student.first_name} ${student.last_name}`.toLowerCase();
+      return (
+        name.includes(target) ||
+        (student.student_id_number ?? "").toLowerCase().includes(target)
+      );
+    });
+  }, [manualStudents, manualSearch]);
 
-  const submit = () => {
-    setConfirm(false);
-    toast.success(`Attendance submitted for ${cls} on ${date}. ${notify && counts.Absent > 0 ? `Sending ${counts.Absent} parent SMS…` : ""}`);
-    setLoaded(false);
-    setMarks({});
-  };
-
-  const exportExcel = () => {
-    if (!loaded) {
-      toast.error("Load students first");
-      return;
-    }
-    toast.success(`Attendance exported (Excel) for ${cls} on ${date}`);
-  };
-
-  const openCurrentList = () => {
-    if (!loaded) {
-      toast.error("Load students first");
-      return;
-    }
-    setListOpen({ mode: "current", cls, date });
-  };
+  const manualCounts = useMemo(() => {
+    const result = { total: manualStudents.length, present: 0, absent: 0, late: 0, excused: 0 };
+    manualStudents.forEach((student) => {
+      const status = manualMarks[student.id];
+      if (!status) return;
+      if (status === "present") result.present += 1;
+      if (status === "absent") result.absent += 1;
+      if (status === "late") result.late += 1;
+      if (status === "excused") result.excused += 1;
+    });
+    return result;
+  }, [manualStudents, manualMarks]);
 
   return (
-    <TeacherLayout title="Attendance" subtitle="Take attendance for your assigned classes">
+    <TeacherLayout title="Attendance" subtitle="Live attendance and manual entry">
       <div className="flex gap-1 border-b border-border mb-5">
-        {(["take", "history"] as const).map(t => (
-          <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 text-sm font-semibold border-b-2 ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`}>
-            {t === "take" ? "Take Attendance" : "History"}
+        {(["live", "manual"] as const).map((item) => (
+          <button
+            key={item}
+            onClick={() => setTab(item)}
+            className={`px-4 py-2 text-sm font-semibold border-b-2 ${
+              tab === item
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground"
+            }`}
+          >
+            {item === "live" ? "Live Attendance" : "Manual Attendance"}
           </button>
         ))}
       </div>
 
-      {tab === "take" && (
+      {tab === "live" && (
         <>
-          <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap items-end gap-3 mb-5">
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap gap-3 items-center">
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(event) => setDateFilter(event.target.value)}
+              className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+            />
+            <select
+              value={sectionFilter}
+              onChange={(event) => setSectionFilter(event.target.value)}
+              className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+              disabled={loading}
+            >
+              {classOptions.length === 0 && (
+                <option value="">No classes yet</option>
+              )}
+              {classOptions.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
+            </select>
+            <div className="relative flex-1 min-w-52">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search by name..."
+                className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-border flex flex-wrap gap-2 items-center justify-between">
+              <h3 className="font-display font-bold">Attendance - {todayLabel}</h3>
+              <div className="text-xs text-muted-foreground space-x-3">
+                <span>Total: <b className="text-foreground">{counts.total}</b></span>
+                <span>Present: <b className="text-success">{counts.present}</b></span>
+                <span>Absent: <b className="text-destructive">{counts.absent}</b></span>
+                <span>Late: <b className="text-amber-600">{counts.late}</b></span>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="text-left px-5 py-3">#</th>
+                    <th className="text-left px-5 py-3">Student</th>
+                    <th className="text-left px-5 py-3">Card ID</th>
+                    <th className="text-left px-5 py-3">Class</th>
+                    <th className="text-left px-5 py-3">Time In</th>
+                    <th className="text-left px-5 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recordsLoading && (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-6">
+                        <Skeleton className="h-6 w-full" />
+                      </td>
+                    </tr>
+                  )}
+                  {!recordsLoading && filtered.map((row, i) => (
+                    <tr key={row.id} className="border-t border-border odd:bg-background even:bg-muted/20">
+                      <td className="px-5 py-3 text-muted-foreground">{i + 1}</td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={row.studentName} size="sm" />
+                          <span className="font-medium">{row.studentName}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{row.cardId}</td>
+                      <td className="px-5 py-3">{row.className}</td>
+                      <td className="px-5 py-3">{row.timeIn}</td>
+                      <td className="px-5 py-3"><StatusBadge status={row.status} /></td>
+                    </tr>
+                  ))}
+                  {!recordsLoading && filtered.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
+                        No records available for this selection.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {tab === "manual" && (
+        <>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap gap-3 items-end">
             <div>
               <label className="text-xs font-semibold text-muted-foreground">Class</label>
-              <select value={cls} onChange={e => { setCls(e.target.value); setLoaded(false); }} className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm">
-                {TEACHER_ME.classes.map(c => <option key={c}>{c}</option>)}
+              <select
+                value={manualSectionId}
+                onChange={(event) => {
+                  setManualSectionId(event.target.value);
+                  setManualLoaded(false);
+                }}
+                className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
+                disabled={loading}
+              >
+                {classOptions.length === 0 && (
+                  <option value="">No classes yet</option>
+                )}
+                {classOptions.map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="text-xs font-semibold text-muted-foreground">Date</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm" />
+              <input
+                type="date"
+                value={manualDate}
+                onChange={(event) => setManualDate(event.target.value)}
+                className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
+              />
             </div>
-            <button onClick={load} className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90">Load Students</button>
-            <button onClick={exportExcel} className="h-9 px-4 rounded-md border border-border text-sm font-semibold hover:bg-muted inline-flex items-center gap-2">
-              <FileText className="h-4 w-4" /> Export Excel
+            <button
+              onClick={loadManualStudents}
+              disabled={manualLoading || loading}
+              className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-50"
+            >
+              Load Students
             </button>
-            <button onClick={openCurrentList} className="h-9 px-4 rounded-md border border-border text-sm font-semibold hover:bg-muted">
-              Students List
+            <button
+              onClick={() => {
+                const next: Record<string, ApiStatus> = {};
+                manualStudents.forEach((student) => {
+                  next[student.id] = "present";
+                });
+                setManualMarks(next);
+              }}
+              disabled={!manualLoaded}
+              className="h-9 px-4 rounded-md border border-border text-sm font-semibold hover:bg-muted disabled:opacity-50"
+            >
+              Mark All Present
+            </button>
+            <div className="relative flex-1 min-w-52">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={manualSearch}
+                onChange={(event) => setManualSearch(event.target.value)}
+                placeholder="Search student..."
+                className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm"
+              />
+            </div>
+            <button
+              onClick={submitManualAttendance}
+              disabled={!manualLoaded || manualSaving}
+              className="h-9 px-4 rounded-md bg-success text-success-foreground text-sm font-semibold hover:bg-success/90 disabled:opacity-50"
+            >
+              Save Attendance
             </button>
           </div>
 
-          {loaded && (
-            <div className="grid lg:grid-cols-3 gap-5">
-              <div className="lg:col-span-2 rounded-xl border border-border bg-card shadow-sm">
-                <div className="p-4 border-b border-border flex items-center gap-2 flex-wrap">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <input value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm" placeholder="Search student…" />
-                  </div>
-                  <button onClick={() => { const m: Record<string, AttStatus> = {}; students.forEach(s => m[s.id] = "Present"); setMarks(m); }}
-                    className="h-9 px-3 text-xs font-semibold rounded-md bg-indigo-100 text-indigo-800 hover:bg-indigo-200">Mark All Present</button>
+          {manualLoading && (
+            <div className="mt-5 rounded-xl border border-border bg-card p-6 shadow-sm">
+              <Skeleton className="h-6 w-full" />
+              <Skeleton className="mt-3 h-6 w-4/5" />
+              <Skeleton className="mt-3 h-6 w-3/5" />
+            </div>
+          )}
+
+          {manualLoaded && !manualLoading && (
+            <div className="mt-5 grid lg:grid-cols-[1.6fr_0.9fr] gap-5">
+              <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+                  <h3 className="font-display font-bold">Manual Attendance List</h3>
+                  <span className="text-xs text-muted-foreground">{manualFiltered.length} students</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
-                    <thead className="bg-muted text-xs uppercase">
+                    <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                       <tr>
-                        <th className="text-left p-3 w-10">#</th>
-                        <th className="text-left p-3">Student</th>
-                        <th className="text-left p-3">Reg #</th>
-                        <th className="text-left p-3">Status</th>
+                        <th className="text-left px-5 py-3">#</th>
+                        <th className="text-left px-5 py-3">Student</th>
+                        <th className="text-left px-5 py-3">Card ID</th>
+                        <th className="text-left px-5 py-3">Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filtered.map((s, i) => {
-                        const status = marks[s.id];
+                      {manualFiltered.map((student, i) => {
+                        const status = manualMarks[student.id];
+                        const label = status ? STATUS_LABEL[status] : "Mark";
                         return (
-                          <tr key={s.id} className={`border-t border-border ${i % 2 ? "bg-gray-50" : ""}`}>
-                            <td className="p-3 text-muted-foreground">{i + 1}</td>
-                            <td className="p-3 font-medium flex items-center gap-2">
-                              <div className="h-7 w-7 rounded-full bg-primary/10 text-primary grid place-items-center text-[10px] font-bold">
-                                {s.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                          <tr key={student.id} className="border-t border-border odd:bg-background even:bg-muted/20">
+                            <td className="px-5 py-3 text-muted-foreground">{i + 1}</td>
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-2.5">
+                                <Avatar name={`${student.first_name} ${student.last_name}`} size="sm" />
+                                <span className="font-medium">{student.first_name} {student.last_name}</span>
                               </div>
-                              {s.name}
                             </td>
-                            <td className="p-3 text-muted-foreground">{s.cardId}</td>
-                            <td className="p-3">
-                              <button onClick={() => setMarks({ ...marks, [s.id]: status ? NEXT[status] : "Present" })}
-                                className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${status ? COLORS[status] : "bg-muted text-muted-foreground border-border"}`}>
-                                {status ?? "Mark"}
+                            <td className="px-5 py-3 font-mono text-xs text-muted-foreground">
+                              {student.student_id_number ?? "--"}
+                            </td>
+                            <td className="px-5 py-3">
+                              <button
+                                onClick={() =>
+                                  setManualMarks((prev) => ({
+                                    ...prev,
+                                    [student.id]: nextManualStatus(prev[student.id])
+                                  }))
+                                }
+                                className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                                  status ? MANUAL_STATUS_CLASSES[status] : "bg-muted text-muted-foreground border-border"
+                                }`}
+                              >
+                                {label}
                               </button>
                             </td>
                           </tr>
                         );
                       })}
+                      {manualFiltered.length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-5 py-10 text-center text-muted-foreground">
+                            No students match your search.
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
               </div>
 
-              <div className="rounded-xl border border-border bg-card p-5 shadow-sm h-fit space-y-4">
-                <div>
-                  <div className="text-xs uppercase text-muted-foreground">Session</div>
-                  <div className="font-display text-lg font-bold">{cls}</div>
-                  <div className="text-xs text-muted-foreground">{TEACHER_ME.subject} · {date}</div>
+              <div className="rounded-xl border border-border bg-card p-5 shadow-sm h-fit">
+                <div className="text-xs uppercase text-muted-foreground">Session</div>
+                <div className="font-display text-lg font-bold">{classLabelForSection(manualSectionId)}</div>
+                <div className="text-xs text-muted-foreground">{manualDate}</div>
+                <div className="mt-4 grid grid-cols-2 gap-2 text-center">
+                  <div className="rounded-lg bg-success/10 p-2">
+                    <div className="text-2xl font-bold text-success">{manualCounts.present}</div>
+                    <div className="text-[10px] uppercase text-success">Present</div>
+                  </div>
+                  <div className="rounded-lg bg-destructive/10 p-2">
+                    <div className="text-2xl font-bold text-destructive">{manualCounts.absent}</div>
+                    <div className="text-[10px] uppercase text-destructive">Absent</div>
+                  </div>
+                  <div className="rounded-lg bg-amber-50 p-2">
+                    <div className="text-2xl font-bold text-amber-600">{manualCounts.late}</div>
+                    <div className="text-[10px] uppercase text-amber-700">Late</div>
+                  </div>
+                  <div className="rounded-lg bg-blue-50 p-2">
+                    <div className="text-2xl font-bold text-blue-600">{manualCounts.excused}</div>
+                    <div className="text-[10px] uppercase text-blue-700">Excused</div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-center">
-                  <div className="rounded-lg bg-indigo-50 p-2"><div className="text-2xl font-bold text-indigo-700">{counts.Present}</div><div className="text-[10px] uppercase text-indigo-800">Present</div></div>
-                  <div className="rounded-lg bg-red-50 p-2"><div className="text-2xl font-bold text-red-600">{counts.Absent}</div><div className="text-[10px] uppercase text-red-700">Absent</div></div>
-                  <div className="rounded-lg bg-amber-50 p-2"><div className="text-2xl font-bold text-amber-600">{counts.Late}</div><div className="text-[10px] uppercase text-amber-700">Late</div></div>
-                  <div className="rounded-lg bg-blue-50 p-2"><div className="text-2xl font-bold text-blue-600">{counts.Excused}</div><div className="text-[10px] uppercase text-blue-700">Excused</div></div>
+                <div className="mt-3 text-xs text-muted-foreground">
+                  {Object.keys(manualMarks).length} of {manualStudents.length} marked
                 </div>
-                <div className="text-xs text-muted-foreground">{Object.keys(marks).length} of {students.length} marked</div>
-                <textarea placeholder="Session notes (optional)…" className="w-full rounded-md border border-input bg-background p-2 text-sm min-h-[60px]" />
-                {savedAt && <div className="text-[11px] text-muted-foreground inline-flex items-center gap-1"><Save className="h-3 w-3" /> Draft saved {savedAt}</div>}
-                <button disabled={!allMarked} onClick={() => setConfirm(true)}
-                  className="w-full h-10 rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
+                <button
+                  onClick={submitManualAttendance}
+                  disabled={!manualAllMarked || manualSaving}
+                  className="mt-4 w-full h-10 rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90 disabled:opacity-50"
+                >
                   Submit Attendance
                 </button>
               </div>
             </div>
           )}
-          {!loaded && (
-            <div className="rounded-xl border border-dashed border-border p-12 text-center">
+
+          {!manualLoaded && !manualLoading && (
+            <div className="mt-5 rounded-xl border border-dashed border-border p-12 text-center">
               <CheckCircle2 className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">Select a class and period above, then click Load Students to begin.</p>
+              <p className="text-sm text-muted-foreground">Select a class and date, then click Load Students to begin.</p>
             </div>
           )}
         </>
-      )}
-
-      {tab === "history" && (
-        <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-muted text-xs uppercase">
-              <tr><th className="text-left p-3">Date</th><th className="text-left p-3">Class</th><th className="text-left p-3">Present</th><th className="text-left p-3">Absent</th><th className="text-left p-3">Late</th><th className="text-left p-3">Submitted</th><th className="text-left p-3">Actions</th></tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: 8 }).map((_, i) => (
-                <tr key={i} className={`border-t border-border ${i % 2 ? "bg-gray-50" : ""}`}>
-                  <td className="p-3">2026-05-{String(15 - i).padStart(2, "0")}</td>
-                  <td className="p-3 font-semibold">{TEACHER_ME.classes[i % TEACHER_ME.classes.length]}</td>
-                  <td className="p-3 text-indigo-700 font-semibold">{28 - (i % 4)}</td>
-                  <td className="p-3 text-red-600">{i % 3}</td>
-                  <td className="p-3 text-amber-600">{i % 2}</td>
-                  <td className="p-3 text-muted-foreground">07:{String(45 + i).padStart(2, "0")}</td>
-                  <td className="p-3">
-                    <button
-                      onClick={() => setListOpen({ mode: "history", cls: TEACHER_ME.classes[i % TEACHER_ME.classes.length], date: `2026-05-${String(15 - i).padStart(2, "0")}` })}
-                      className="text-xs text-primary font-semibold hover:underline"
-                    >
-                      View Students
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {confirm && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setConfirm(false)}>
-          <div className="w-full max-w-md rounded-2xl bg-background p-6 shadow-2xl animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display text-lg font-bold">Confirm Submission</h3>
-              <button onClick={() => setConfirm(false)} className="rounded-md p-1 hover:bg-muted"><X className="h-4 w-4" /></button>
-            </div>
-            <p className="text-sm text-muted-foreground mb-3">Submitting attendance for <b>{cls}</b>, {date}</p>
-            <div className="flex gap-3 text-sm mb-4">
-              <span className="text-indigo-700 font-semibold">{counts.Present} Present</span>
-              <span className="text-red-600 font-semibold">{counts.Absent} Absent</span>
-              <span className="text-amber-600 font-semibold">{counts.Late} Late</span>
-            </div>
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} />
-              Notify {counts.Absent} parent(s) of absent students via SMS
-            </label>
-            <div className="flex justify-end gap-2 mt-5">
-              <button onClick={() => setConfirm(false)} className="h-9 px-4 rounded-md border border-border text-sm font-semibold">Cancel</button>
-              <button onClick={submit} className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold">Confirm</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {listOpen && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setListOpen(null)}>
-          <div className="w-full max-w-3xl rounded-2xl bg-background p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="font-display text-lg font-bold">Student Attendance List</h3>
-                <p className="text-xs text-muted-foreground">{listOpen.cls} · {listOpen.date}</p>
-              </div>
-              <button onClick={() => setListOpen(null)} className="rounded-md p-1 hover:bg-muted"><X className="h-4 w-4" /></button>
-            </div>
-            <div className="rounded-xl border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted text-xs uppercase">
-                  <tr><th className="text-left p-3">Student</th><th className="text-left p-3">Reg #</th><th className="text-left p-3">Status</th></tr>
-                </thead>
-                <tbody>
-                  {studentsInClass(listOpen.cls).map((s, i) => {
-                    const status = listOpen.mode === "current"
-                      ? (marks[s.id] ?? "Not marked")
-                      : (["Present", "Absent", "Late", "Excused"][i % 4] as AttStatus);
-                    const statusClass = status in COLORS ? COLORS[status as AttStatus] : "bg-muted text-muted-foreground border-border";
-                    return (
-                      <tr key={s.id} className={`border-t border-border ${i % 2 ? "bg-gray-50" : ""}`}>
-                        <td className="p-3 font-medium">{s.name}</td>
-                        <td className="p-3 text-muted-foreground">{s.cardId}</td>
-                        <td className="p-3">
-                          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${statusClass}`}>{status}</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
       )}
     </TeacherLayout>
   );

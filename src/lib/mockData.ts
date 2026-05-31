@@ -1,4 +1,4 @@
-export type Status = "Present" | "Absent" | "Late";
+export type Status = "Present" | "Absent" | "Late" | "Excused";
 
 export interface Student {
   id: string;

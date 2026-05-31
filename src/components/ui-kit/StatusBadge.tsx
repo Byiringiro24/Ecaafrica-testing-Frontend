@@ -1,10 +1,12 @@
 import { cn } from "@/lib/utils";
-import type { Status } from "@/lib/mockData";
+
+type Status = "Present" | "Absent" | "Late" | "Excused";
 
 const MAP: Record<Status, string> = {
   Present: "bg-success/15 text-success",
   Absent: "bg-destructive/15 text-destructive",
   Late: "bg-warning/15 text-warning-foreground",
+  Excused: "bg-blue-100 text-blue-700",
 };
 
 export function StatusBadge({ status }: { status: Status }) {

@@ -1,13 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Download, Search, Send } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { SMSComposeModal } from "@/components/modals/SMSComposeModal";
-import {
-  CLASSES, CLASS_LIST, STUDENTS, SMS_LOGS, TODAY_ATTENDANCE,
-  DAILY_TREND, WEEKLY_COMPARE, CHECKIN_DISTRIBUTION, HEATMAP, todayCounts,
-} from "@/lib/mockData";
+import { apiRequest } from "@/lib/api";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
@@ -18,14 +15,522 @@ export const Route = createFileRoute("/reports")({ component: ReportsPage });
 const TABS = ["overview","class","student","time"] as const;
 type Tab = typeof TABS[number];
 
+type ApiStatus = "present" | "absent" | "late" | "excused";
+
+type ApiRecord = {
+  id: string;
+  session_id: string;
+  student_id: string;
+  status: ApiStatus;
+  scanned_at?: string | null;
+  created_at?: string | null;
+};
+
+type ApiSession = {
+  id: string;
+  section_id: string;
+  session_date: string;
+};
+
+type ApiStudent = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  student_id_number?: string | null;
+  current_section?: { name: string; full_name: string } | null;
+};
+
+type ClassRecord = {
+  id: string;
+  name: string;
+  level: number;
+};
+
+type SectionRecord = {
+  id: string;
+  name: string;
+  full_name: string;
+  class_id: string;
+  class_teacher_id?: string | null;
+};
+
+type TeacherRecord = {
+  id: string;
+  name?: string | null;
+};
+
+type StudentCountResponse = {
+  data: unknown[];
+  meta?: { total?: number };
+};
+
+type ClassOption = {
+  id: string;
+  label: string;
+  classId: string;
+  sectionId: string;
+  teacherId?: string | null;
+};
+
+type ClassSummary = {
+  id: string;
+  name: string;
+  teacher: string;
+  studentCount: number;
+  present: number;
+  absent: number;
+  late: number;
+  rate: number;
+};
+
+type StudentSummary = {
+  id: string;
+  name: string;
+  className: string;
+  present: number;
+  absent: number;
+  late: number;
+  rate: number;
+};
+
+type HeatmapCell = { week: number; rate: number };
+type HeatmapRow = { day: string; cells: HeatmapCell[] };
+
+const isPresentStatus = (status: ApiStatus) => status !== "absent";
+
+const formatDayLabel = (value: string) =>
+  new Date(value).toLocaleDateString("en-US", { weekday: "short" });
+
+const listDates = (start: string, end: string) => {
+  const result: string[] = [];
+  const cursor = new Date(start);
+  const last = new Date(end);
+  while (cursor <= last) {
+    result.push(cursor.toISOString().slice(0, 10));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return result;
+};
+
+const classLabelForSection = (
+  sectionId: string,
+  sectionMap: Map<string, SectionRecord>,
+  classMap: Map<string, ClassRecord>
+) => {
+  const section = sectionMap.get(sectionId);
+  if (!section) return "—";
+  const cls = classMap.get(section.class_id);
+  if (cls) return `${cls.name}${section.name}`;
+  return section.full_name || section.name;
+};
+
+const getWeekBuckets = (dates: string[]) => {
+  const weeks = new Map<string, string[]>();
+  dates.forEach((date, idx) => {
+    const key = `Week ${Math.floor(idx / 7) + 1}`;
+    const current = weeks.get(key) ?? [];
+    current.push(date);
+    weeks.set(key, current);
+  });
+  return Array.from(weeks.entries());
+};
+
+const timeBuckets = [
+  { label: "06:00-08:00", start: 6, end: 8 },
+  { label: "08:00-10:00", start: 8, end: 10 },
+  { label: "10:00-12:00", start: 10, end: 12 },
+  { label: "12:00-14:00", start: 12, end: 14 },
+  { label: "14:00-16:00", start: 14, end: 16 },
+  { label: "16:00-18:00", start: 16, end: 18 },
+  { label: "After 18:00", start: 18, end: 24 }
+];
+
 function ReportsPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const [start, setStart] = useState(new Date(new Date().setDate(1)).toISOString().slice(0,10));
   const [end, setEnd] = useState(new Date().toISOString().slice(0,10));
-  const [classFilter, setClassFilter] = useState<string[]>(CLASSES);
+  const [classFilter, setClassFilter] = useState<string[]>([]);
   const [composeFor, setComposeFor] = useState<string | null>(null);
 
-  const counts = todayCounts();
+  const [loading, setLoading] = useState(false);
+  const [classRecords, setClassRecords] = useState<ClassRecord[]>([]);
+  const [sectionRecords, setSectionRecords] = useState<SectionRecord[]>([]);
+  const [teacherRecords, setTeacherRecords] = useState<TeacherRecord[]>([]);
+  const [classOptions, setClassOptions] = useState<ClassOption[]>([]);
+  const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
+  const [studentsById, setStudentsById] = useState<Record<string, ApiStudent>>({});
+  const [summary, setSummary] = useState({
+    totalStudents: 0,
+    present: 0,
+    absent: 0,
+    late: 0,
+    excused: 0,
+    totalRecords: 0
+  });
+  const [dailyTrend, setDailyTrend] = useState<
+    Array<{ date: string; Present: number; Late: number; Absent: number }>
+  >([]);
+  const [weeklyCompare, setWeeklyCompare] = useState<
+    Array<{ week: string; Present: number; Late: number; Absent: number }>
+  >([]);
+  const [checkinDistribution, setCheckinDistribution] = useState<
+    Array<{ slot: string; count: number }>
+  >([]);
+  const [heatmap, setHeatmap] = useState<HeatmapRow[]>([]);
+  const [classSummary, setClassSummary] = useState<ClassSummary[]>([]);
+  const [studentSummary, setStudentSummary] = useState<StudentSummary[]>([]);
+
+  const classMap = useMemo(() => new Map(classRecords.map((item) => [item.id, item])), [classRecords]);
+  const sectionMap = useMemo(() => new Map(sectionRecords.map((item) => [item.id, item])), [sectionRecords]);
+  const teacherMap = useMemo(() => new Map(teacherRecords.map((item) => [item.id, item])), [teacherRecords]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadMeta = async () => {
+      setLoading(true);
+      try {
+        const [classes, sections, teachers] = await Promise.all([
+          apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }).catch(() => []),
+          apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" }).catch(() => []),
+          apiRequest<TeacherRecord[]>("/users?role=teacher&limit=200", { auth: "school" }).catch(() => [])
+        ]);
+
+        if (!active) return;
+
+        setClassRecords(classes);
+        setSectionRecords(sections);
+        setTeacherRecords(teachers);
+
+        const options = sections.map((section) => {
+          const cls = classes.find((item) => item.id === section.class_id);
+          const label = cls ? `${cls.name}${section.name}` : section.full_name || section.name;
+          return {
+            id: section.id,
+            label,
+            classId: section.class_id,
+            sectionId: section.id,
+            teacherId: section.class_teacher_id ?? null
+          };
+        });
+        setClassOptions(options);
+
+        const counts = await Promise.all(
+          sections.map(async (section) => {
+            try {
+              const response = await apiRequest<StudentCountResponse>(
+                `/students?section_id=${section.id}&limit=1`,
+                { auth: "school", returnMeta: true }
+              );
+              return [section.id, response.meta?.total ?? 0] as const;
+            } catch {
+              return [section.id, 0] as const;
+            }
+          })
+        );
+
+        if (!active) return;
+
+        const nextCounts: Record<string, number> = {};
+        counts.forEach(([id, count]) => {
+          nextCounts[id] = count;
+        });
+        setStudentCounts(nextCounts);
+      } catch (error: any) {
+        if (active) toast.error(error?.message ?? "Failed to load report metadata");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    loadMeta();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!classOptions.length) return;
+    if (classFilter.length === 0) {
+      setClassFilter(classOptions.map((option) => option.id));
+    }
+  }, [classOptions, classFilter.length]);
+
+  useEffect(() => {
+    if (!sectionRecords.length) return;
+
+    let active = true;
+    const loadStudents = async () => {
+      const selectedSectionIds = classFilter.length
+        ? classFilter
+        : sectionRecords.map((section) => section.id);
+
+      try {
+        const batches = await Promise.all(
+          selectedSectionIds.map((sectionId) =>
+            apiRequest<ApiStudent[]>(`/students?section_id=${sectionId}&limit=1000`, {
+              auth: "school"
+            }).catch(() => [])
+          )
+        );
+
+        if (!active) return;
+        const nextStudents = batches.flat().reduce<Record<string, ApiStudent>>((acc, student) => {
+          acc[student.id] = student;
+          return acc;
+        }, {});
+        setStudentsById(nextStudents);
+      } catch {
+        if (active) setStudentsById({});
+      }
+    };
+
+    loadStudents();
+    return () => {
+      active = false;
+    };
+  }, [classFilter, sectionRecords]);
+
+  useEffect(() => {
+    if (!sectionRecords.length) return;
+
+    let active = true;
+    const loadAttendance = async () => {
+      setLoading(true);
+      try {
+        const dates = listDates(start, end);
+        const selectedSectionIds = new Set(
+          classFilter.length ? classFilter : sectionRecords.map((section) => section.id)
+        );
+
+        const [sessionsByDate, recordsByDate] = await Promise.all([
+          Promise.all(
+            dates.map((date) =>
+              apiRequest<ApiSession[]>(`/attendance/sessions?date=${date}&limit=500`, {
+                auth: "school"
+              }).catch(() => [])
+            )
+          ),
+          Promise.all(
+            dates.map((date) =>
+              apiRequest<ApiRecord[]>(`/attendance/records?date=${date}&limit=5000`, {
+                auth: "school"
+              }).catch(() => [])
+            )
+          )
+        ]);
+
+        if (!active) return;
+
+        const sessionMap = new Map<string, string>();
+        sessionsByDate.flat().forEach((session) => {
+          sessionMap.set(session.id, session.section_id);
+        });
+
+        const recordsWithSection = recordsByDate.flat().map((record) => {
+          const sectionId = sessionMap.get(record.session_id);
+          return sectionId ? { ...record, sectionId } : null;
+        }).filter(Boolean) as Array<ApiRecord & { sectionId: string }>;
+
+        const filteredRecords = recordsWithSection.filter((record) =>
+          selectedSectionIds.has(record.sectionId)
+        );
+
+        const totals = filteredRecords.reduce(
+          (acc, record) => {
+            acc.total += 1;
+            if (record.status === "present") acc.present += 1;
+            if (record.status === "absent") acc.absent += 1;
+            if (record.status === "late") acc.late += 1;
+            if (record.status === "excused") acc.excused += 1;
+            return acc;
+          },
+          { total: 0, present: 0, absent: 0, late: 0, excused: 0 }
+        );
+
+        const totalStudents = Array.from(selectedSectionIds).reduce(
+          (sum, id) => sum + (studentCounts[id] ?? 0),
+          0
+        );
+
+        setSummary({
+          totalStudents,
+          present: totals.present,
+          absent: totals.absent,
+          late: totals.late,
+          excused: totals.excused,
+          totalRecords: totals.total
+        });
+
+        setDailyTrend(
+          dates.map((date, idx) => {
+            const sessionIds = new Set(
+              sessionsByDate[idx]
+                .filter((session) => selectedSectionIds.has(session.section_id))
+                .map((session) => session.id)
+            );
+            const dayRecords = recordsByDate[idx].filter((record) => sessionIds.has(record.session_id));
+            const daySummary = dayRecords.reduce(
+              (acc, record) => {
+                if (record.status === "present") acc.Present += 1;
+                if (record.status === "late") acc.Late += 1;
+                if (record.status === "absent") acc.Absent += 1;
+                return acc;
+              },
+              { Present: 0, Late: 0, Absent: 0 }
+            );
+            return { date, ...daySummary };
+          })
+        );
+
+        const weekly = getWeekBuckets(dates).map(([week, weekDates]) => {
+          const weekRecords = recordsWithSection.filter((record) =>
+            selectedSectionIds.has(record.sectionId) && weekDates.includes(record.session_id ? "" : "")
+          );
+          const summary = weekDates.reduce(
+            (acc, date) => {
+              const dateIndex = dates.indexOf(date);
+              if (dateIndex === -1) return acc;
+              const sessionIds = new Set(
+                sessionsByDate[dateIndex]
+                  .filter((session) => selectedSectionIds.has(session.section_id))
+                  .map((session) => session.id)
+              );
+              const dateRecords = recordsByDate[dateIndex].filter((record) => sessionIds.has(record.session_id));
+              dateRecords.forEach((record) => {
+                if (record.status === "present") acc.Present += 1;
+                if (record.status === "late") acc.Late += 1;
+                if (record.status === "absent") acc.Absent += 1;
+              });
+              return acc;
+            },
+            { Present: 0, Late: 0, Absent: 0 }
+          );
+          return { week, ...summary };
+        });
+
+        setWeeklyCompare(weekly);
+
+        const distribution = timeBuckets.map((bucket) => ({ slot: bucket.label, count: 0 }));
+        filteredRecords.forEach((record) => {
+          const stamp = record.scanned_at ?? record.created_at;
+          if (!stamp) return;
+          const hour = new Date(stamp).getHours();
+          const idx = timeBuckets.findIndex((bucket) => hour >= bucket.start && hour < bucket.end);
+          const target = idx === -1 ? distribution.length - 1 : idx;
+          distribution[target].count += 1;
+        });
+        setCheckinDistribution(distribution);
+
+        const attendanceBySection: Record<string, { present: number; absent: number; late: number }> = {};
+        filteredRecords.forEach((record) => {
+          const current = attendanceBySection[record.sectionId] ?? { present: 0, absent: 0, late: 0 };
+          if (record.status === "present") current.present += 1;
+          if (record.status === "absent") current.absent += 1;
+          if (record.status === "late") current.late += 1;
+          attendanceBySection[record.sectionId] = current;
+        });
+
+        setClassSummary(
+          classOptions
+            .filter((option) => selectedSectionIds.has(option.sectionId))
+            .map((option) => {
+              const stats = attendanceBySection[option.sectionId] ?? { present: 0, absent: 0, late: 0 };
+              const total = stats.present + stats.absent + stats.late;
+              const rate = total ? Math.round((stats.present / total) * 100) : 0;
+              const teacherName = option.teacherId ? teacherMap.get(option.teacherId)?.name ?? "Unassigned" : "Unassigned";
+              return {
+                id: option.sectionId,
+                name: option.label,
+                teacher: teacherName,
+                studentCount: studentCounts[option.sectionId] ?? 0,
+                present: stats.present,
+                absent: stats.absent,
+                late: stats.late,
+                rate
+              };
+            })
+        );
+
+        const studentStats = new Map<string, { present: number; absent: number; late: number; sectionId: string }>();
+        filteredRecords.forEach((record) => {
+          const current = studentStats.get(record.student_id) ?? { present: 0, absent: 0, late: 0, sectionId: record.sectionId };
+          if (record.status === "present") current.present += 1;
+          if (record.status === "absent") current.absent += 1;
+          if (record.status === "late") current.late += 1;
+          studentStats.set(record.student_id, current);
+        });
+
+        setStudentSummary(
+          Array.from(studentStats.entries()).map(([studentId, stats]) => {
+            const student = studentsById[studentId];
+            const studentName = student
+              ? `${student.first_name} ${student.last_name}`.trim()
+              : "Unknown student";
+            const className = classLabelForSection(stats.sectionId, sectionMap, classMap);
+            const total = stats.present + stats.absent + stats.late;
+            const rate = total ? Math.round((stats.present / total) * 100) : 0;
+            return {
+              id: studentId,
+              name: studentName,
+              className,
+              present: stats.present,
+              absent: stats.absent,
+              late: stats.late,
+              rate
+            };
+          })
+        );
+
+        const endDate = new Date(end);
+        const startHeatmap = new Date(endDate);
+        startHeatmap.setDate(endDate.getDate() - 27);
+        const heatmapDates = listDates(startHeatmap.toISOString().slice(0, 10), end);
+        const summaryByDate = new Map<string, { present: number; total: number }>();
+        heatmapDates.forEach((date, idx) => {
+          const dateIndex = dates.indexOf(date);
+          if (dateIndex === -1) {
+            summaryByDate.set(date, { present: 0, total: 0 });
+            return;
+          }
+          const sessionIds = new Set(
+            sessionsByDate[dateIndex]
+              .filter((session) => selectedSectionIds.has(session.section_id))
+              .map((session) => session.id)
+          );
+          const dateRecords = recordsByDate[dateIndex].filter((record) => sessionIds.has(record.session_id));
+          const total = dateRecords.length;
+          const present = dateRecords.filter((record) => isPresentStatus(record.status)).length;
+          summaryByDate.set(date, { present, total });
+        });
+
+        const dayOrder = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        const rows: HeatmapRow[] = dayOrder.map((day, dayIndex) => {
+          const cells: HeatmapCell[] = [];
+          for (let week = 0; week < 4; week += 1) {
+            const cellDate = new Date(startHeatmap);
+            cellDate.setDate(startHeatmap.getDate() + week * 7 + dayIndex);
+            const key = cellDate.toISOString().slice(0, 10);
+            const summary = summaryByDate.get(key) ?? { present: 0, total: 0 };
+            const rate = summary.total ? Math.round((summary.present / summary.total) * 100) : 0;
+            cells.push({ week: week + 1, rate });
+          }
+          return { day, cells };
+        });
+
+        setHeatmap(rows);
+      } catch (error: any) {
+        if (active) toast.error(error?.message ?? "Failed to load attendance reports");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    loadAttendance();
+    return () => {
+      active = false;
+    };
+  }, [start, end, classFilter, sectionRecords, classOptions, studentCounts, studentsById, classMap, sectionMap, teacherMap]);
 
   return (
     <AppLayout title="Reports & Analytics" subtitle="Detailed insights for the selected period">

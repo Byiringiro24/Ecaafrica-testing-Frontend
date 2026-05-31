@@ -234,3 +234,8 @@ The app runs at `http://localhost:5173`. All data is mocked — no backend requi
 
 
 npm run dev -- --host 127.0.0.1 --port 5173
+
+
+
+Inside School Admin on Live Attendance page, add subpage to make attendance manually by select class then featch student from database then make attendance mannualy and make sure that data are stored in database and displayed from database on Today's Attendance — Sunday, 31 May 2026 section 
+

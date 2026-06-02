@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
   Users, Fingerprint, BookOpen, CreditCard, Bell,
-  Shield, Smartphone, BarChart3, ArrowRight
+  Shield, Smartphone, BarChart3
 } from "lucide-react";
 import herosection from "@/assets/herosectionschol.jpg";
 
@@ -57,9 +57,6 @@ export default function Home() {
               communication on a single secure, scalable platform  online and offline.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Button size="lg" className="bg-[#42A5F5] hover:bg-[#42A5F5]/90 text-white font-bold rounded-xl shadow-lg transition-all hover:scale-[1.02]" asChild>
-                <Link to="/login">Login <ArrowRight className="ml-2 h-4 w-4" /></Link>
-              </Button>
               <Button size="lg" variant="outline" className="bg-transparent border-white/30 text-white hover:bg-white/10 rounded-xl" asChild>
                 <Link to="/features">Explore Features</Link>
               </Button>

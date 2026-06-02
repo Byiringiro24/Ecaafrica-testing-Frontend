@@ -8,7 +8,7 @@ Built with **React 19**, **TanStack Start / Router**, **Tailwind CSS v4**, **Rec
 
 ## Tech Stack
 
-- React 19 + TypeScript (strict) 
+- React 19 + TypeScript (strict)
 - TanStack Start v1 + TanStack Router (file-based routing)
 - Tailwind CSS v4 (via `src/styles.css`)
 - Recharts for analytics
@@ -32,6 +32,7 @@ All mock data lives in `src/lib/mockData.ts` (60 students, attendance history, S
 ## School Admin Pages
 
 ### Dashboard (`/dashboard`)
+
 - KPI cards: Total Students, Present Today, Absent, SMS Sent
 - Daily attendance trend (Recharts Area)
 - Class-by-class breakdown
@@ -39,6 +40,7 @@ All mock data lives in `src/lib/mockData.ts` (60 students, attendance history, S
 - Quick actions
 
 ### Attendance (`/attendance`)
+
 - **Three scan modes**: Card/QR, Face Recognition, Fingerprint
   - Face mode: viewfinder UI with animated scanning line + randomized recognition
   - Fingerprint: pulsing SVG with success/error states
@@ -48,6 +50,7 @@ All mock data lives in `src/lib/mockData.ts` (60 students, attendance history, S
 - Manual attendance override
 
 ### Students (`/students`)
+
 - Searchable + filterable directory (60 mock students)
 - **Multi-step Registration Modal** (3 steps): Personal Info → Academic Info → Parent/Guardian
 - Student profile drawer with attendance history, SMS log, biometric enrollment
@@ -55,17 +58,20 @@ All mock data lives in `src/lib/mockData.ts` (60 students, attendance history, S
 - Bulk actions, CSV export (simulated), per-row edit/delete
 
 ### Classes (`/classes`)
+
 - Grid of class cards (S1A–S6B) with `levelBorderClass` color coding
 - Right-side detail drawer: student roster + attendance trend chart
 - Per-class stats and teacher assignment
 
 ### Staff (`/staff`)
+
 - Staff directory with grid + table views
 - **4-step Registration Modal**: Personal → Role → Contract → Documents
 - Departments view, staff attendance log
 - Staff profile with role badges
 
 ### Fees (`/fees`)
+
 - Collection dashboard with Recharts
 - Student fees table with payment recording
 - Receipt generation modal (print + simulated PDF download)
@@ -75,6 +81,7 @@ All mock data lives in `src/lib/mockData.ts` (60 students, attendance history, S
 - All amounts formatted via `formatRWF()` → `RWF 180,000`
 
 ### Boarding (`/boarding`)
+
 - KPIs: occupancy %, total beds, present/absent boarders
 - Dormitory grid with capacity bars
 - House detail slide-over
@@ -82,12 +89,14 @@ All mock data lives in `src/lib/mockData.ts` (60 students, attendance history, S
 - Absence monitoring panel
 
 ### Gate (`/gate`)
+
 - KPIs: on-campus count, today's entries/exits
 - Live Campus Status (auto-refreshing)
 - Tabs: Entry Analytics, Exit Analytics, Time-of-day Analytics
 - Duplicate entry prevention log
 
 ### Leaves (`/leaves`)
+
 - KPIs across leave statuses
 - Tabs: Pending / Approved / Rejected / All
 - Approve/Reject modals with SMS preview to parents
@@ -95,18 +104,21 @@ All mock data lives in `src/lib/mockData.ts` (60 students, attendance history, S
 - **3-step New Leave Modal**: Reason → Dates → Parent confirmation
 
 ### Parents (`/parents`)
+
 - Searchable parent directory mapped to students
 - **SMS Compose Modal** with English ↔ Kinyarwanda template toggle and variable injection (`{studentName}`, `{status}`, `{time}`)
 - **Bulk SMS** tool with simulated progress counter
 - SMS history per parent
 
 ### Notifications (`/notifications`)
+
 - Filterable SMS log (status, trigger, date)
 - Retry Failed action
 - Delivery status badges
 - Trigger-type icons (check-in, leave, fee reminder, etc.)
 
 ### Reports (`/reports`)
+
 - 4 tabs: **Overview**, **By Class**, **By Student**, **By Time**
 - Recharts Area + Bar charts
 - Sortable tables
@@ -114,6 +126,7 @@ All mock data lives in `src/lib/mockData.ts` (60 students, attendance history, S
 - Daily trend, weekly comparison
 
 ### Settings (`/settings`)
+
 - 6 vertical tabs:
   1. School Info
   2. SMS API Configuration
@@ -129,32 +142,40 @@ All mock data lives in `src/lib/mockData.ts` (60 students, attendance history, S
 Separate `SuperAdminLayout` (slate-900 sidebar + "Super Admin" badge).
 
 ### Platform Overview (`/super-admin`)
+
 - KPIs: Total schools, active subscriptions, MRR, system health
 - 2 platform charts + recent activity feed
 
 ### Schools (`/super-admin/schools`)
+
 - Grid of tenant schools
 - **5-step School Onboarding Modal**: Identity → Contacts → Plan → Modules → Confirmation
 
 ### Subscriptions (`/super-admin/subscriptions`)
+
 - Plans table + active subscriptions
 
 ### Billing (`/super-admin/billing`)
+
 - Platform-wide invoices and revenue
 
 ### Analytics (`/super-admin/analytics`)
+
 - Cross-tenant usage analytics
 
 ### System (`/super-admin/system`)
+
 - Default SMS provider selection (Pindo / Africa's Talking / Twilio / MTN)
 - Global notification templates
 - Feature flags (Boarding, Biometrics, Gate, Bulk SMS, CSV export)
 - Maintenance mode toggle
 
 ### Platform Users (`/super-admin/users`)
+
 - Internal ecareafrica team accounts (Platform Admin, Support, Sales, Finance)
 
 ### Announcements (`/super-admin/announcements`)
+
 - Broadcast announcements to tenant schools
 
 ---
@@ -190,11 +211,11 @@ Separate `SuperAdminLayout` (slate-900 sidebar + "Super Admin" badge).
 SMS templates and key terms are bilingual:
 
 | English | Kinyarwanda |
-|---|---|
-| Parent | Mubyeyi |
+| ------- | ----------- |
+| Parent  | Mubyeyi     |
 | Student | Umunyeshuri |
-| School | Ishuri |
-| Lessons | Amasomo |
+| School  | Ishuri      |
+| Lessons | Amasomo     |
 
 ---
 
@@ -231,8 +252,7 @@ bun run dev
 
 The app runs at `http://localhost:5173`. All data is mocked — no backend required for the MVP.
 
+scp-rdist/*user@ip:/var/www/ecare_africa/frontend/
 
 
 npm run dev -- --host 127.0.0.1 --port 5173
-
-

@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { Menu, X, Phone, Instagram, Facebook, Linkedin, Twitter, ArrowRight } from "lucide-react";
+import { Menu, X, Phone, Instagram, Facebook, Linkedin, Twitter } from "lucide-react";
 import { useState, ReactNode } from "react";
 import { NavLink } from "./NavLink";
 import logo from "@/assets/netrack-logo.png";
@@ -81,11 +81,6 @@ export default function Layout({ children }: LayoutProps) {
           </nav>
 
           {/* CTA Button */}
-          <div className="hidden md:flex items-center gap-3">
-            <Button size="sm" className="bg-[#0A3D91] hover:bg-[#1565C0] text-white rounded-xl shadow-md px-6 h-11 text-xs font-semibold transition-all hover:scale-[1.02]" asChild>
-              <Link to="/login">Login <ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Link>
-            </Button>
-          </div>
 
           {/* Mobile hamburger */}
           <div className="md:hidden flex items-center">
@@ -121,9 +116,6 @@ export default function Layout({ children }: LayoutProps) {
                 </NavLink>
               ))}
               <div className="h-px bg-[#EEF4FF] my-2"></div>
-              <Button className="w-full bg-[#0A3D91] hover:bg-[#1565C0] text-white rounded-xl h-11 text-sm font-semibold" asChild>
-                <Link to="/login" onClick={() => setMobileMenuOpen(false)}>Login</Link>
-              </Button>
             </div>
           </nav>
         )}

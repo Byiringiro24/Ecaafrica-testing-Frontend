@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
 import { getSchoolAuth } from "@/lib/schoolAuth";
@@ -11,9 +11,19 @@ interface Props {
 
 export function AppLayout({ title, subtitle, children }: Props) {
   const [open, setOpen] = useState(false);
+  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
 
-  if (!getSchoolAuth()?.accessToken) {
-    window.location.replace("/login");
+  useEffect(() => {
+    if (!getSchoolAuth()?.accessToken) {
+      window.location.replace("/login");
+      setIsAuthed(false);
+      return;
+    }
+
+    setIsAuthed(true);
+  }, []);
+
+  if (isAuthed !== true) {
     return null;
   }
 

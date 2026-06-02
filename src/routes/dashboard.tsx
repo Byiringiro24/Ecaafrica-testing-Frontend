@@ -380,7 +380,7 @@ function DashboardPage() {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-display font-bold text-lg">Absence Alerts</h3>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-destructive/15 text-destructive font-semibold">
-                  {ABSENCE_ALERTS.length} students
+                  {absenceAlerts.length} students
                 </span>
               </div>
               <div className="space-y-2">

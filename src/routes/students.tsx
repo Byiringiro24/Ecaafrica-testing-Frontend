@@ -58,11 +58,13 @@ function StudentsPage() {
   const [classFilter, setClassFilter] = useState("All");
   const [residencyFilter, setResidencyFilter] = useState<"All" | "Boarding" | "Day">("All");
   const [view, setView] = useState<"grid" | "table">("grid");
+  const [page, setPage] = useState(1);
   const [profile, setProfile] = useState<ApiStudent | null>(null);
   const [open, setOpen] = useState(false);
   const [students, setStudents] = useState<ApiStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const pageSize = 15;
 
   const fetchStudents = async () => {
     try {
@@ -98,6 +100,11 @@ function StudentsPage() {
       (search === "" || fullName.includes(search.toLowerCase()) || studentId.includes(search.toLowerCase()))
     );
   }), [students, search, classFilter, residencyFilter]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const visibleStudents = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
 
   const total = students.length;
   const male = students.filter(s => s.gender === "male").length;
@@ -105,6 +112,16 @@ function StudentsPage() {
   const boarding = students.filter(s => s.student_type === "boarding").length;
   const day = students.filter(s => s.student_type === "day").length;
   const isEmpty = total === 0;
+  const pageStart = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const pageEnd = Math.min(page * pageSize, filtered.length);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, classFilter, residencyFilter]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const handleEditSuccess = async () => {
     setProfile(null);
@@ -181,7 +198,7 @@ function StudentsPage() {
             </div>
           ) : view === "grid" ? (
             <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {filtered.map(s => {
+              {visibleStudents.map(s => {
                 const fullName = `${s.first_name} ${s.last_name}`;
                 const residency = s.student_type ? capitalize(s.student_type) : null;
                 const sectionName = s.current_section?.full_name;
@@ -233,7 +250,7 @@ function StudentsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map(s => {
+                    {visibleStudents.map(s => {
                       const fullName = `${s.first_name} ${s.last_name}`;
                       const residency = s.student_type ? capitalize(s.student_type) : "—";
                       const sectionName = s.current_section?.full_name ?? "—";
@@ -260,6 +277,35 @@ function StudentsPage() {
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {filtered.length > 0 && (
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Showing {pageStart}–{pageEnd} of {filtered.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <span className="text-xs text-muted-foreground">
+                  Page {page} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
               </div>
             </div>
           )}

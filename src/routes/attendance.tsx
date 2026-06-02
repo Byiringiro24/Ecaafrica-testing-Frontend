@@ -69,6 +69,7 @@ type AttendanceRow = {
 };
 
 const PAGE_SIZE = 20;
+const MANUAL_PAGE_SIZE = 15;
 
 const STATUS_LABEL: Record<ApiStatus, UiStatus> = {
   present: "Present",
@@ -142,6 +143,7 @@ function AttendancePage() {
   const [manualSaving, setManualSaving] = useState(false);
   const [manualSearch, setManualSearch] = useState("");
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
+  const [manualPage, setManualPage] = useState(1);
 
   const classMap = useMemo(() => new Map(classRecords.map((item) => [item.id, item])), [classRecords]);
   const sectionMap = useMemo(() => new Map(sectionRecords.map((item) => [item.id, item])), [sectionRecords]);
@@ -465,6 +467,20 @@ function AttendancePage() {
     });
   }, [manualStudents, manualSearch]);
 
+  const manualTotalPages = Math.max(1, Math.ceil(manualFiltered.length / MANUAL_PAGE_SIZE));
+  const manualPageItems = manualFiltered.slice(
+    (manualPage - 1) * MANUAL_PAGE_SIZE,
+    manualPage * MANUAL_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setManualPage(1);
+  }, [manualSearch, manualSectionId, manualDate, manualStudents]);
+
+  useEffect(() => {
+    if (manualPage > manualTotalPages) setManualPage(manualTotalPages);
+  }, [manualPage, manualTotalPages]);
+
   const manualCounts = useMemo(() => {
     const result = { total: manualStudents.length, present: 0, absent: 0, late: 0, excused: 0 };
     manualStudents.forEach((student) => {
@@ -754,12 +770,14 @@ function AttendancePage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {manualFiltered.map((student, i) => {
+                      {manualPageItems.map((student, i) => {
                         const status = manualMarks[student.id];
                         const label = status ? STATUS_LABEL[status] : "Mark";
                         return (
                           <tr key={student.id} className="border-t border-border odd:bg-background even:bg-muted/20">
-                            <td className="px-5 py-3 text-muted-foreground">{i + 1}</td>
+                            <td className="px-5 py-3 text-muted-foreground">
+                              {(manualPage - 1) * MANUAL_PAGE_SIZE + i + 1}
+                            </td>
                             <td className="px-5 py-3">
                               <div className="flex items-center gap-2.5">
                                 <Avatar name={`${student.first_name} ${student.last_name}`} size="sm" />
@@ -797,9 +815,30 @@ function AttendancePage() {
                     </tbody>
                   </table>
                 </div>
+                {manualFiltered.length > 0 && (
+                  <div className="flex items-center justify-between px-5 py-3 border-t border-border text-sm">
+                    <span className="text-muted-foreground">Page {manualPage} of {manualTotalPages}</span>
+                    <div className="space-x-2">
+                      <button
+                        onClick={() => setManualPage((p) => Math.max(1, p - 1))}
+                        disabled={manualPage === 1}
+                        className="px-3 py-1.5 rounded-md border border-border disabled:opacity-50 hover:bg-muted"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        onClick={() => setManualPage((p) => Math.min(manualTotalPages, p + 1))}
+                        disabled={manualPage === manualTotalPages}
+                        className="px-3 py-1.5 rounded-md border border-border disabled:opacity-50 hover:bg-muted"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <div className="rounded-xl border border-border bg-card p-5 shadow-sm h-fit">
+              <div className="rounded-xl border border-border bg-card p-5 shadow-sm h-fit lg:sticky lg:top-24">
                 <div className="text-xs uppercase text-muted-foreground">Session</div>
                 <div className="font-display text-lg font-bold">{classLabelForSection(manualSectionId)}</div>
                 <div className="text-xs text-muted-foreground">{manualDate}</div>

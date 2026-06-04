@@ -6,4 +6,7 @@ import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
 	plugins: [tanstackRouter(), react(), tailwindcss(), tsconfigPaths()],
+	preview: {
+		allowedHosts: ["ecareafrica.net", "www.ecareafrica.net"],
+	},
 });

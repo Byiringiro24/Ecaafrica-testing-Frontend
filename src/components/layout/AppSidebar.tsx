@@ -17,7 +17,7 @@ function handleLogout() {
   window.location.replace("/login");
 }
 
-interface NavItem { to: string; label: string; icon: any; module: string; }
+interface NavItem { to: string; label: string; icon: any; module: string; match?: "exact" | "prefix"; }
 interface Section { id: string; label: string; items: NavItem[]; }
 
 const SECTIONS: Section[] = [
@@ -29,7 +29,7 @@ const SECTIONS: Section[] = [
     { to: "/visitors", label: "Visitors", icon: UserCheck, module: "visitors" },
   ]},
   { id: "boarding", label: "Boarding", items: [
-    { to: "/boarding/", label: "Boarding", icon: Home, module: "boarding" },
+    { to: "/boarding", label: "Boarding", icon: Home, module: "boarding", match: "exact" },
     { to: "/gate", label: "Gate", icon: DoorOpen, module: "gate" },
     { to: "/leaves", label: "Leaves", icon: FileText, module: "leaves" },
   ]},
@@ -116,7 +116,11 @@ export function AppSidebar({ open, onClose }: Props) {
                   <div className="space-y-0.5 mt-1">
                     {items.map((item) => {
                       const Icon = item.icon;
-                      const active = pathname === item.to || (item.to !== "/dashboard" && pathname.startsWith(item.to));
+                      const normalizedPath = pathname.replace(/\/+$/, "") || "/";
+                      const normalizedTo = item.to.replace(/\/+$/, "") || "/";
+                      const active = item.match === "exact"
+                        ? normalizedPath === normalizedTo
+                        : normalizedPath === normalizedTo || normalizedPath.startsWith(`${normalizedTo}/`);
                       return (
                         <Link
                           key={item.to}

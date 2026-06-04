@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, Download, Search } from "lucide-react";
 import { toast } from "sonner";
+import ExcelJS from "exceljs";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
@@ -110,6 +111,60 @@ const formatTime = (value?: string | null, status?: ApiStatus) => {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 };
 
+const buildAttendanceChartImage = (counts: Record<UiStatus, number>) => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 700;
+  canvas.height = 380;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  const labels: UiStatus[] = ["Present", "Absent", "Late", "Excused"];
+  const values = labels.map((label) => counts[label] ?? 0);
+  const maxValue = Math.max(1, ...values);
+
+  const padding = 56;
+  const chartWidth = canvas.width - padding * 2;
+  const chartHeight = canvas.height - padding * 2;
+  const barGap = 22;
+  const barWidth = (chartWidth - barGap * (labels.length - 1)) / labels.length;
+  const colors = ["#16a34a", "#dc2626", "#f59e0b", "#2563eb"];
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#111827";
+  ctx.font = "bold 16px Roboto, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("Attendance Summary", padding, padding - 20);
+
+  ctx.strokeStyle = "#e5e7eb";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding, padding);
+  ctx.lineTo(padding, canvas.height - padding);
+  ctx.lineTo(canvas.width - padding, canvas.height - padding);
+  ctx.stroke();
+
+  values.forEach((value, index) => {
+    const barHeight = (value / maxValue) * (chartHeight - 10);
+    const x = padding + index * (barWidth + barGap);
+    const y = canvas.height - padding - barHeight;
+
+    ctx.fillStyle = colors[index];
+    ctx.fillRect(x, y, barWidth, barHeight);
+
+    ctx.fillStyle = "#111827";
+    ctx.font = "12px Roboto, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(String(value), x + barWidth / 2, y - 8);
+
+    ctx.fillStyle = "#6b7280";
+    ctx.fillText(labels[index], x + barWidth / 2, canvas.height - padding + 16);
+  });
+
+  return canvas.toDataURL("image/png");
+};
+
 const nextManualStatus = (current?: ApiStatus) => {
   const order: ApiStatus[] = ["present", "absent", "late", "excused"];
   if (!current) return order[0];
@@ -144,6 +199,14 @@ function AttendancePage() {
   const [manualSearch, setManualSearch] = useState("");
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
   const [manualPage, setManualPage] = useState(1);
+
+  const clampManualDate = (value: string) => {
+    if (value && value > todayValue) {
+      toast.error("Future dates are not allowed");
+      return todayValue;
+    }
+    return value;
+  };
 
   const classMap = useMemo(() => new Map(classRecords.map((item) => [item.id, item])), [classRecords]);
   const sectionMap = useMemo(() => new Map(sectionRecords.map((item) => [item.id, item])), [sectionRecords]);
@@ -494,6 +557,108 @@ function AttendancePage() {
     return result;
   }, [manualStudents, manualMarks]);
 
+  const exportAttendance = async () => {
+    if (filtered.length === 0) {
+      toast.info("No attendance records to export");
+      return;
+    }
+
+    const exportCounts = filtered.reduce<Record<UiStatus, number>>(
+      (acc, row) => {
+        acc[row.status] += 1;
+        return acc;
+      },
+      { Present: 0, Absent: 0, Late: 0, Excused: 0 }
+    );
+
+    const chartImage = buildAttendanceChartImage(exportCounts);
+    if (!chartImage) {
+      toast.error("Failed to render chart");
+      return;
+    }
+
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet("Attendance");
+
+      const header = [
+        "#",
+        "Student",
+        "Card ID",
+        "Class",
+        "Time In",
+        "Status",
+        "Residency"
+      ];
+
+      sheet.addRow(header);
+      sheet.getRow(1).font = { bold: true };
+
+      filtered.forEach((row, index) => {
+        sheet.addRow([
+          index + 1,
+          row.studentName,
+          row.cardId,
+          row.className,
+          row.timeIn,
+          row.status,
+          row.residency ?? ""
+        ]);
+      });
+
+      sheet.columns = [
+        { width: 6 },
+        { width: 28 },
+        { width: 14 },
+        { width: 18 },
+        { width: 12 },
+        { width: 12 },
+        { width: 12 }
+      ];
+
+      sheet.getCell("I2").value = "Status";
+      sheet.getCell("J2").value = "Count";
+      sheet.getCell("I2").font = { bold: true };
+      sheet.getCell("J2").font = { bold: true };
+
+      const summaryRows: Array<[UiStatus, number]> = [
+        ["Present", exportCounts.Present],
+        ["Absent", exportCounts.Absent],
+        ["Late", exportCounts.Late],
+        ["Excused", exportCounts.Excused]
+      ];
+
+      summaryRows.forEach((row, idx) => {
+        sheet.getCell(`I${idx + 3}`).value = row[0];
+        sheet.getCell(`J${idx + 3}`).value = row[1];
+      });
+
+      const imageId = workbook.addImage({
+        base64: chartImage.split(",")[1],
+        extension: "png"
+      });
+
+      sheet.addImage(imageId, {
+        tl: { col: 8, row: 6 },
+        ext: { width: 640, height: 340 }
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `attendance-${dateFilter}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success("Attendance exported");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to export attendance");
+    }
+  };
+
   return (
     <AppLayout title="Live Attendance" subtitle="Scan student ID cards to mark attendance">
       <div className="flex gap-1 border-b border-border mt-4">
@@ -507,7 +672,7 @@ function AttendancePage() {
                 : "border-transparent text-muted-foreground"
             }`}
           >
-            {item === "live" ? "Today's Attendance" : "Manual Attendance"}
+            {item === "live" ? "Today's Attendance" : "Make Attendance"}
           </button>
         ))}
       </div>
@@ -576,7 +741,7 @@ function AttendancePage() {
               />
             </div>
             <button
-              onClick={() => toast.success("Excel export generated")}
+              onClick={exportAttendance}
               className="h-10 inline-flex items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
             >
               <Download className="h-4 w-4" /> Export Excel
@@ -603,13 +768,12 @@ function AttendancePage() {
                     <th className="text-left px-5 py-3">Class</th>
                     <th className="text-left px-5 py-3">Time In</th>
                     <th className="text-left px-5 py-3">Status</th>
-                    <th className="text-right px-5 py-3">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {recordsLoading && (
                     <tr>
-                      <td colSpan={7} className="px-5 py-6">
+                      <td colSpan={6} className="px-5 py-6">
                         <Skeleton className="h-6 w-full" />
                       </td>
                     </tr>
@@ -627,25 +791,11 @@ function AttendancePage() {
                       <td className="px-5 py-3">{row.className}</td>
                       <td className="px-5 py-3">{row.timeIn}</td>
                       <td className="px-5 py-3"><StatusBadge status={row.status} /></td>
-                      <td className="px-5 py-3 text-right space-x-2">
-                        <button
-                          onClick={() => updateStatus(row, "Late")}
-                          className="text-xs font-semibold text-amber-600 hover:underline"
-                        >
-                          Mark Late
-                        </button>
-                        <button
-                          onClick={() => updateStatus(row, "Absent")}
-                          className="text-xs font-semibold text-destructive hover:underline"
-                        >
-                          Mark Absent
-                        </button>
-                      </td>
                     </tr>
                   ))}
                   {!recordsLoading && pageItems.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-5 py-10 text-center text-muted-foreground">
+                      <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
                         No records match your filters.
                       </td>
                     </tr>
@@ -702,7 +852,8 @@ function AttendancePage() {
               <input
                 type="date"
                 value={manualDate}
-                onChange={(event) => setManualDate(event.target.value)}
+                max={todayValue}
+                onChange={(event) => setManualDate(clampManualDate(event.target.value))}
                 className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
               />
             </div>

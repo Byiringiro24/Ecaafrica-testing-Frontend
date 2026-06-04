@@ -3,7 +3,7 @@ import { getSchoolToken, getSchoolAuth, setSchoolAuth, clearSchoolAuth } from ".
 
 export const API_BASE_URL = (
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
-  "http://localhost:5000/api/v1"
+  "https://backend.ecareafrica.net/api/v1"
 ).replace(/\/+$/, "");
 
 type ApiError = {

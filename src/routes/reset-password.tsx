@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { GraduationCap, Loader2 } from "lucide-react";
+import { Eye, EyeOff, GraduationCap, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { apiRequest } from "@/lib/api";
 
@@ -17,6 +17,8 @@ function ResetPasswordPage() {
   const [pwd, setPwd] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const hasToken = Boolean(token);
 
   const strength = (() => {
@@ -75,9 +77,25 @@ function ResetPasswordPage() {
         }}>
           <div>
             <label className="text-sm font-medium">New Password</label>
-            <input type="password" required value={pwd} onChange={e => setPwd(e.target.value)}
-              disabled={!hasToken || loading}
-              className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30" />
+            <div className="relative mt-1">
+              <input
+                type={showPwd ? "text" : "password"}
+                required
+                value={pwd}
+                onChange={e => setPwd(e.target.value)}
+                disabled={!hasToken || loading}
+                className="h-11 w-full rounded-lg border border-input bg-background px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPwd((prev) => !prev)}
+                disabled={!hasToken || loading}
+                aria-label={showPwd ? "Hide password" : "Show password"}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:opacity-50"
+              >
+                {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
             {pwd && (
               <div className="mt-2">
                 <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
@@ -89,9 +107,25 @@ function ResetPasswordPage() {
           </div>
           <div>
             <label className="text-sm font-medium">Confirm Password</label>
-            <input type="password" required value={confirm} onChange={e => setConfirm(e.target.value)}
-              disabled={!hasToken || loading}
-              className="mt-1 h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30" />
+            <div className="relative mt-1">
+              <input
+                type={showConfirm ? "text" : "password"}
+                required
+                value={confirm}
+                onChange={e => setConfirm(e.target.value)}
+                disabled={!hasToken || loading}
+                className="h-11 w-full rounded-lg border border-input bg-background px-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirm((prev) => !prev)}
+                disabled={!hasToken || loading}
+                aria-label={showConfirm ? "Hide password" : "Show password"}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:opacity-50"
+              >
+                {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
           <button disabled={!hasToken || loading} className="h-11 w-full rounded-lg bg-primary text-primary-foreground font-semibold inline-flex items-center justify-center gap-2 hover:bg-primary/90 disabled:opacity-70">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Update Password"}

@@ -135,6 +135,14 @@ function TeacherAttendance() {
   const [manualSearch, setManualSearch] = useState("");
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
 
+  const clampManualDate = (value: string) => {
+    if (value && value > todayValue) {
+      toast.error("Future dates are not allowed");
+      return todayValue;
+    }
+    return value;
+  };
+
   const classMap = useMemo(() => new Map(classRecords.map((item) => [item.id, item])), [classRecords]);
   const sectionMap = useMemo(() => new Map(sectionRecords.map((item) => [item.id, item])), [sectionRecords]);
 
@@ -572,7 +580,8 @@ function TeacherAttendance() {
               <input
                 type="date"
                 value={manualDate}
-                onChange={(event) => setManualDate(event.target.value)}
+                max={todayValue}
+                onChange={(event) => setManualDate(clampManualDate(event.target.value))}
                 className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
               />
             </div>

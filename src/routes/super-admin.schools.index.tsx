@@ -31,6 +31,7 @@ type PlatformSchool = {
   school_type?: string | null;
   province: string;
   district: string;
+  country?: string | null;
   sector?: string | null;
   principal_name?: string | null;
   principal_phone?: string | null;
@@ -66,6 +67,7 @@ type SchoolFormState = {
   school_type: string;
   province: string;
   district: string;
+  country: string;
   sector: string;
   principal_name: string;
   principal_phone: string;
@@ -88,6 +90,35 @@ type SchoolFormState = {
 
 const STATUS_OPTIONS = ["active", "trial", "grace", "suspended", "expired", "cancelled"] as const;
 const SCHOOL_TYPES = ["government", "private", "international", "technical", "seminary", "other"] as const;
+const COUNTRY_OPTIONS = (() => {
+  if (typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
+    try {
+      const displayNames = new Intl.DisplayNames(["en"], { type: "region" });
+      if (typeof Intl.supportedValuesOf === "function") {
+        return Intl.supportedValuesOf("region")
+          .filter((code) => /^[A-Z]{2}$/.test(code))
+          .map((code) => displayNames.of(code))
+          .filter((name): name is string => Boolean(name))
+          .sort((a, b) => a.localeCompare(b));
+      }
+    } catch {
+      // Fallback when Intl.supportedValuesOf is unsupported or fails
+    }
+  }
+
+  return [
+    "Rwanda",
+    "Uganda",
+    "Kenya",
+    "Tanzania",
+    "South Africa",
+    "Nigeria",
+    "Ghana",
+    "Egypt",
+    "Morocco",
+    "Zimbabwe"
+  ];
+})();
 type ModuleKey =
   | "has_boarding"
   | "has_biometrics"
@@ -114,6 +145,7 @@ const EMPTY_FORM: SchoolFormState = {
   school_type: "government",
   province: "",
   district: "",
+  country: "",
   sector: "",
   principal_name: "",
   principal_phone: "",
@@ -144,6 +176,7 @@ function SchoolsIndexPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [schoolType, setSchoolType] = useState("all");
+  const [countryFilter, setCountryFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<SchoolFormState>(() => ({ ...EMPTY_FORM }));
   const [creating, setCreating] = useState(false);
@@ -182,6 +215,7 @@ function SchoolsIndexPage() {
       if (search.trim()) params.set("q", search.trim());
       if (status !== "all") params.set("status", status);
       if (schoolType !== "all") params.set("school_type", schoolType);
+      if (countryFilter.trim()) params.set("country", countryFilter.trim());
 
       try {
         const resp = await apiRequest<ListResponse<PlatformSchool>>(`/platform/schools?${params.toString()}`, { returnMeta: true });
@@ -204,7 +238,7 @@ function SchoolsIndexPage() {
     return () => {
       active = false;
     };
-  }, [page, pageSize, search, status, schoolType, refreshKey]);
+  }, [page, pageSize, search, status, schoolType, countryFilter, refreshKey]);
 
   const statusCounts = useMemo(() => {
     const counts = { active: 0, trial: 0, suspended: 0 };
@@ -219,14 +253,15 @@ function SchoolsIndexPage() {
   const resetForm = () => setForm({ ...EMPTY_FORM });
 
   const handleCreateSchool = async () => {
-    if (!form.name.trim() || !form.province.trim() || !form.district.trim()) {
-      toast.error("Name, province, and district are required.");
+    if (!form.name.trim() || !form.country.trim() || !form.province.trim() || !form.district.trim()) {
+      toast.error("Name, country, province, and district are required.");
       return;
     }
 
     const payload: Record<string, unknown> = {
       name: form.name.trim(),
       school_type: form.school_type || undefined,
+      country: form.country.trim(),
       province: form.province.trim(),
       district: form.district.trim(),
       sector: form.sector.trim() || undefined,
@@ -327,6 +362,15 @@ function SchoolsIndexPage() {
                 <option key={opt} value={opt}>{toTitle(opt)}</option>
               ))}
             </select>
+            <div className="min-w-[160px]">
+              <input
+                value={countryFilter}
+                onChange={(e) => { setCountryFilter(e.target.value); setPage(1); }}
+                placeholder="Country"
+                list="country-options"
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
+              />
+            </div>
             <button
               type="button"
               onClick={() => setCreateOpen(true)}
@@ -441,9 +485,9 @@ function SchoolsIndexPage() {
               <option key={opt} value={opt}>{toTitle(opt)}</option>
             ))}
           </SaSelect>
+          <SaInput label="Country *" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} placeholder="Search or select country" list="country-options" />
           <SaInput label="Province *" value={form.province} onChange={(e) => setForm({ ...form, province: e.target.value })} />
           <SaInput label="District *" value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value })} />
-          <SaInput label="Sector" value={form.sector} onChange={(e) => setForm({ ...form, sector: e.target.value })} />
           <SaSelect label="Status" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
             {STATUS_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>{opt}</option>
@@ -463,6 +507,12 @@ function SchoolsIndexPage() {
           <SaInput label="Timezone" value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
           <SaInput label="Currency" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
         </div>
+
+        <datalist id="country-options">
+          {COUNTRY_OPTIONS.map((country) => (
+            <option key={country} value={country} />
+          ))}
+        </datalist>
 
         <div className="mt-5">
           <div className="text-xs font-semibold text-muted-foreground mb-2">Enabled Modules</div>
@@ -551,6 +601,6 @@ function toTitle(value: string) {
 }
 
 function formatLocation(school: PlatformSchool) {
-  const parts = [school.province, school.district, school.sector].filter(Boolean);
+  const parts = [school.province, school.district, school.country].filter(Boolean);
   return parts.length ? parts.join(", ") : "—";
 }

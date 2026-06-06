@@ -10,6 +10,9 @@ interface Props {
   accent?: "blue";
   /** Denser layout for dashboard grids with many KPIs */
   compact?: boolean;
+  /** Keep the card in the DOM but hide it visually */
+  hidden?: boolean;
+  className?: string;
 }
 
 const TONES = {
@@ -23,13 +26,15 @@ const ACCENTS = {
   blue: "border-blue-200/70 bg-blue-50/60",
 };
 
-export function StatCard({ label, value, icon, trend, tone = "primary", accent, compact }: Props) {
+export function StatCard({ label, value, icon, trend, tone = "primary", accent, compact, hidden, className }: Props) {
   return (
     <div
       className={cn(
         "rounded-xl border border-border bg-card shadow-sm min-w-0",
         compact ? "p-3 sm:p-4" : "p-5",
-        accent ? ACCENTS[accent] : null
+        accent ? ACCENTS[accent] : null,
+        hidden && "hidden",
+        className
       )}
     >
       <div className="flex items-start justify-between gap-2">

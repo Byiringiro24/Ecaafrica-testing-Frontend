@@ -90,6 +90,7 @@ type PlatformSchool = {
   school_type?: string | null;
   province: string;
   district: string;
+  country?: string | null;
   sector?: string | null;
   principal_name?: string | null;
   principal_phone?: string | null;
@@ -120,6 +121,7 @@ type SchoolFormState = {
   school_type: string;
   province: string;
   district: string;
+  country: string;
   sector: string;
   principal_name: string;
   principal_phone: string;
@@ -148,6 +150,7 @@ const toFormState = (s: PlatformSchool): SchoolFormState => ({
   school_type: s.school_type ?? "government",
   province: s.province ?? "",
   district: s.district ?? "",
+  country: s.country ?? "",
   sector: s.sector ?? "",
   principal_name: s.principal_name ?? "",
   principal_phone: s.principal_phone ?? "",
@@ -199,7 +202,7 @@ const formatInvoicePeriod = (start?: string | null, end?: string | null) => {
 };
 
 const formatLocation = (school: PlatformSchool) => {
-  const parts = [school.province, school.district, school.sector].filter(Boolean);
+  const parts = [school.country, school.province, school.district].filter(Boolean);
   return parts.length ? parts.join(", ") : "—";
 };
 
@@ -229,9 +232,11 @@ function SchoolDetailPage() {
   const [auditLogs, setAuditLogs] = useState<SchoolAuditLog[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [tab, setTab] = useState("Overview");
-  const [suspendOpen, setSuspendOpen] = useState(false);
+  const [statusActionOpen, setStatusActionOpen] = useState(false);
+  const [statusAction, setStatusAction] = useState<"suspend" | "activate">("suspend");
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [plans, setPlans] = useState<PlatformPlan[]>([]);
   const [editForm, setEditForm] = useState<SchoolFormState | null>(null);
   const moduleDefaults = useMemo(() => buildModuleState(school), [school]);
@@ -439,14 +444,15 @@ function SchoolDetailPage() {
 
   const handleUpdateSchool = async () => {
     if (!editForm) return;
-    if (!editForm.name.trim() || !editForm.province.trim() || !editForm.district.trim()) {
-      toast.error("Name, province, and district are required.");
+    if (!editForm.name.trim() || !editForm.country.trim() || !editForm.province.trim() || !editForm.district.trim()) {
+      toast.error("Name, country, province, and district are required.");
       return;
     }
 
     const payload: Record<string, unknown> = {
       name: editForm.name.trim(),
       school_type: editForm.school_type || undefined,
+      country: editForm.country.trim() || undefined,
       province: editForm.province.trim(),
       district: editForm.district.trim(),
       sector: editForm.sector.trim() || undefined,
@@ -483,6 +489,32 @@ function SchoolDetailPage() {
       toast.error(message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleStatusAction = (action: "suspend" | "activate") => {
+    setStatusAction(action);
+    setStatusActionOpen(true);
+  };
+
+  const handleConfirmStatusAction = async () => {
+    if (!school) return;
+    const targetStatus = statusAction === "suspend" ? "suspended" : "active";
+
+    try {
+      setActionLoading(true);
+      const updated = await apiRequest<PlatformSchool>(`/platform/schools/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: targetStatus })
+      });
+      setSchool(updated);
+      toast.success(`School ${statusAction === "suspend" ? "suspended" : "activated"}`);
+      setStatusActionOpen(false);
+    } catch (error) {
+      const message = error && typeof error === "object" && "message" in error ? String(error.message) : `Failed to ${statusAction} school`;
+      toast.error(message);
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -530,15 +562,22 @@ function SchoolDetailPage() {
             <div>
               <h2 className="font-display text-xl font-bold">{school.name}</h2>
               <p className="text-sm text-muted-foreground">{location}</p>
-              <div className="flex gap-2 mt-2">
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${planBadgeClass(planName)}`}>{planName}</span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadgeClass(school.status ?? "")}`}>{school.status ?? "—"}</span>
-              </div>
+              <div className="flex gap-2 mt-2 items-center flex-wrap">
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${planBadgeClass(planName)}`}>{planName}</span>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadgeClass(school.status ?? "")}`}>{school.status ?? "—"}</span>
+              {school.status === "suspended" && (
+                <span className="rounded-full bg-destructive/10 text-destructive px-2 py-0.5 text-[10px] font-semibold">Suspended</span>
+              )}
             </div>
           </div>
+        </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={openEdit} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold">Edit</button>
-            <button type="button" onClick={() => setSuspendOpen(true)} className="rounded-lg border border-destructive/40 text-destructive px-3 py-1.5 text-xs font-semibold">Suspend</button>
+            {school.status === "suspended" ? (
+              <button type="button" onClick={() => handleStatusAction("activate")} className="rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 px-3 py-1.5 text-xs font-semibold">Activate</button>
+            ) : (
+              <button type="button" onClick={() => handleStatusAction("suspend")} className="rounded-lg border border-destructive/40 text-destructive px-3 py-1.5 text-xs font-semibold">Suspend</button>
+            )}
             <button type="button" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold">Export</button>
           </div>
         </div>
@@ -552,6 +591,7 @@ function SchoolDetailPage() {
             <h3 className="font-semibold mb-3">School Information</h3>
             <dl className="grid grid-cols-2 gap-2 text-sm">
               {[
+                ["Country", school.country ?? "—"],
                 ["Province", school.province ?? "—"],
                 ["District", school.district ?? "—"],
                 ["Sector", school.sector ?? "—"],
@@ -769,13 +809,15 @@ function SchoolDetailPage() {
       )}
 
       <ConfirmDialog
-        open={suspendOpen}
-        onClose={() => setSuspendOpen(false)}
-        onConfirm={() => toast.success(`${school.name} suspended`)}
-        title="Suspend school?"
-        description="School admins will lose access until reactivated."
-        confirmLabel="Suspend"
-        destructive
+        open={statusActionOpen}
+        onClose={() => setStatusActionOpen(false)}
+        onConfirm={handleConfirmStatusAction}
+        title={statusAction === "suspend" ? "Suspend school?" : "Activate school?"}
+        description={statusAction === "suspend"
+          ? "School admins will lose access until reactivated."
+          : "School will regain access when activated."}
+        confirmLabel={statusAction === "suspend" ? "Suspend" : "Activate"}
+        destructive={statusAction === "suspend"}
       />
 
       <SaModal
@@ -801,6 +843,7 @@ function SchoolDetailPage() {
             <SaSelect label="Status" value={editForm.status} onChange={e => setEditForm(s => s ? { ...s, status: e.target.value } : s)}>
               {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </SaSelect>
+            <SaInput label="Country" value={editForm.country} onChange={e => setEditForm(s => s ? { ...s, country: e.target.value } : s)} />
             <SaInput label="Province *" value={editForm.province} onChange={e => setEditForm(s => s ? { ...s, province: e.target.value } : s)} />
             <SaInput label="District *" value={editForm.district} onChange={e => setEditForm(s => s ? { ...s, district: e.target.value } : s)} />
             <SaInput label="Sector" value={editForm.sector} onChange={e => setEditForm(s => s ? { ...s, sector: e.target.value } : s)} />

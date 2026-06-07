@@ -9,7 +9,7 @@ import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { ChartCard, LiveClock, Pagination } from "@/components/super-admin/ui";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatRWF } from "@/lib/mockData";
+import { formatRWF } from "@/lib/mockData";  
 import { apiRequest } from "@/lib/api";
 import {
   SCHOOL_GROWTH,

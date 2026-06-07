@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatRWF } from "@/lib/mockData";  
 import { apiRequest } from "@/lib/api";
 import {  
-  SCHOOL_GROWTH,
+  SCHOOL_GROWTH, 
   PLATFORM_ACTIVITY,
   planBadgeClass,
   statusBadgeClass,

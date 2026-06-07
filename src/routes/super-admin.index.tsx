@@ -11,7 +11,7 @@ import { ChartCard, LiveClock, Pagination } from "@/components/super-admin/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRWF } from "@/lib/mockData";  
 import { apiRequest } from "@/lib/api";
-import {
+import {  
   SCHOOL_GROWTH,
   PLATFORM_ACTIVITY,
   planBadgeClass,

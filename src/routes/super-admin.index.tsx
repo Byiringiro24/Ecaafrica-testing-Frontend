@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatRWF } from "@/lib/mockData";
 import { apiRequest } from "@/lib/api";
 import {
+  SCHOOL_GROWTH,
   PLATFORM_ACTIVITY,
   planBadgeClass,
   statusBadgeClass,
@@ -36,7 +37,6 @@ function SuperAdminOverview() {
     smsMonthly: number;
     supportOpen: number;
     mrrTrend: { month: string; mrr: number }[];
-    schoolGrowth: { month: string; schools: number }[];
   }>(null);
 
   useEffect(() => {
@@ -51,7 +51,6 @@ function SuperAdminOverview() {
           smsMonthly: number;
           supportOpen: number;
           mrrTrend: { month: string; mrr: number }[];
-          schoolGrowth: { month: string; schools: number }[];
         }>("/platform/overview", { auth: "platform" });
         if (active) setOverview(data);
       } finally {
@@ -118,15 +117,6 @@ function SuperAdminOverview() {
     })} ${year.slice(-2)}`;
     return { month: label, mrr: item.mrr };
   });
-
-  const schoolGrowth = (overview?.schoolGrowth ?? []).map((item) => {
-    const [year, month] = item.month.split("-");
-    const label = `${new Date(Number(year), Number(month) - 1, 1).toLocaleString("en-GB", {
-      month: "short"
-    })} ${year.slice(-2)}`;
-    return { month: label, schools: item.schools };
-  });
-
   const paginated = schools;
 
   const formatLastActive = (value?: string | null) => {
@@ -164,18 +154,28 @@ function SuperAdminOverview() {
               tone="success"
               accent="blue"
               icon={<TrendingUp className="h-4 w-4" />}
-              hidden
             />
             <StatCard compact label="Uptime" value="99.8%" tone="success" />
-            <StatCard compact label="SMS (mo)" value={formatK(smsMonthly)} icon={<Mail className="h-4 w-4" />} accent="blue" hidden />
-            <StatCard compact label="New schools" value={`+${newSchools}`} tone="warning" accent="blue" hidden />
-            <StatCard compact label="Support" value={supportOpen} tone="destructive" accent="blue" hidden />
+            <StatCard compact label="SMS (mo)" value={formatK(smsMonthly)} icon={<Mail className="h-4 w-4" />} accent="blue" />
+            <StatCard compact label="New schools" value={`+${newSchools}`} tone="warning" accent="blue" />
+            <StatCard compact label="Support" value={supportOpen} tone="destructive" accent="blue" />
           </div>
 
           <div className="flex flex-col gap-5 mb-5">
+            <ChartCard title="MRR Trend (12 months)" className="border-blue-200/70 bg-blue-50/30">
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={mrrTrend}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="month" fontSize={10} />
+                  <YAxis tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} fontSize={10} />
+                  <Tooltip formatter={(v: number) => formatRWF(v)} />
+                  <Area type="monotone" dataKey="mrr" stroke="#2563eb" fill="#2563eb" fillOpacity={0.25} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ChartCard>
             <ChartCard title="School Growth (new per month)">
               <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={schoolGrowth}>
+                <BarChart data={SCHOOL_GROWTH}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" fontSize={10} />
                   <YAxis />
@@ -195,7 +195,7 @@ function SuperAdminOverview() {
                 <table className="w-full text-sm">
                   <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
                     <tr>
-                      {["School", "Location", "Students", "Status", "Last Active", ""].map(h => (
+                      {["School", "Location", "Plan", "Students", "Status", "SMS", "Last Active", ""].map(h => (
                         <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>
                       ))}
                     </tr>
@@ -203,7 +203,7 @@ function SuperAdminOverview() {
                   <tbody>
                     {schoolsLoading && paginated.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-6">
+                        <td colSpan={8} className="px-4 py-6">
                           <div className="flex flex-col gap-2">
                             <Skeleton className="h-4 w-40" />
                             <Skeleton className="h-4 w-56" />
@@ -212,7 +212,7 @@ function SuperAdminOverview() {
                       </tr>
                     ) : paginated.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-6 text-sm text-muted-foreground">
+                        <td colSpan={8} className="px-4 py-6 text-sm text-muted-foreground">
                           No active schools found.
                         </td>
                       </tr>
@@ -221,12 +221,18 @@ function SuperAdminOverview() {
                         <tr key={s.id} className="border-t border-border hover:bg-muted/20">
                           <td className="px-4 py-3 font-medium">{s.name}</td>
                           <td className="px-4 py-3 text-xs text-muted-foreground">{`${s.province}, ${s.district}`}</td>
+                          <td className="px-4 py-3">
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${planBadgeClass(s.subscription_plan?.name ?? "")}`}>
+                              {s.subscription_plan?.name ?? "—"}
+                            </span>
+                          </td>
                           <td className="px-4 py-3">{s.student_count ?? 0}</td>
                           <td className="px-4 py-3">
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadgeClass(s.status ?? "")}`}>
                               {s.status ?? "—"}
                             </span>
                           </td>
+                          <td className="px-4 py-3 text-xs">{s.subscription_plan?.sms_bundle ?? "—"}</td>
                           <td className="px-4 py-3 text-xs text-muted-foreground">{formatLastActive(s.updated_at)}</td>
                           <td className="px-4 py-3 whitespace-nowrap space-x-2">
                             <Link to="/super-admin/schools/$id" params={{ id: s.id }} className="text-xs font-semibold text-primary hover:underline">View</Link>
@@ -318,14 +324,14 @@ function OverviewSkeleton() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
                 <tr>
-                  {Array.from({ length: 6 }).map((_, i) => (
+                  {Array.from({ length: 8 }).map((_, i) => (
                     <th key={i} className="text-left px-4 py-3">
                       <Skeleton className="h-3 w-14" />
                     </th>
                   ))}
                 </tr>
               </thead>
-                <tbody>
+              <tbody>
                 {Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i} className="border-t border-border">
                     <td className="px-4 py-3">
@@ -334,6 +340,8 @@ function OverviewSkeleton() {
                     <td className="px-4 py-3"><Skeleton className="h-4 w-40" /></td>
                     <td className="px-4 py-3"><Skeleton className="h-4 w-20 rounded-full" /></td>
                     <td className="px-4 py-3"><Skeleton className="h-4 w-12" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-16 rounded-full" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-10" /></td>
                     <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
                     <td className="px-4 py-3"><Skeleton className="h-4 w-12" /></td>
                   </tr>

@@ -146,20 +146,12 @@ function SuperAdminOverview() {
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-5">
             <StatCard compact label="Schools" value={overview?.schools.total ?? 0} trend={`${activeSchools} active`} />
-            <StatCard compact label="Active subs" value={activeSubs} trend={formatRWF(mrr)} tone="success" />
+            <StatCard compact label="Devices" value={activeSubs} trend="active devices" tone="success" />
             <StatCard compact label="Students" value={totalStudents.toLocaleString()} />
-            <StatCard
-              compact
-              label="MRR"
-              value={formatRWF(mrr)}
-              tone="success"
-              accent="blue"
-              icon={<TrendingUp className="h-4 w-4" />}
-            />
-            <StatCard compact label="Uptime" value="99.8%" tone="success" />
+            {/* <StatCard compact label="Uptime" value="99.8%" tone="success" /> */}
             <StatCard compact label="SMS (mo)" value={formatK(smsMonthly)} icon={<Mail className="h-4 w-4" />} accent="blue" />
-            <StatCard compact label="New schools" value={`+${newSchools}`} tone="warning" accent="blue" />
-            <StatCard compact label="Support" value={supportOpen} tone="destructive" accent="blue" />
+            {/* <StatCard compact label="New schools" value={`+${newSchools}`} tone="warning" accent="blue" /> */}
+            {/* <StatCard compact label="Support" value={supportOpen} tone="destructive" accent="blue" /> */}
           </div>
 
           <div className="flex flex-col gap-5 mb-5">
@@ -249,7 +241,7 @@ function SuperAdminOverview() {
             </div>
 
             <div className="space-y-5">
-              <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+              <div className="rounded-xl border border-border bg-card p-5 shadow-sm hidden">
                 <div className="font-display font-semibold mb-3 flex items-center gap-2">
                   <Activity className="h-4 w-4 text-emerald-600" /> System Health
                 </div>

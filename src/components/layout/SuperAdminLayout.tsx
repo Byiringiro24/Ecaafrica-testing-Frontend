@@ -76,9 +76,9 @@ export function SuperAdminLayout({ title, subtitle, headerExtra, breadcrumbs, ch
       >
         <div className="flex items-center justify-between px-5 py-5 border-b border-white/10">
           <Link to="/super-admin" className="flex items-center gap-2.5" onClick={() => setOpen(false)}>
-            <img src={logo} alt="SchoolOS" className="h-9 w-9 rounded-lg object-contain" />
+            <img src={logo} alt="Education Care System" className="h-9 w-9 rounded-lg object-contain" />
             <div className="font-display font-semibold text-base leading-tight text-white">
-              SchoolOS
+              Education Care System
               <span className="mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest bg-amber-500 text-amber-950">
                 Super Admin
               </span>

@@ -71,7 +71,7 @@ export function StaffLayout({ title, subtitle, children }: { title: string; subt
               S
             </div>
             <div className="font-display font-bold text-sidebar-foreground text-base leading-tight">
-              SchoolOS
+              Education Care System
               <div className="text-[10px] font-normal text-sidebar-foreground/70">Staff Panel</div>
             </div>
           </Link>

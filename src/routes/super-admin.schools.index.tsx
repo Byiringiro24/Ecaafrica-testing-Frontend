@@ -4,7 +4,7 @@ import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs";
-import { EmptyState, FilterBar, Pagination, SaInput, SaModal, SaSelect } from "@/components/super-admin/ui";
+import { EmptyState, FilterBar, Pagination, SaInput, SaModal, SaSelect, SaCountrySelect } from "@/components/super-admin/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { planBadgeClass, statusBadgeClass } from "@/lib/superAdminMockData";
@@ -485,7 +485,12 @@ function SchoolsIndexPage() {
               <option key={opt} value={opt}>{toTitle(opt)}</option>
             ))}
           </SaSelect>
-          <SaInput label="Country *" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} placeholder="Search or select country" list="country-options" />
+          <SaCountrySelect
+            label="Country *"
+            value={form.country}
+            onChange={(v) => setForm({ ...form, country: v })}
+            onTimezoneChange={(tz) => setForm((prev) => ({ ...prev, timezone: tz }))}
+          />
           <SaInput label="Province *" value={form.province} onChange={(e) => setForm({ ...form, province: e.target.value })} />
           <SaInput label="District *" value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value })} />
           <SaSelect label="Status" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>

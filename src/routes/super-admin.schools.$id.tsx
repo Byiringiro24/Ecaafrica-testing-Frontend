@@ -4,7 +4,7 @@ import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs";
-import { PageTabs, ConfirmDialog, SaInput, SaModal, SaSelect } from "@/components/super-admin/ui";
+import { PageTabs, ConfirmDialog, SaInput, SaModal, SaSelect, SaCountrySelect } from "@/components/super-admin/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   planBadgeClass,
@@ -843,7 +843,12 @@ function SchoolDetailPage() {
             <SaSelect label="Status" value={editForm.status} onChange={e => setEditForm(s => s ? { ...s, status: e.target.value } : s)}>
               {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </SaSelect>
-            <SaInput label="Country" value={editForm.country} onChange={e => setEditForm(s => s ? { ...s, country: e.target.value } : s)} />
+            <SaCountrySelect
+              label="Country"
+              value={editForm.country}
+              onChange={v => setEditForm(s => s ? { ...s, country: v } : s)}
+              onTimezoneChange={tz => setEditForm(s => s ? { ...s, timezone: tz } : s)}
+            />
             <SaInput label="Province *" value={editForm.province} onChange={e => setEditForm(s => s ? { ...s, province: e.target.value } : s)} />
             <SaInput label="District *" value={editForm.district} onChange={e => setEditForm(s => s ? { ...s, district: e.target.value } : s)} />
             <SaInput label="Sector" value={editForm.sector} onChange={e => setEditForm(s => s ? { ...s, sector: e.target.value } : s)} />

@@ -62,6 +62,13 @@ export const PLAN_DISTRIBUTION = [
   { name: "Trial", value: 8, fill: "#22c55e" },
 ];
 
+export const ACTIVE_SCHOOL_DEVICES = [
+  { text: "Device online: GS Kacyiru", time: "2 mins ago", tone: "default" as const },
+  { text: "Device online: ES Remera", time: "5 mins ago", tone: "default" as const },
+  { text: "Device offline: College Saint André", time: "12 mins ago", tone: "warning" as const },
+  { text: "Device offline: GS Nyamirambo", time: "1 hour ago", tone: "destructive" as const },
+];
+
 export const PLATFORM_ACTIVITY = [
   { text: "New school onboarded: GS Kacyiru", time: "2 hrs ago", tone: "default" as const },
   { text: "Subscription renewed: ES Remera — Professional", time: "3 hrs ago", tone: "default" as const },

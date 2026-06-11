@@ -14,6 +14,7 @@ import { apiRequest } from "@/lib/api";
 import {  
   SCHOOL_GROWTH, 
   PLATFORM_ACTIVITY,
+  ACTIVE_SCHOOL_DEVICES,
   planBadgeClass,
   statusBadgeClass,
 } from "@/lib/superAdminMockData";
@@ -272,9 +273,9 @@ function SuperAdminOverview() {
               </div>
 
               <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                <div className="font-display font-semibold mb-3">Recent Platform Activity</div>
+                <div className="font-display font-semibold mb-3">Active Devices by Schools</div>
                 <div className="space-y-2 text-sm">
-                  {PLATFORM_ACTIVITY.map((a, i) => (
+                  {ACTIVE_SCHOOL_DEVICES.map((a, i) => (
                     <div key={i} className="flex gap-2 border-b border-border pb-2 last:border-0">
                       <div className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${a.tone === "warning" ? "bg-amber-500" : a.tone === "destructive" ? "bg-destructive" : "bg-primary"}`} />
                       <div className="flex-1 min-w-0">

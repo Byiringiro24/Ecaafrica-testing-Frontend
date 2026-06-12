@@ -51,7 +51,6 @@ import { Route as SuperAdminSupportRouteImport } from './routes/super-admin.supp
 import { Route as SuperAdminSubscriptionsRouteImport } from './routes/super-admin.subscriptions'
 import { Route as SuperAdminSchoolsRouteImport } from './routes/super-admin.schools'
 import { Route as SuperAdminRevenueRouteImport } from './routes/super-admin.revenue'
-import { Route as SuperAdminFeaturesRouteImport } from './routes/super-admin.features'
 import { Route as SuperAdminBillingRouteImport } from './routes/super-admin.billing'
 import { Route as SuperAdminAuditRouteImport } from './routes/super-admin.audit'
 import { Route as SuperAdminAnnouncementsRouteImport } from './routes/super-admin.announcements'
@@ -281,11 +280,6 @@ const SuperAdminRevenueRoute = SuperAdminRevenueRouteImport.update({
   path: '/revenue',
   getParentRoute: () => SuperAdminRoute,
 } as any)
-const SuperAdminFeaturesRoute = SuperAdminFeaturesRouteImport.update({
-  id: '/features',
-  path: '/features',
-  getParentRoute: () => SuperAdminRoute,
-} as any)
 const SuperAdminBillingRoute = SuperAdminBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
@@ -418,7 +412,6 @@ export interface FileRoutesByFullPath {
   '/super-admin/announcements': typeof SuperAdminAnnouncementsRoute
   '/super-admin/audit': typeof SuperAdminAuditRoute
   '/super-admin/billing': typeof SuperAdminBillingRoute
-  '/super-admin/features': typeof SuperAdminFeaturesRoute
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
   '/super-admin/schools': typeof SuperAdminSchoolsRouteWithChildren
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
@@ -478,7 +471,6 @@ export interface FileRoutesByTo {
   '/super-admin/announcements': typeof SuperAdminAnnouncementsRoute
   '/super-admin/audit': typeof SuperAdminAuditRoute
   '/super-admin/billing': typeof SuperAdminBillingRoute
-  '/super-admin/features': typeof SuperAdminFeaturesRoute
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
   '/super-admin/support': typeof SuperAdminSupportRoute
@@ -541,7 +533,6 @@ export interface FileRoutesById {
   '/super-admin/announcements': typeof SuperAdminAnnouncementsRoute
   '/super-admin/audit': typeof SuperAdminAuditRoute
   '/super-admin/billing': typeof SuperAdminBillingRoute
-  '/super-admin/features': typeof SuperAdminFeaturesRoute
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
   '/super-admin/schools': typeof SuperAdminSchoolsRouteWithChildren
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
@@ -606,7 +597,6 @@ export interface FileRouteTypes {
     | '/super-admin/announcements'
     | '/super-admin/audit'
     | '/super-admin/billing'
-    | '/super-admin/features'
     | '/super-admin/revenue'
     | '/super-admin/schools'
     | '/super-admin/subscriptions'
@@ -666,7 +656,6 @@ export interface FileRouteTypes {
     | '/super-admin/announcements'
     | '/super-admin/audit'
     | '/super-admin/billing'
-    | '/super-admin/features'
     | '/super-admin/revenue'
     | '/super-admin/subscriptions'
     | '/super-admin/support'
@@ -728,7 +717,6 @@ export interface FileRouteTypes {
     | '/super-admin/announcements'
     | '/super-admin/audit'
     | '/super-admin/billing'
-    | '/super-admin/features'
     | '/super-admin/revenue'
     | '/super-admin/schools'
     | '/super-admin/subscriptions'
@@ -1083,13 +1071,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SuperAdminRevenueRouteImport
       parentRoute: typeof SuperAdminRoute
     }
-    '/super-admin/features': {
-      id: '/super-admin/features'
-      path: '/features'
-      fullPath: '/super-admin/features'
-      preLoaderRoute: typeof SuperAdminFeaturesRouteImport
-      parentRoute: typeof SuperAdminRoute
-    }
     '/super-admin/billing': {
       id: '/super-admin/billing'
       path: '/billing'
@@ -1283,7 +1264,6 @@ interface SuperAdminRouteChildren {
   SuperAdminAnnouncementsRoute: typeof SuperAdminAnnouncementsRoute
   SuperAdminAuditRoute: typeof SuperAdminAuditRoute
   SuperAdminBillingRoute: typeof SuperAdminBillingRoute
-  SuperAdminFeaturesRoute: typeof SuperAdminFeaturesRoute
   SuperAdminRevenueRoute: typeof SuperAdminRevenueRoute
   SuperAdminSchoolsRoute: typeof SuperAdminSchoolsRouteWithChildren
   SuperAdminSubscriptionsRoute: typeof SuperAdminSubscriptionsRoute
@@ -1298,7 +1278,6 @@ const SuperAdminRouteChildren: SuperAdminRouteChildren = {
   SuperAdminAnnouncementsRoute: SuperAdminAnnouncementsRoute,
   SuperAdminAuditRoute: SuperAdminAuditRoute,
   SuperAdminBillingRoute: SuperAdminBillingRoute,
-  SuperAdminFeaturesRoute: SuperAdminFeaturesRoute,
   SuperAdminRevenueRoute: SuperAdminRevenueRoute,
   SuperAdminSchoolsRoute: SuperAdminSchoolsRouteWithChildren,
   SuperAdminSubscriptionsRoute: SuperAdminSubscriptionsRoute,

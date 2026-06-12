@@ -1,6 +1,14 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Inbox, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  buildPhoneValue,
+  countryFlagSrc,
+  findCountryByName,
+  parsePhoneValue,
+  searchCountries,
+  type Country,
+} from "@/lib/countries";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -185,107 +193,32 @@ export function SaSelect({ label, children, className, ...props }: { label: stri
   );
 }
 
-// Call backend proxy to avoid CORS and keep API key secret
-const REST_COUNTRIES_API_URL = "/api/v1/external/restcountries";
-const SEARCH_DEBOUNCE_MS = 300;
-
-export function SaCountrySelect({ label, value, onChange, onTimezoneChange, className }: { label: string; value?: string; onChange: (v: string) => void; onTimezoneChange?: (timezone: string) => void; className?: string }) {
+export function SaCountrySelect({ label, value, onChange, onTimezoneChange, onCurrencyChange, className }: { label: string; value?: string; onChange: (v: string) => void; onTimezoneChange?: (timezone: string) => void; onCurrencyChange?: (currency: string) => void; className?: string }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [countries, setCountries] = useState<any[]>([]);
-  const [selectedCountry, setSelectedCountry] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!value) {
-      setSelectedCountry(null);
-      return;
-    }
-    const found = countries.find((c) => c.name === value);
-    if (found) setSelectedCountry(found);
-  }, [value, countries]);
+  const selectedCountry = useMemo(() => (value ? findCountryByName(value) : undefined), [value]);
+  const filtered = useMemo(() => searchCountries(query), [query]);
 
-  useEffect(() => {
-    let mounted = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    if (!query.trim()) {
-      setCountries([]);
-      setLoading(false);
-      return;
-    }
-
-    timer = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(`${REST_COUNTRIES_API_URL}?q=${encodeURIComponent(query)}&pretty=true`);
-        const json = await res.json();
-        if (!mounted) return;
-
-        // Support multiple possible response shapes from the proxy / API
-        let objects: any[] = [];
-        if (Array.isArray(json)) {
-          objects = json;
-        } else if (Array.isArray(json?.data?.objects)) {
-          objects = json.data.objects;
-        } else if (Array.isArray(json?.objects)) {
-          objects = json.objects;
-        } else if (Array.isArray(json?.items)) {
-          objects = json.items;
-        } else if (json?.data) {
-          // pick first array inside data
-          for (const k of Object.keys(json.data)) {
-            if (Array.isArray((json.data as any)[k])) {
-              objects = (json.data as any)[k];
-              break;
-            }
-          }
-        }
-
-        const items = objects
-          .map((country: any) => {
-            const name = country.names?.common || country.name?.common || country.name || country.common || country.names?.official || (typeof country === "string" ? country : null);
-            const flag = country.flag?.url_svg || country.flag?.svg || country.flag || country.flag_url || country.flags?.svg || country.flags?.png || "";
-            const timezones = Array.isArray(country.timezones) ? country.timezones : country.timezone ? [country.timezone] : [];
-            const id = country.codes?.alpha_2 || country.cca2 || country.alpha2Code || country.codes?.alpha_3 || name;
-            return {
-              id,
-              name,
-              flag,
-              timezones,
-            };
-          })
-          .filter((item: any) => item.name)
-          .sort((a: any, b: any) => a.name.localeCompare(b.name));
-
-        setCountries(items);
-      } catch (e) {
-        console.error("failed to load countries", e);
-        setCountries([]);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    }, SEARCH_DEBOUNCE_MS);
-
-    return () => {
-      mounted = false;
-      if (timer) clearTimeout(timer);
-    };
-  }, [query]);
-
-  const selected = selectedCountry;
-  const selectedName = selected?.name || value;
-  const selectedFlag = selected?.flag;
-  const filtered = countries;
+  const handleSelect = (country: Country) => {
+    onChange(country.name);
+    onTimezoneChange?.(country.timezone);
+    onCurrencyChange?.(country.currency.code);
+    setOpen(false);
+    setQuery("");
+  };
 
   return (
     <div className={className}>
       <label className="block text-xs font-semibold mb-1.5 text-foreground">{label}</label>
       <div className="relative">
         <button type="button" onClick={() => setOpen((s) => !s)} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm text-left flex items-center gap-2">
-          {selectedName ? (
+          {selectedCountry || value ? (
             <>
-              {selectedFlag ? <img src={selectedFlag} alt="flag" className="w-5 h-3 object-cover rounded-sm" /> : null}
-              <span className="truncate">{selectedName}</span>
+              {selectedCountry ? (
+                <img src={countryFlagSrc(selectedCountry.flag)} alt="" className="w-5 h-3 object-cover rounded-sm" />
+              ) : null}
+              <span className="truncate">{selectedCountry?.name ?? value}</span>
             </>
           ) : (
             <span className="text-muted-foreground">Select country</span>
@@ -294,38 +227,130 @@ export function SaCountrySelect({ label, value, onChange, onTimezoneChange, clas
         </button>
 
         {open && (
-          <div className="absolute z-20 right-0 mt-2 p-2 min-w-[220px] w-full bg-card border border-border rounded-md shadow-lg max-h-64 overflow-auto">
+          <div className="absolute z-20 right-0 mt-2 p-2 min-w-[280px] w-full bg-card border border-border rounded-md shadow-lg max-h-64 overflow-auto">
             <div className="mb-2">
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search..."
+                placeholder="Search country..."
+                autoFocus
                 className="w-full text-sm px-2 py-2 rounded-md border border-border bg-background"
               />
             </div>
-            {loading && <div className="text-sm text-muted-foreground">Loading...</div>}
             <ul className="text-sm">
-              {filtered.map((c) => (
-                <li key={c.id}>
+              {filtered.map((country) => (
+                <li key={country.id}>
                   <button
                     type="button"
-                    onClick={() => {
-                      onChange(c.name);
-                      if (onTimezoneChange && c.timezones.length) onTimezoneChange(c.timezones[0]);
-                      setOpen(false);
-                      setQuery("");
-                    }}
+                    onClick={() => handleSelect(country)}
                     className="w-full text-left p-2 flex items-center gap-2 hover:bg-muted rounded"
                   >
-                    {c.flag ? <img src={c.flag} alt="flag" className="w-5 h-3 object-cover rounded-sm" /> : null}
-                    <span className="truncate">{c.name}</span>
+                    <img src={countryFlagSrc(country.flag)} alt="" className="w-5 h-3 object-cover rounded-sm shrink-0" />
+                    <span className="truncate flex-1">{country.name}</span>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{country.timezone}</span>
                   </button>
                 </li>
               ))}
-              {!loading && filtered.length === 0 && <li className="p-2 text-xs text-muted-foreground">No results</li>}
+              {filtered.length === 0 && <li className="p-2 text-xs text-muted-foreground">No results</li>}
             </ul>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+export function SaPhoneInput({
+  label,
+  value,
+  onChange,
+  defaultCountryName,
+  className,
+  placeholder = "Phone number",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  defaultCountryName?: string;
+  className?: string;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const parsed = useMemo(() => parsePhoneValue(value), [value]);
+  const defaultCountry = useMemo(
+    () => (defaultCountryName ? findCountryByName(defaultCountryName) : undefined),
+    [defaultCountryName],
+  );
+  const selectedCountry = parsed.country ?? defaultCountry;
+  const filtered = useMemo(() => searchCountries(query), [query]);
+
+  const handleCountrySelect = (country: Country) => {
+    onChange(buildPhoneValue(country, parsed.nationalNumber));
+    setOpen(false);
+    setQuery("");
+  };
+
+  const handleNumberChange = (nationalNumber: string) => {
+    onChange(buildPhoneValue(selectedCountry, nationalNumber));
+  };
+
+  return (
+    <div className={className}>
+      <label className="block text-xs font-semibold mb-1.5 text-foreground">{label}</label>
+      <div className="flex gap-2">
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setOpen((s) => !s)}
+            className="h-10 min-w-[7.5rem] rounded-lg border border-border bg-background px-2 text-sm flex items-center gap-1.5"
+          >
+            {selectedCountry ? (
+              <>
+                <img src={countryFlagSrc(selectedCountry.flag)} alt="" className="w-5 h-3 object-cover rounded-sm shrink-0" />
+                <span className="font-medium tabular-nums">{selectedCountry.phoneCode}</span>
+              </>
+            ) : (
+              <span className="text-muted-foreground">Code</span>
+            )}
+            <span className="ml-auto text-muted-foreground text-xs">▾</span>
+          </button>
+
+          {open && (
+            <div className="absolute z-20 left-0 mt-2 p-2 min-w-[280px] bg-card border border-border rounded-md shadow-lg max-h-64 overflow-auto">
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search country or code..."
+                autoFocus
+                className="w-full text-sm px-2 py-2 mb-2 rounded-md border border-border bg-background"
+              />
+              <ul className="text-sm">
+                {filtered.map((country) => (
+                  <li key={country.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleCountrySelect(country)}
+                      className="w-full text-left p-2 flex items-center gap-2 hover:bg-muted rounded"
+                    >
+                      <img src={countryFlagSrc(country.flag)} alt="" className="w-5 h-3 object-cover rounded-sm shrink-0" />
+                      <span className="truncate flex-1">{country.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0 tabular-nums">{country.phoneCode}</span>
+                    </button>
+                  </li>
+                ))}
+                {filtered.length === 0 && <li className="p-2 text-xs text-muted-foreground">No results</li>}
+              </ul>
+            </div>
+          )}
+        </div>
+        <input
+          type="tel"
+          value={parsed.nationalNumber}
+          onChange={(e) => handleNumberChange(e.target.value)}
+          placeholder={placeholder}
+          className="h-10 flex-1 min-w-0 rounded-lg border border-border bg-background px-3 text-sm"
+        />
       </div>
     </div>
   );

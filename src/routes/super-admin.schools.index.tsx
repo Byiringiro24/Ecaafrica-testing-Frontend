@@ -4,9 +4,10 @@ import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs";
-import { EmptyState, FilterBar, Pagination, SaInput, SaModal, SaSelect, SaCountrySelect } from "@/components/super-admin/ui";
+import { EmptyState, FilterBar, Pagination, SaInput, SaModal, SaPhoneInput, SaSelect, SaCountrySelect } from "@/components/super-admin/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { COUNTRY_NAMES } from "@/lib/countries";
 import { planBadgeClass, statusBadgeClass } from "@/lib/superAdminMockData";
 
 export const Route = createFileRoute("/super-admin/schools/")({
@@ -90,35 +91,7 @@ type SchoolFormState = {
 
 const STATUS_OPTIONS = ["active", "trial", "grace", "suspended", "expired", "cancelled"] as const;
 const SCHOOL_TYPES = ["government", "private", "international", "technical", "seminary", "other"] as const;
-const COUNTRY_OPTIONS = (() => {
-  if (typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
-    try {
-      const displayNames = new Intl.DisplayNames(["en"], { type: "region" });
-      if (typeof Intl.supportedValuesOf === "function") {
-        return Intl.supportedValuesOf("region")
-          .filter((code) => /^[A-Z]{2}$/.test(code))
-          .map((code) => displayNames.of(code))
-          .filter((name): name is string => Boolean(name))
-          .sort((a, b) => a.localeCompare(b));
-      }
-    } catch {
-      // Fallback when Intl.supportedValuesOf is unsupported or fails
-    }
-  }
-
-  return [
-    "Rwanda",
-    "Uganda",
-    "Kenya",
-    "Tanzania",
-    "South Africa",
-    "Nigeria",
-    "Ghana",
-    "Egypt",
-    "Morocco",
-    "Zimbabwe"
-  ];
-})();
+const COUNTRY_OPTIONS = COUNTRY_NAMES;
 type ModuleKey =
   | "has_boarding"
   | "has_biometrics"
@@ -490,6 +463,7 @@ function SchoolsIndexPage() {
             value={form.country}
             onChange={(v) => setForm({ ...form, country: v })}
             onTimezoneChange={(tz) => setForm((prev) => ({ ...prev, timezone: tz }))}
+            onCurrencyChange={(currency) => setForm((prev) => ({ ...prev, currency }))}
           />
           <SaInput label="Province *" value={form.province} onChange={(e) => setForm({ ...form, province: e.target.value })} />
           <SaInput label="District *" value={form.district} onChange={(e) => setForm({ ...form, district: e.target.value })} />
@@ -498,11 +472,13 @@ function SchoolsIndexPage() {
               <option key={opt} value={opt}>{opt}</option>
             ))}
           </SaSelect>
-          <SaInput label="School Email" type="email" value={form.school_email} onChange={(e) => setForm({ ...form, school_email: e.target.value })} />
-          <SaInput label="School Phone" value={form.school_phone} onChange={(e) => setForm({ ...form, school_phone: e.target.value })} />
-          <SaInput label="Principal Name" value={form.principal_name} onChange={(e) => setForm({ ...form, principal_name: e.target.value })} />
-          <SaInput label="Principal Email" type="email" value={form.principal_email} onChange={(e) => setForm({ ...form, principal_email: e.target.value })} />
-          <SaInput label="Principal Phone" value={form.principal_phone} onChange={(e) => setForm({ ...form, principal_phone: e.target.value })} />
+          <SaInput label="Admin Email" type="email" value={form.school_email} onChange={(e) => setForm({ ...form, school_email: e.target.value })} />
+          <SaPhoneInput
+            label="School Phone"
+            value={form.school_phone}
+            onChange={(v) => setForm({ ...form, school_phone: v })}
+            defaultCountryName={form.country}
+          />
           <SaSelect label="Subscription Plan" value={form.subscription_plan_id} onChange={(e) => setForm({ ...form, subscription_plan_id: e.target.value })}>
             <option value="">No plan</option>
             {plans.map((plan) => (

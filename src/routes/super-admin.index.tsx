@@ -166,7 +166,7 @@ function SuperAdminOverview() {
                 </AreaChart>
               </ResponsiveContainer>
             </ChartCard>
-            <ChartCard title="School Growth (new per month)">
+            <ChartCard title="School Growth (new per month)" className="hidden">
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={SCHOOL_GROWTH}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -303,7 +303,7 @@ function OverviewSkeleton() {
         <ChartCard title="MRR Trend (12 months)">
           <Skeleton className="h-[260px] w-full" />
         </ChartCard>
-        <ChartCard title="School Growth (new per month)">
+        <ChartCard title="School Growth (new per month)" className="hidden">
           <Skeleton className="h-[260px] w-full" />
         </ChartCard>
       </div>

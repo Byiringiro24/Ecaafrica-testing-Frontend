@@ -4,7 +4,7 @@ import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs";
-import { PageTabs, ConfirmDialog, SaInput, SaModal, SaSelect, SaCountrySelect } from "@/components/super-admin/ui";
+import { PageTabs, ConfirmDialog, SaInput, SaModal, SaPhoneInput, SaSelect, SaCountrySelect } from "@/components/super-admin/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   planBadgeClass,
@@ -182,6 +182,16 @@ const buildModuleState = (school?: PlatformSchool | null) => ({
   parent_app: Boolean(school?.has_parent_app),
 });
 
+const moduleStateToPayload = (state: Record<string, boolean>) => ({
+  has_boarding: state.boarding,
+  has_biometrics: state.biometrics,
+  has_gate: state.gate,
+  has_visitor_mgmt: state.visitor,
+  has_exam_system: state.exam,
+  has_salary_mgmt: state.salary,
+  has_parent_app: state.parent_app,
+});
+
 const formatDate = (value?: string | null) => {
   if (!value) return "—";
   const parsed = new Date(value);
@@ -239,6 +249,7 @@ function SchoolDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [plans, setPlans] = useState<PlatformPlan[]>([]);
   const [editForm, setEditForm] = useState<SchoolFormState | null>(null);
+  const [savingModules, setSavingModules] = useState(false);
   const moduleDefaults = useMemo(() => buildModuleState(school), [school]);
   const [moduleState, setModuleState] = useState<Record<string, boolean>>(() => buildModuleState(null));
 
@@ -518,6 +529,23 @@ function SchoolDetailPage() {
     }
   };
 
+  const handleSaveModules = async () => {
+    try {
+      setSavingModules(true);
+      const updated = await apiRequest<PlatformSchool>(`/platform/schools/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(moduleStateToPayload(moduleState)),
+      });
+      setSchool(updated);
+      toast.success("Module settings saved");
+    } catch (error) {
+      const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to save module settings";
+      toast.error(message);
+    } finally {
+      setSavingModules(false);
+    }
+  };
+
   const handleResetPassword = async (user: SchoolUser) => {
     if (!user.email) {
       toast.error("User has no email address.");
@@ -578,7 +606,6 @@ function SchoolDetailPage() {
             ) : (
               <button type="button" onClick={() => handleStatusAction("suspend")} className="rounded-lg border border-destructive/40 text-destructive px-3 py-1.5 text-xs font-semibold">Suspend</button>
             )}
-            <button type="button" className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold">Export</button>
           </div>
         </div>
       </div>
@@ -595,8 +622,7 @@ function SchoolDetailPage() {
                 ["Province", school.province ?? "—"],
                 ["District", school.district ?? "—"],
                 ["Sector", school.sector ?? "—"],
-                ["Principal", school.principal_name ?? "—"],
-                ["School Email", school.school_email ?? school.principal_email ?? "—"],
+                ["Admin Email", school.school_email ?? school.principal_email ?? "—"],
                 ["School Phone", school.school_phone ?? school.principal_phone ?? "—"],
               ].map(([k, v]) => (
                 <div key={k}><dt className="text-muted-foreground text-xs">{k}</dt><dd className="font-medium">{v}</dd></div>
@@ -669,8 +695,13 @@ function SchoolDetailPage() {
               </div>
             ))}
           </div>
-          <button type="button" onClick={() => toast.success("Module settings saved")} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold">
-            Save changes
+          <button
+            type="button"
+            onClick={handleSaveModules}
+            disabled={savingModules}
+            className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold disabled:opacity-60"
+          >
+            {savingModules ? "Saving..." : "Save changes"}
           </button>
         </div>
       )}
@@ -848,6 +879,7 @@ function SchoolDetailPage() {
               value={editForm.country}
               onChange={v => setEditForm(s => s ? { ...s, country: v } : s)}
               onTimezoneChange={tz => setEditForm(s => s ? { ...s, timezone: tz } : s)}
+              onCurrencyChange={currency => setEditForm(s => s ? { ...s, currency } : s)}
             />
             <SaInput label="Province *" value={editForm.province} onChange={e => setEditForm(s => s ? { ...s, province: e.target.value } : s)} />
             <SaInput label="District *" value={editForm.district} onChange={e => setEditForm(s => s ? { ...s, district: e.target.value } : s)} />
@@ -856,11 +888,13 @@ function SchoolDetailPage() {
               <option value="">No plan</option>
               {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </SaSelect>
-            <SaInput label="School Email" value={editForm.school_email} onChange={e => setEditForm(s => s ? { ...s, school_email: e.target.value } : s)} />
-            <SaInput label="School Phone" value={editForm.school_phone} onChange={e => setEditForm(s => s ? { ...s, school_phone: e.target.value } : s)} />
-            <SaInput label="Principal Name" value={editForm.principal_name} onChange={e => setEditForm(s => s ? { ...s, principal_name: e.target.value } : s)} />
-            <SaInput label="Principal Email" value={editForm.principal_email} onChange={e => setEditForm(s => s ? { ...s, principal_email: e.target.value } : s)} />
-            <SaInput label="Principal Phone" value={editForm.principal_phone} onChange={e => setEditForm(s => s ? { ...s, principal_phone: e.target.value } : s)} />
+            <SaInput label="Admin Email" value={editForm.school_email} onChange={e => setEditForm(s => s ? { ...s, school_email: e.target.value } : s)} />
+            <SaPhoneInput
+              label="School Phone"
+              value={editForm.school_phone}
+              onChange={v => setEditForm(s => s ? { ...s, school_phone: v } : s)}
+              defaultCountryName={editForm.country}
+            />
             <SaInput label="Timezone" value={editForm.timezone} onChange={e => setEditForm(s => s ? { ...s, timezone: e.target.value } : s)} />
             <SaInput label="Currency" value={editForm.currency} onChange={e => setEditForm(s => s ? { ...s, currency: e.target.value } : s)} />
 
@@ -914,7 +948,6 @@ function SchoolDetailSkeleton() {
           <div className="flex flex-wrap gap-2">
             <Skeleton className="h-8 w-16" />
             <Skeleton className="h-8 w-20" />
-            <Skeleton className="h-8 w-16" />
           </div>
         </div>
       </div>

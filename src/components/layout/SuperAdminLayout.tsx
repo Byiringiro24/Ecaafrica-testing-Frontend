@@ -1,8 +1,8 @@
 import { ReactNode, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  Globe, School as SchoolIcon, UsersRound, Package, DollarSign, TrendingUp,
-  BarChart3, Megaphone, Headphones, Settings, Flag, ClipboardList,
+  Globe, School as SchoolIcon, UsersRound,
+  BarChart3, Megaphone, Headphones, Settings, ClipboardList,
   LogOut, X, Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,8 +10,8 @@ import logo from "@/assets/logo.png";
 import { SUPER_ADMIN_USER } from "@/lib/superAdminMockData";
 import { clearPlatformAuth, getPlatformAuth } from "@/lib/platformAuth";
 
-type NavItem = { to: string; label: string; icon: typeof Globe; exact?: boolean };
-type NavSection = { label: string; items: NavItem[] };
+type NavItem = { to: string; label: string; icon: typeof Globe; exact?: boolean; hidden?: boolean };
+type NavSection = { label: string; items: NavItem[]; hidden?: boolean };
 
 const NAV: NavSection[] = [
   {
@@ -19,15 +19,7 @@ const NAV: NavSection[] = [
     items: [
       { to: "/super-admin", label: "Platform Overview", icon: Globe, exact: true },
       { to: "/super-admin/schools", label: "Schools", icon: SchoolIcon },
-      { to: "/super-admin/users", label: "Platform Users", icon: UsersRound },
-    ],
-  },
-  {
-    label: "Subscriptions & Billing",
-    items: [
-      { to: "/super-admin/subscriptions", label: "Subscriptions", icon: Package },
-      { to: "/super-admin/billing", label: "Billing & Invoices", icon: DollarSign },
-      { to: "/super-admin/revenue", label: "Revenue Analytics", icon: TrendingUp },
+      { to: "/super-admin/users", label: "Platform Users", icon: UsersRound, hidden: true },
     ],
   },
   {
@@ -35,14 +27,13 @@ const NAV: NavSection[] = [
     items: [
       { to: "/super-admin/analytics", label: "Platform Analytics", icon: BarChart3 },
       { to: "/super-admin/announcements", label: "Announcements", icon: Megaphone },
-      { to: "/super-admin/support", label: "Support Tickets", icon: Headphones },
+      { to: "/super-admin/support", label: "Support Tickets", icon: Headphones, hidden: true },
     ],
   },
   {
     label: "System",
     items: [
       { to: "/super-admin/system", label: "System Settings", icon: Settings },
-      { to: "/super-admin/features", label: "Feature Flags", icon: Flag },
       { to: "/super-admin/audit", label: "Audit Logs", icon: ClipboardList },
     ],
   },
@@ -90,13 +81,17 @@ export function SuperAdminLayout({ title, subtitle, headerExtra, breadcrumbs, ch
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
-          {NAV.map(section => (
+          {NAV.filter(section => !section.hidden).map(section => {
+            const visibleItems = section.items.filter(item => !item.hidden);
+            if (visibleItems.length === 0) return null;
+
+            return (
             <div key={section.label}>
               <div className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-200/60">
                 {section.label}
               </div>
               <div className="space-y-0.5">
-                {section.items.map(item => {
+                {visibleItems.map(item => {
                   const Icon = item.icon;
                   const active = item.exact
                     ? pathname === "/super-admin" || pathname === "/super-admin/"
@@ -121,7 +116,8 @@ export function SuperAdminLayout({ title, subtitle, headerExtra, breadcrumbs, ch
                 })}
               </div>
             </div>
-          ))}
+            );
+          })}
         </nav>
 
         <div className="border-t border-white/10 p-4">

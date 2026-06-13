@@ -3,6 +3,8 @@ import { X, Check, ChevronRight, ChevronLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/api";
+import { SaPhoneInput } from "@/components/super-admin/ui";
+import { useSchoolCountryName } from "@/hooks/useSchoolCountry";
 
 interface Props {
   open: boolean;
@@ -15,7 +17,8 @@ type AcademicYear = { id: string; name: string; is_current: boolean; start_date:
 
 interface FormData {
   studentIdNumber: string;
-  name: string;
+  firstName: string;
+  lastName: string;
   residency: string;
   dob: string;
   gender: string;
@@ -38,7 +41,7 @@ interface FormData {
 }
 
 const EMPTY: FormData = {
-  studentIdNumber: "", name: "", residency: "Day", dob: "", gender: "Male",
+  studentIdNumber: "", firstName: "", lastName: "", residency: "Day", dob: "", gender: "Male",
   academicYearId: "", sectionId: "", sectionName: "", combination: "",
   year: new Date().getFullYear().toString(),
   religion: "", bloodGroup: "", previousSchool: "",
@@ -50,14 +53,6 @@ const EMPTY: FormData = {
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const STEPS = ["Student Info", "Parent Info", "Review"];
 
-function splitName(fullName: string) {
-  const parts = fullName.trim().split(/\s+/);
-  return {
-    firstName: parts[0] ?? fullName,
-    lastName: parts.slice(1).join(" ") || (parts[0] ?? fullName),
-  };
-}
-
 export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
   const [step, setStep] = useState(0);
   const [data, setData] = useState<FormData>(EMPTY);
@@ -66,6 +61,7 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
   const [sections, setSections] = useState<Section[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [refDataLoading, setRefDataLoading] = useState(false);
+  const schoolCountry = useSchoolCountryName();
 
   useEffect(() => {
     if (!open) return;
@@ -102,7 +98,8 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
   const validateStep = () => {
     const e: typeof errors = {};
     if (step === 0) {
-      if (!data.name.trim()) e.name = true;
+      if (!data.firstName.trim()) e.firstName = true;
+      if (!data.lastName.trim()) e.lastName = true;
       if (!data.residency) e.residency = true;
       if (!data.dob) e.dob = true;
     }
@@ -120,15 +117,13 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
   const submit = async () => {
     setSubmitting(true);
     try {
-      const { firstName, lastName } = splitName(data.name);
-
       // 1. Create student
       const student = await apiRequest<{ id: string }>("/students", {
         method: "POST",
         auth: "school",
         body: JSON.stringify({
-          first_name: firstName,
-          last_name: lastName,
+          first_name: data.firstName.trim(),
+          last_name: data.lastName.trim(),
           student_id_number: data.studentIdNumber || undefined,
           date_of_birth: data.dob || undefined,
           gender: data.gender.toLowerCase(),
@@ -181,7 +176,7 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
         });
       }
 
-      toast.success(`${data.name} registered successfully`);
+      toast.success(`${data.firstName} ${data.lastName}`.trim() + " registered successfully");
       setData(EMPTY);
       setStep(0);
       onSuccess?.();
@@ -243,9 +238,13 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
                 <input value={data.studentIdNumber} onChange={e => set("studentIdNumber", e.target.value)}
                   className={inputCls()} placeholder="e.g. 2024001" />
               </Field>
-              <Field label="Full Name *" error={errors.name}>
-                <input value={data.name} onChange={e => set("name", e.target.value)}
-                  className={inputCls(errors.name)} placeholder="e.g. Uwimana Marie" />
+              <Field label="First Name *" error={errors.firstName}>
+                <input value={data.firstName} onChange={e => set("firstName", e.target.value)}
+                  className={inputCls(errors.firstName)} placeholder="e.g. Uwimana" />
+              </Field>
+              <Field label="Last Name *" error={errors.lastName}>
+                <input value={data.lastName} onChange={e => set("lastName", e.target.value)}
+                  className={inputCls(errors.lastName)} placeholder="e.g. Marie" />
               </Field>
               <Field label="Date of Birth *" error={errors.dob}>
                 <input type="date" value={data.dob} onChange={e => set("dob", e.target.value)} className={inputCls(errors.dob)} />
@@ -349,14 +348,21 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
                 <input value={data.parentNationalId} onChange={e => set("parentNationalId", e.target.value)}
                   className={inputCls()} placeholder="1199…" />
               </Field>
-              <Field label="Primary Phone (SMS) *" error={errors.parentPhone}>
-                <input value={data.parentPhone} onChange={e => set("parentPhone", e.target.value)}
-                  className={inputCls(errors.parentPhone)} placeholder="+250 78X XXX XXX" />
-              </Field>
-              <Field label="Secondary Phone">
-                <input value={data.parentPhone2} onChange={e => set("parentPhone2", e.target.value)}
-                  className={inputCls()} placeholder="Optional" />
-              </Field>
+              <SaPhoneInput
+                label="Primary Phone (SMS) *"
+                value={data.parentPhone}
+                onChange={(v) => set("parentPhone", v)}
+                defaultCountryName={schoolCountry ?? undefined}
+                error={!!errors.parentPhone}
+                className="sm:col-span-2"
+              />
+              <SaPhoneInput
+                label="Secondary Phone"
+                value={data.parentPhone2}
+                onChange={(v) => set("parentPhone2", v)}
+                defaultCountryName={schoolCountry ?? undefined}
+                className="sm:col-span-2"
+              />
               <Field label="Email">
                 <input type="email" value={data.email} onChange={e => set("email", e.target.value)}
                   className={inputCls()} placeholder="parent@example.com" />
@@ -372,7 +378,8 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
             <div className="space-y-4">
               <ReviewBlock title="Student Information" rows={[
                 ["Student ID", data.studentIdNumber || "—"],
-                ["Full Name", data.name],
+                ["First Name", data.firstName],
+                ["Last Name", data.lastName],
                 ["Residency", data.residency],
                 ["Date of Birth", data.dob],
                 ["Gender", data.gender],

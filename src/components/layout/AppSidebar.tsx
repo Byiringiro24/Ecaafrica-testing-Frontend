@@ -82,7 +82,7 @@ export function AppSidebar({ open, onClose }: Props) {
             <img src={logo} alt="ecareafrica logo" className="h-9 w-9 rounded-lg object-contain" />
             <div className="font-display font-bold text-sidebar-foreground text-base leading-tight">
               ecareafrica
-              <div className="text-[10px] font-normal text-sidebar-foreground/70 truncate max-w-[140px]">
+              <div className="text-[10px] font-normal text-sidebar-foreground/70 truncate max-w-35">
                 {schoolConfig.schoolName}
               </div>
             </div>
@@ -98,7 +98,7 @@ export function AppSidebar({ open, onClose }: Props) {
               if (!schoolConfig.enabledModules.includes(it.module)) return false;
               if (!schoolConfig.hasBoarding && (it.module === "boarding" || it.module === "leaves")) return false;
               if (!schoolConfig.hasGateManagement && it.module === "gate") return false;
-              if (isSchoolAdmin && (it.module === "fees" || it.module === "reports" || it.module === "staff")) return false;
+              if (isSchoolAdmin && (it.module === "fees" || it.module === "reports")) return false;
               return true;
             });
             if (items.length === 0) return null;
@@ -133,7 +133,7 @@ export function AppSidebar({ open, onClose }: Props) {
                               : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-foreground"
                           )}
                         >
-                          <Icon className="h-[18px] w-[18px] shrink-0" />
+                          <Icon className="h-4.5 w-4.5 shrink-0" />
                           <span>{item.label}</span>
                         </Link>
                       );

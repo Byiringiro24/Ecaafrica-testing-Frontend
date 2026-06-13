@@ -7,6 +7,8 @@ import { StatCard } from "@/components/ui-kit/StatCard";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { SaPhoneInput } from "@/components/super-admin/ui";
+import { useSchoolCountryName } from "@/hooks/useSchoolCountry";
 
 export const Route = createFileRoute("/visitors")({ component: VisitorsPage });
 
@@ -259,6 +261,7 @@ function VisitorsPage() {
   const [viewing, setViewing] = useState<VisitRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const schoolCountry = useSchoolCountryName();
 
   const loadVisitorData = async () => {
     setLoading(true);
@@ -586,6 +589,7 @@ function VisitorsPage() {
         <RegisterModal
           students={students}
           hosts={hosts}
+          defaultCountryName={schoolCountry}
           onClose={() => setRegisterOpen(false)}
           onSubmit={async (payload) => {
             await handleRegister(payload);
@@ -879,11 +883,13 @@ function ModalShell({ onClose, children, size = "lg" }: { onClose: () => void; c
 function RegisterModal({
   students,
   hosts,
+  defaultCountryName,
   onClose,
   onSubmit
 }: {
   students: ApiStudent[];
   hosts: ApiUser[];
+  defaultCountryName?: string | null;
   onClose: () => void;
   onSubmit: (payload: RegisterPayload) => Promise<void>;
 }) {
@@ -1005,9 +1011,14 @@ function RegisterModal({
               <Field label="National ID / Passport" required error={errors.nationalId}>
                 <input className={inputCls(!!errors.nationalId)} value={data.nationalId} onChange={e => setData({ ...data, nationalId: e.target.value })} placeholder="1199…" />
               </Field>
-              <Field label="Phone" required error={errors.phone}>
-                <input className={inputCls(!!errors.phone)} value={data.phone} onChange={e => setData({ ...data, phone: e.target.value })} placeholder="+250 7XX XXX XXX" />
-              </Field>
+              <SaPhoneInput
+                label="Phone"
+                value={data.phone}
+                onChange={(phone) => setData({ ...data, phone })}
+                defaultCountryName={defaultCountryName ?? undefined}
+                error={!!errors.phone}
+                className="md:col-span-2"
+              />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="Visitor Type" required>

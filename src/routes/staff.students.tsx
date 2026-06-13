@@ -3,6 +3,8 @@ import { useState, useMemo } from "react";
 import { Search, Phone, X, MessageSquare, Plus, Pencil, Trash2, UserPlus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { StaffLayout } from "@/components/layout/StaffLayout";
+import { SaPhoneInput } from "@/components/super-admin/ui";
+import { useSchoolCountryName } from "@/hooks/useSchoolCountry";
 import { STUDENTS as SEED, type Student } from "@/lib/mockData";
 import { ROLL_STUDENTS, CLASSES } from "@/lib/teacherStaffData";
 
@@ -19,7 +21,7 @@ const blankForm = (): FormState => ({
   gender: "Male",
   class: CLASSES[0],
   parentName: "",
-  parentPhone: "+250 ",
+  parentPhone: "",
 });
 
 function StudentManagement() {
@@ -30,6 +32,7 @@ function StudentManagement() {
   const [editing, setEditing] = useState<Student | null>(null);
   const [adding, setAdding] = useState(false);
   const [confirmDel, setConfirmDel] = useState<Student | null>(null);
+  const schoolCountry = useSchoolCountryName();
 
   const list = useMemo(() => students.filter(s => {
     if (q && !(s.name.toLowerCase().includes(q.toLowerCase()) || s.id.includes(q) || s.class.toLowerCase().includes(q.toLowerCase()) || s.parentPhone.includes(q))) return false;
@@ -62,7 +65,7 @@ function StudentManagement() {
     <StaffLayout title="Student Management" subtitle="Search, add, edit, and remove students">
       <div className="rounded-xl border border-border bg-card p-4 mb-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[260px]">
+          <div className="relative flex-1 min-w-65">
             <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
             <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name, student ID, class or parent phone..." className="h-12 w-full rounded-lg border border-input bg-background pl-11 pr-3 text-sm" />
           </div>
@@ -196,7 +199,13 @@ function StudentForm({ initial, mode, onCancel, onSave }: { initial: FormState; 
             <Field label="Class"><select value={form.class} onChange={e => update("class", e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">{CLASSES.map(c => <option key={c}>{c}</option>)}</select></Field>
           </div>
           <Field label="Parent Name *"><input required value={form.parentName} onChange={e => update("parentName", e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" /></Field>
-          <Field label="Parent Phone"><input value={form.parentPhone} onChange={e => update("parentPhone", e.target.value)} placeholder="+250 7XX XXX XXX" className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" /></Field>
+          <SaPhoneInput
+            label="Parent Phone"
+            value={form.parentPhone}
+            onChange={(value) => update("parentPhone", value)}
+            defaultCountryName={schoolCountry ?? undefined}
+            className="space-y-0"
+          />
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onCancel} className="h-9 px-4 rounded-md border border-border text-sm font-semibold">Cancel</button>
             <button type="submit" disabled={saving} className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2">{saving && <Loader2 className="h-4 w-4 animate-spin" />}{mode === "add" ? "Add Student" : "Save Changes"}</button>

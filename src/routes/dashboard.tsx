@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Users, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Users, CheckCircle2, XCircle, Clock, Wifi, WifiOff, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -79,6 +79,17 @@ type AbsenceAlert = {
   daysMissed: number;
 };
 
+type DeviceRecord = {
+  id: string;
+  name: string;
+  device_uid: string;
+  location?: string | null;
+  mode?: string | null;
+  type?: string | null;
+  is_active?: boolean;
+  last_seen_at?: string | null;
+};
+
 const STATUS_LABEL: Record<ApiStatus, RecentCheckin["status"]> = {
   present: "Present",
   absent: "Absent",
@@ -147,7 +158,22 @@ function DashboardPage() {
   const [classPie, setClassPie] = useState<Array<{ name: string; value: number }>>([]);
   const [recentCheckins, setRecentCheckins] = useState<RecentCheckin[]>([]);
   const [absenceAlerts, setAbsenceAlerts] = useState<AbsenceAlert[]>([]);
+  const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const pct = (n: number) => (counts.total ? ((n / counts.total) * 100).toFixed(0) : "0");
+
+  const activeDevices = devices.filter((device) => device.is_active !== false);
+  const offlineDevices = devices.filter((device) => device.is_active === false);
+
+  const deviceLocationRows = Array.from(
+    devices.reduce((acc, device) => {
+      const key = (device.location?.trim() || device.mode?.trim() || "Unknown location").toLowerCase();
+      const current = acc.get(key) ?? { label: device.location?.trim() || device.mode?.trim() || "Unknown location", active: 0, offline: 0 };
+      if (device.is_active === false) current.offline += 1;
+      else current.active += 1;
+      acc.set(key, current);
+      return acc;
+    }, new Map<string, { label: string; active: number; offline: number }>()
+  ).values()).sort((a, b) => a.label.localeCompare(b.label));
 
   useEffect(() => {
     let active = true;
@@ -160,7 +186,8 @@ function DashboardPage() {
           classes,
           sections,
           sessions,
-          records
+          records,
+          deviceList
         ] = await Promise.all([
           apiRequest<StudentCountResponse>("/students?limit=1", {
             auth: "school",
@@ -173,10 +200,15 @@ function DashboardPage() {
           }).catch(() => []),
           apiRequest<ApiRecord[]>(`/attendance/records?date=${today}&limit=5000`, {
             auth: "school"
+          }).catch(() => []),
+          apiRequest<DeviceRecord[]>("/devices?limit=500&sort=created_at&order=desc", {
+            auth: "school"
           }).catch(() => [])
         ]);
 
         if (!active) return;
+
+        setDevices(Array.isArray(deviceList) ? deviceList : []);
 
         const classMap = new Map(classes.map((item) => [item.id, item]));
         const sectionMap = new Map(sections.map((item) => [item.id, item]));
@@ -355,6 +387,57 @@ function DashboardPage() {
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                   </PieChart>
                 </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display font-bold text-lg">Device Status</h3>
+                <p className="text-xs text-muted-foreground mt-1">Active and offline devices by location</p>
+              </div>
+              <span className="text-xs text-muted-foreground">{devices.length} devices</span>
+            </div>
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+              <StatCard
+                label="Active Devices"
+                value={activeDevices.length}
+                icon={<Wifi className="h-5 w-5" />}
+                trend="Online and reachable"
+                tone="success"
+              />
+              <StatCard
+                label="Offline Devices"
+                value={offlineDevices.length}
+                icon={<WifiOff className="h-5 w-5" />}
+                trend="Not currently connected"
+                tone="destructive"
+              />
+              <div className="rounded-xl border border-border bg-card p-5 shadow-sm min-w-0">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-muted-foreground truncate text-xs uppercase tracking-wider">Device Locations</p>
+                    <p className="font-display font-bold truncate text-3xl mt-2">{deviceLocationRows.length}</p>
+                    <p className="text-xs text-muted-foreground mt-1.5 truncate">Gate, dormitory, classroom and more</p>
+                  </div>
+                  <div className="grid shrink-0 place-items-center rounded-lg h-11 w-11 bg-primary/10 text-primary">
+                    <MapPin className="h-5 w-5" />
+                  </div>
+                </div>
+                <div className="mt-4 space-y-2">
+                  {deviceLocationRows.slice(0, 4).map((row) => (
+                    <div key={row.label} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-xs">
+                      <span className="font-semibold truncate">{row.label}</span>
+                      <span className="text-muted-foreground shrink-0">A {row.active} / O {row.offline}</span>
+                    </div>
+                  ))}
+                  {deviceLocationRows.length === 0 && (
+                    <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
+                      No devices registered yet.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

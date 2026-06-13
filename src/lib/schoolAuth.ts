@@ -3,6 +3,7 @@ export type SchoolUser = {
   name?: string | null;
   email?: string | null;
   role?: string | null;
+  school_country?: string | null;
 };
 
 export type SchoolAuthState = {

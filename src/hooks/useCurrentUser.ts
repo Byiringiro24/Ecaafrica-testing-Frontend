@@ -10,6 +10,7 @@ export type CurrentUser = {
   role: string;
   status: string;
   avatar_url: string | null;
+  school_country?: string | null;
 };
 
 export function getInitials(name: string): string {
@@ -35,6 +36,7 @@ function fromCache(): CurrentUser | null {
     role: cached.role ?? "",
     status: "active",
     avatar_url: null,
+    school_country: cached.school_country ?? null,
   };
 }
 

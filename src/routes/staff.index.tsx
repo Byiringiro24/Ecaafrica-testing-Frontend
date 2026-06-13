@@ -3,9 +3,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Search, Plus, Grid3X3, List, X, Phone, Mail, Calendar, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { SaPhoneInput } from "@/components/super-admin/ui";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { useSchoolCountryName } from "@/hooks/useSchoolCountry";
 
 export const Route = createFileRoute("/staff/")({ component: StaffPage });
 
@@ -74,7 +76,7 @@ type StaffRow = {
 };
 
 const TABS = ["All Staff", "Departments"] as const;
-const DEFAULT_DEPARTMENTS = ["Teaching", "Administration", "Boarding", "Finance", "Support"];
+const DEFAULT_DEPARTMENTS = ["Teaching", "Administration", "Boarding"];
 const STAFF_DEPARTMENTS_KEY = "staff_departments";
 const STAFF_ROLES = ["teacher", "staff", "school_admin"] as const;
 const EMPTY_VALUE = "--";
@@ -151,6 +153,7 @@ function StaffPage() {
   const [dept, setDept] = useState("All");
   const [status, setStatus] = useState("All");
   const [profile, setProfile] = useState<StaffRow | null>(null);
+  const [editProfile, setEditProfile] = useState<StaffRow | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const [staffProfiles, setStaffProfiles] = useState<StaffProfileRecord[]>([]);
   const [users, setUsers] = useState<UserRecord[]>([]);
@@ -158,6 +161,7 @@ function StaffPage() {
   const [departmentSetting, setDepartmentSetting] = useState<SystemSetting | null>(null);
   const [loading, setLoading] = useState(false);
   const [departmentsSaving, setDepartmentsSaving] = useState(false);
+  const [accountBusyId, setAccountBusyId] = useState<string | null>(null);
 
   const staffRows = useMemo(() => buildStaffRows(staffProfiles, users), [staffProfiles, users]);
 
@@ -267,6 +271,40 @@ function StaffPage() {
     }
   };
 
+  const handleToggleAccount = async (staff: StaffRow) => {
+    const nextStatus = staff.status === "Inactive" ? "active" : "inactive";
+    const label = nextStatus === "active" ? "activate" : "deactivate";
+
+    if (!window.confirm(`Are you sure you want to ${label} this staff account?`)) {
+      return;
+    }
+
+    setAccountBusyId(staff.id);
+    try {
+      const updates: Promise<unknown>[] = [
+        apiRequest(`/staff/profiles/${staff.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ employment_status: nextStatus })
+        })
+      ];
+
+      if (staff.userId) {
+        updates.push(apiRequest(`/users/${staff.userId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ status: nextStatus })
+        }));
+      }
+
+      await Promise.all(updates);
+      toast.success(`Staff account ${nextStatus === "active" ? "activated" : "deactivated"}`);
+      await loadStaffData();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to update staff account");
+    } finally {
+      setAccountBusyId((current) => current === staff.id ? null : current);
+    }
+  };
+
   return (
     <AppLayout title="Staff Management" subtitle="Teaching and non-teaching staff directory">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
@@ -311,13 +349,22 @@ function StaffPage() {
           </div>
 
           {view === "grid" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {showSkeleton ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <Skeleton key={`staff-card-${i}`} className="h-44 rounded-xl" />
                 ))
               ) : filtered.length ? (
-                filtered.map(s => <StaffCard key={s.id} staff={s} onView={() => setProfile(s)} />)
+                filtered.map(s => (
+                  <StaffCard
+                    key={s.id}
+                    staff={s}
+                    onView={() => setProfile(s)}
+                    onEdit={() => setEditProfile(s)}
+                    onToggleAccount={() => handleToggleAccount(s)}
+                    busy={accountBusyId === s.id}
+                  />
+                ))
               ) : (
                 <div className="col-span-full rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
                   No staff found for the selected filters.
@@ -348,7 +395,22 @@ function StaffPage() {
                           <td className="px-4 py-3 font-mono text-xs">{s.phone}</td>
                           <td className="px-4 py-3 text-xs">{s.joinDate}</td>
                           <td className="px-4 py-3"><StatusPill v={s.status} /></td>
-                          <td className="px-4 py-3"><button onClick={() => setProfile(s)} className="text-xs font-semibold text-primary hover:underline">View</button></td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-3">
+                              <button onClick={() => setProfile(s)} className="text-xs font-semibold text-primary hover:underline">View</button>
+                              <button
+                                onClick={() => handleToggleAccount(s)}
+                                disabled={accountBusyId === s.id}
+                                className="text-xs font-semibold text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {accountBusyId === s.id
+                                  ? "Updating..."
+                                  : s.status === "Inactive"
+                                    ? "Activate Account"
+                                    : "Deactivate Account"}
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))
                     ) : (
@@ -374,7 +436,20 @@ function StaffPage() {
         />
       )}
 
-      {profile && <StaffProfileSlideOver staff={profile} onClose={() => setProfile(null)} />}
+      {profile && (
+        <StaffProfileSlideOver
+          staff={profile}
+          onClose={() => setProfile(null)}
+        />
+      )}
+      {editProfile && (
+        <EditStaffModal
+          staff={editProfile}
+          onClose={() => setEditProfile(null)}
+          onSuccess={() => loadStaffData()}
+          departments={departmentOptions}
+        />
+      )}
       {registerOpen && (
         <RegisterStaffModal
           onClose={() => setRegisterOpen(false)}
@@ -387,10 +462,23 @@ function StaffPage() {
   );
 }
 
-function StaffCard({ staff, onView }: { staff: StaffRow; onView: () => void }) {
+function StaffCard({
+  staff,
+  onView,
+  onEdit,
+  onToggleAccount,
+  busy
+}: {
+  staff: StaffRow;
+  onView: () => void;
+  onEdit: () => void;
+  onToggleAccount: () => void;
+  busy: boolean;
+}) {
   const initials = staff.name !== EMPTY_VALUE
     ? staff.name.split(" ").map(p => p[0]).join("").slice(0, 2)
     : "--";
+  const manageLabel = staff.status === "Inactive" ? "Activate Account" : "Deactivate Account";
   return (
     <div className="rounded-xl border border-border bg-card p-5 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex items-start gap-3">
@@ -399,7 +487,16 @@ function StaffCard({ staff, onView }: { staff: StaffRow; onView: () => void }) {
           <div className="font-semibold truncate">{staff.name}</div>
           <div className="text-xs text-muted-foreground">{staff.role} | {staff.department}</div>
         </div>
-        <button className="rounded p-1 hover:bg-muted"><MoreVertical className="h-4 w-4 text-muted-foreground" /></button>
+        <button
+          type="button"
+          onClick={onToggleAccount}
+          disabled={busy}
+          className="rounded p-1 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label={manageLabel}
+          title={manageLabel}
+        >
+          <MoreVertical className="h-4 w-4 text-muted-foreground" />
+        </button>
       </div>
       <div className="mt-4 space-y-1.5 text-xs text-muted-foreground">
         <div className="flex items-center gap-2"><Phone className="h-3 w-3" /> {staff.phone}</div>
@@ -408,7 +505,13 @@ function StaffCard({ staff, onView }: { staff: StaffRow; onView: () => void }) {
       </div>
       <div className="mt-3 flex items-center justify-between">
         <StatusPill v={staff.status} />
-        <button onClick={onView} className="text-xs font-semibold text-primary hover:underline">View Profile</button>
+        <div className="flex items-center gap-3">
+          <button onClick={onToggleAccount} disabled={busy} className="text-xs font-semibold text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50">
+            {busy ? "Updating..." : manageLabel}
+          </button>
+          <button onClick={onEdit} className="text-xs font-semibold text-primary hover:underline">Edit Profile</button>
+          <button onClick={onView} className="text-xs font-semibold text-primary hover:underline">View Profile</button>
+        </div>
       </div>
     </div>
   );
@@ -490,8 +593,8 @@ function StaffProfileSlideOver({ staff, onClose }: { staff: StaffRow; onClose: (
     ? staff.name.split(" ").map(p => p[0]).join("").slice(0, 2)
     : "--";
   return (
-    <div className="fixed inset-0 z-50 bg-black/50" onClick={onClose}>
-      <div className="absolute right-0 top-0 bottom-0 w-full max-w-md bg-card shadow-2xl overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/50">
+      <div className="absolute right-0 top-0 bottom-0 w-full max-w-md bg-card shadow-2xl overflow-y-auto">
         <div className="px-6 py-4 border-b border-border flex justify-between items-center sticky top-0 bg-card">
           <h3 className="font-display font-bold">Staff Profile</h3>
           <button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-4 w-4" /></button>
@@ -508,12 +611,8 @@ function StaffProfileSlideOver({ staff, onClose }: { staff: StaffRow; onClose: (
           <Section title="Personal & Contact">
             <Row k="Staff ID" v={staff.staffId} />
             <Row k="Gender" v={staff.gender} />
-            <Row k="Date of Birth" v={staff.dateOfBirth} />
-            <Row k="National ID" v={staff.nationalId} />
             <Row k="Phone" v={staff.phone} />
             <Row k="Email" v={staff.email} />
-            <Row k="Address" v={staff.address} />
-            <Row k="Emergency Contact" v={staff.emergencyContact} />
           </Section>
           <Section title="Employment">
             <Row k="Role" v={staff.role} />
@@ -521,18 +620,8 @@ function StaffProfileSlideOver({ staff, onClose }: { staff: StaffRow; onClose: (
             <Row k="Join Date" v={staff.joinDate} />
             <Row k="Contract" v={staff.contractType} />
             <Row k="Status" v={staff.status} />
-            <Row k="Salary" v={staff.basicSalary} />
-            <Row k="Qualifications" v={staff.qualifications} />
-            <Row k="Experience" v={staff.experience} />
             <Row k="Timetable Access" v={staff.timetableAccess} />
             {staff.subjects.length > 0 && <Row k="Subjects" v={staff.subjects.join(", ")} />}
-          </Section>
-          <Section title="Documents">
-            <div className="grid grid-cols-3 gap-2">
-              {["Contract","ID Copy","Certificate"].map(d => (
-                <div key={d} className="rounded-lg border border-dashed border-border p-3 text-center text-xs text-muted-foreground">{d}</div>
-              ))}
-            </div>
           </Section>
         </div>
       </div>
@@ -568,43 +657,23 @@ function RegisterStaffModal({
   const [submitting, setSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const schoolCountry = useSchoolCountryName();
   const roleOptions = [
     { label: "Teacher", value: "teacher" },
     { label: "Staff", value: "staff" },
     { label: "School Admin", value: "school_admin" },
   ];
-  const contractOptions = [
-    { label: "Permanent", value: "permanent" },
-    { label: "Contract", value: "contract" },
-    { label: "Part-time", value: "part_time" },
-  ];
-  const timetableOptions = [
-    { label: "Full", value: "full" },
-    { label: "View only", value: "view_only" },
-    { label: "None", value: "none" },
-  ];
 
   const [data, setData] = useState({
     name: "",
     gender: "Male",
-    dob: "",
-    nationalId: "",
     phone: "",
     email: "",
-    address: "",
-    emergency: "",
+    joinDate: "",
     role: roleOptions[0].value,
     department: departments[0] ?? "",
-    joinDate: "",
-    contract: contractOptions[0].value,
-    salary: "",
     subjects: [] as string[],
-    qualifications: "",
-    experience: "",
-    timetableAccess: timetableOptions[1].value,
-    generateLogin: true,
-    sendEmail: true,
-    password: "",
+    subjectInput: "",
   });
 
   useEffect(() => {
@@ -618,27 +687,34 @@ function RegisterStaffModal({
     if (submissionError) setSubmissionError(null);
     if (k === "email" && emailError) setEmailError(null);
   };
-  const valid1 = data.name.trim() && (data.phone.trim() || data.email.trim());
-  const valid2 = data.joinDate;
-  const valid3 = !data.generateLogin || data.password.trim().length >= 8;
+  const todayValue = new Date().toISOString().slice(0, 10);
+  const valid1 = Boolean(data.name.trim() && (data.phone.trim() || data.email.trim()));
 
-  const generatePassword = () => {
-    const suffix = Math.random().toString(36).slice(2, 8);
-    update("password", `Staff@${suffix}`);
+  const addSubject = () => {
+    const subject = data.subjectInput.trim();
+    if (!subject) return;
+    if (data.subjects.some((item) => item.toLowerCase() === subject.toLowerCase())) {
+      update("subjectInput", "");
+      return;
+    }
+
+    update("subjects", [...data.subjects, subject]);
+    update("subjectInput", "");
+  };
+
+  const removeSubject = (subject: string) => {
+    update("subjects", data.subjects.filter((item) => item !== subject));
   };
 
   const submit = async () => {
-    if (!valid1 || !valid2 || !valid3) return;
+    if (!valid1) {
+      return;
+    }
     setSubmissionError(null);
     setEmailError(null);
     setSubmitting(true);
     try {
-      const password = data.password.trim();
-      if (data.generateLogin && password.length < 8) {
-        toast.error("Temporary password must be at least 8 characters");
-        setSubmitting(false);
-        return;
-      }
+      const password = `Staff@${Math.random().toString(36).slice(2, 10)}`;
 
       const user = await apiRequest<UserRecord>("/users", {
         method: "POST",
@@ -648,8 +724,8 @@ function RegisterStaffModal({
           email: data.email.trim() || null,
           phone: data.phone.trim() || null,
           role: data.role,
-          status: data.generateLogin ? "active" : "pending",
-          password: password || `Staff@${Math.random().toString(36).slice(2, 10)}`,
+          status: "active",
+          password,
         })
       });
 
@@ -661,20 +737,19 @@ function RegisterStaffModal({
           staff_id_number: staffIdNumber,
           gender: data.gender.toLowerCase(),
           department: data.department || undefined,
-          contract_type: data.contract || undefined,
           join_date: data.joinDate || undefined,
-          date_of_birth: data.dob || undefined,
-          national_id: data.nationalId || undefined,
-          address: data.address || undefined,
-          emergency_contact: data.emergency || undefined,
-          qualifications: data.qualifications || undefined,
-          experience: data.experience || undefined,
-          timetable_access: data.timetableAccess || undefined,
-          basic_salary: data.salary.trim() ? data.salary.trim() : undefined,
           employment_status: "active",
-          subjects: data.role === "teacher" && data.subjects.length ? data.subjects : undefined,
+          subjects: data.subjects.length ? data.subjects : undefined,
         })
       });
+
+      if (data.email.trim()) {
+        await apiRequest("/auth/forgot-password", {
+          method: "POST",
+          auth: "none",
+          body: JSON.stringify({ email: data.email.trim() })
+        });
+      }
 
       toast.success(`Staff ${data.name} registered successfully`);
       onSuccess();
@@ -705,99 +780,87 @@ function RegisterStaffModal({
     { label: "Staff ID", value: staffIdNumber },
     { label: "Full Name", value: data.name },
     { label: "Gender", value: data.gender },
-    { label: "Date of Birth", value: data.dob },
-    { label: "National ID", value: data.nationalId },
-    { label: "Phone", value: data.phone },
     { label: "Email", value: data.email },
     { label: "Address", value: data.address },
-    { label: "Emergency Contact", value: data.emergency },
-    { label: "Role", value: roleLabel(data.role) },
     { label: "Department", value: data.department },
     { label: "Join Date", value: data.joinDate },
-    { label: "Contract Type", value: toTitleCase(data.contract) },
-    { label: "Salary", value: data.salary },
-    { label: "Qualifications", value: data.qualifications },
-    { label: "Experience", value: data.experience },
-    { label: "Timetable Access", value: toTitleCase(data.timetableAccess) },
-    { label: "Subjects", value: data.subjects.join(", ") },
   ];
 
-  if (data.generateLogin) {
-    reviewItems.push({ label: "Temporary Password", value: data.password || EMPTY_VALUE });
-  }
-
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onClick={onClose}>
-      <div className="bg-card rounded-2xl shadow-2xl max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+      <div className="bg-card rounded-2xl shadow-2xl max-w-2xl w-full">
         <div className="px-6 py-4 border-b border-border flex justify-between items-center">
           <div>
             <h3 className="font-display font-bold">Register New Staff</h3>
-            <div className="text-xs text-muted-foreground">Step {step} of 4</div>
+            <div className="text-xs text-muted-foreground">Step {step} of 2</div>
           </div>
           <button onClick={onClose} disabled={submitting} className="rounded-md p-1.5 hover:bg-muted disabled:opacity-60"><X className="h-4 w-4" /></button>
         </div>
-        <div className="px-6 py-2"><div className="h-1 bg-muted rounded-full overflow-hidden"><div className="h-full bg-primary transition-all" style={{ width: `${step * 25}%` }} /></div></div>
-        <div className="px-6 py-5 max-h-[60vh] overflow-y-auto">
+        <div className="px-6 py-2">
+          <div className="h-1 bg-muted rounded-full overflow-hidden">
+            <div className="h-full bg-primary transition-all" style={{ width: `${(step / 2) * 100}%` }} />
+          </div>
+        </div>
+        <div className="px-6 py-4 space-y-4">
           {submissionError && (
-            <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {submissionError}
             </div>
           )}
           {step === 1 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Full Name *" value={data.name} onChange={(v: any) => update("name", v)} required />
-              <Field label="Gender" type="select" value={data.gender} onChange={(v: any) => update("gender", v)} options={["Male","Female","Other"]} />
-              <Field label="Date of Birth" type="date" value={data.dob} onChange={(v: any) => update("dob", v)} />
-              <Field label="National ID" value={data.nationalId} onChange={(v: any) => update("nationalId", v)} />
-              <Field label="Phone" value={data.phone} onChange={(v: any) => update("phone", v)} placeholder="+250 7XX XXX XXX" />
+              <Field label="Gender" type="select" value={data.gender} onChange={(v: any) => update("gender", v)} options={["Male", "Female", "Other"]} />
+              <SaPhoneInput
+                label="Phone"
+                value={data.phone}
+                onChange={(v) => update("phone", v)}
+                defaultCountryName={schoolCountry ?? undefined}
+                placeholder="Phone number"
+                className="md:col-span-2"
+              />
               <Field label="Email" value={data.email} onChange={(v: any) => update("email", v)} error={emailError ?? undefined} />
-              <Field label="Address" value={data.address} onChange={(v: any) => update("address", v)} />
-              <Field label="Emergency Contact" value={data.emergency} onChange={(v: any) => update("emergency", v)} />
+              <Field label="Join Date" type="date" value={data.joinDate} onChange={(v: any) => update("joinDate", v)} max={todayValue} />
+              <Field label="Address" value={data.address} onChange={(v: any) => update("address", v)} className="md:col-span-2" />
+              <Field label="Role" type="select" value={data.role} onChange={(v: any) => update("role", v)} options={roleOptions.map((o) => o.value)} optionLabels={roleOptions.reduce((acc, o) => ({ ...acc, [o.value]: o.label }), {} as Record<string, string>)} />
+              <Field label="Department" type="select" value={data.department} onChange={(v: any) => update("department", v)} options={departments} />
+              <div className="md:col-span-2 space-y-2">
+                <label className="block text-xs font-semibold text-muted-foreground">Subjects</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={data.subjectInput}
+                    onChange={(e) => update("subjectInput", e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addSubject();
+                      }
+                    }}
+                    placeholder="Add a subject"
+                    className="h-10 flex-1 rounded-lg border border-border bg-background px-3 text-sm"
+                  />
+                  <button type="button" onClick={addSubject} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted">Add</button>
+                </div>
+                {data.subjects.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {data.subjects.map((subject) => (
+                      <button
+                        key={subject}
+                        type="button"
+                        onClick={() => removeSubject(subject)}
+                        className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary hover:bg-primary/15"
+                      >
+                        {subject} ×
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
           {step === 2 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Staff ID (auto)" value={staffIdNumber} onChange={() => {}} disabled />
-              <Field label="Role" type="select" value={data.role} onChange={(v: any) => update("role", v)} options={roleOptions.map(o => o.value)} optionLabels={roleOptions.reduce((acc, o) => ({ ...acc, [o.value]: o.label }), {})} />
-              <Field label="Department" type="select" value={data.department} onChange={(v: any) => update("department", v)} options={departments} />
-              <Field label="Join Date *" type="date" value={data.joinDate} onChange={(v: any) => update("joinDate", v)} required />
-              <Field label="Contract Type" type="select" value={data.contract} onChange={(v: any) => update("contract", v)} options={contractOptions.map(o => o.value)} optionLabels={contractOptions.reduce((acc, o) => ({ ...acc, [o.value]: o.label }), {})} />
-              <Field label="Salary" value={data.salary} onChange={(v: any) => update("salary", v)} placeholder="e.g. 350,000" />
-              {data.role === "teacher" && (
-                <div className="md:col-span-2">
-                  <div className="text-xs font-semibold text-muted-foreground mb-1.5">Subjects</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {["Mathematics","Physics","Chemistry","Biology","English","Kinyarwanda","French","History","Geography","ICT"].map(s => {
-                      const active = data.subjects.includes(s);
-                      return (
-                        <button key={s} onClick={() => update("subjects", active ? data.subjects.filter(x => x !== s) : [...data.subjects, s])}
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{s}</button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              <Field label="Qualifications" value={data.qualifications} onChange={(v: any) => update("qualifications", v)} placeholder="e.g. B.Ed, M.Sc" />
-              <Field label="Experience" value={data.experience} onChange={(v: any) => update("experience", v)} placeholder="e.g. 6 years" />
-              <Field label="Timetable Access" type="select" value={data.timetableAccess} onChange={(v: any) => update("timetableAccess", v)} options={timetableOptions.map(o => o.value)} optionLabels={timetableOptions.reduce((acc, o) => ({ ...acc, [o.value]: o.label }), {})} />
-            </div>
-          )}
-          {step === 3 && (
             <div className="space-y-3">
-              <Toggle label="Generate login credentials" checked={data.generateLogin} onChange={(v: any) => update("generateLogin", v)} />
-              {data.generateLogin && (
-                <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-2 items-end">
-                  <Field label="Temporary Password *" type="password" value={data.password} onChange={(v: any) => update("password", v)} required />
-                  <button onClick={generatePassword} className="h-10 rounded-lg border border-border px-3 text-sm font-semibold hover:bg-muted">Generate</button>
-                </div>
-              )}
-              <Toggle label="Send welcome email" checked={data.sendEmail} onChange={(v: any) => update("sendEmail", v)} />
-              <div className="rounded-lg bg-muted/40 p-4 text-sm text-muted-foreground">Permissions follow the role definition. Manage in Settings - Roles and Permissions.</div>
-            </div>
-          )}
-          {step === 4 && (
-            <div className="space-y-2 text-sm">
-              <div className="font-semibold mb-2">Review</div>
               {reviewItems.map((item) => (
                 <div key={item.label} className="flex justify-between border-b border-border py-1.5">
                   <span className="text-muted-foreground">{item.label}</span>
@@ -809,8 +872,8 @@ function RegisterStaffModal({
         </div>
         <div className="px-6 py-4 border-t border-border flex justify-between">
           <button onClick={() => step > 1 ? setStep(step - 1) : onClose()} disabled={submitting} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-60">{step === 1 ? "Cancel" : "Back"}</button>
-          {step < 4 ? (
-            <button onClick={() => setStep(step + 1)} disabled={(step === 1 && !valid1) || (step === 2 && !valid2) || (step === 3 && !valid3)} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 disabled:opacity-50">Next</button>
+          {step < 2 ? (
+            <button onClick={() => setStep(step + 1)} disabled={step === 1 && !valid1} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 disabled:opacity-50">Next</button>
           ) : (
             <button onClick={submit} disabled={submitting} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 disabled:opacity-60">Register Staff</button>
           )}
@@ -820,10 +883,113 @@ function RegisterStaffModal({
   );
 }
 
-function Field({ label, value, onChange, type = "text", options, optionLabels, placeholder, required, disabled, error }: any) {
+function EditStaffModal({
+  staff,
+  onClose,
+  onSuccess,
+  departments
+}: {
+  staff: StaffRow;
+  onClose: () => void;
+  onSuccess: () => void;
+  departments: string[];
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const schoolCountry = useSchoolCountryName();
+  const [data, setData] = useState({
+    name: staff.name === EMPTY_VALUE ? "" : staff.name,
+    role: staff.roleValue ?? "staff",
+    department: staff.department === EMPTY_VALUE ? "" : staff.department,
+    gender: staff.gender === EMPTY_VALUE ? "Male" : staff.gender,
+    phone: staff.phone === EMPTY_VALUE ? "" : staff.phone,
+    email: staff.email === EMPTY_VALUE ? "" : staff.email,
+    contractType: staff.contractType === EMPTY_VALUE ? "" : staff.contractType,
+    timetableAccess: staff.timetableAccess === EMPTY_VALUE ? "" : staff.timetableAccess,
+    subjects: staff.subjects.join(", ")
+  });
+  const timetableAccessOptions = ["Full Access", "Limited Access", "Read Only"];
+
+  const submit = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await apiRequest(`/staff/profiles/${staff.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          gender: data.gender || null,
+          department: data.department || null,
+          timetable_access: data.timetableAccess || null,
+          subjects: data.subjects.split(",").map((item) => item.trim()).filter(Boolean)
+        })
+      });
+
+      await apiRequest(`/users/${staff.userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: data.name || undefined,
+          email: data.email || null,
+          phone: data.phone || null,
+          role: data.role || undefined
+        })
+      });
+
+      toast.success("Staff profile updated.");
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      const message = err?.message ?? "Failed to update staff profile";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+      <div className="bg-card rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="px-6 py-4 border-b border-border flex justify-between items-center sticky top-0 bg-card">
+          <h3 className="font-display font-bold">Edit Staff Profile</h3>
+          <button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="px-6 py-4 space-y-4">
+          {error && <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</div>}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Full Name" value={data.name} onChange={(v: any) => setData((prev) => ({ ...prev, name: v }))} />
+            <Field label="Role" type="select" value={data.role} onChange={(v: any) => setData((prev) => ({ ...prev, role: v }))} options={["teacher", "staff", "school_admin"]} />
+            <Field label="Gender" type="select" value={data.gender} onChange={(v: any) => setData((prev) => ({ ...prev, gender: v }))} options={["Male", "Female", "Other"]} />
+            <Field label="Department" type="select" value={data.department} onChange={(v: any) => setData((prev) => ({ ...prev, department: v }))} options={departments} />
+            <SaPhoneInput label="Phone" value={data.phone} onChange={(v) => setData((prev) => ({ ...prev, phone: v }))} defaultCountryName={schoolCountry ?? undefined} className="md:col-span-2" />
+            <Field label="Email" value={data.email} onChange={(v: any) => setData((prev) => ({ ...prev, email: v }))} className="md:col-span-2" />
+            <Field
+              label="Timetable Access"
+              type="select"
+              value={data.timetableAccess}
+              onChange={(v: any) => setData((prev) => ({ ...prev, timetableAccess: v }))}
+              options={timetableAccessOptions}
+              optionLabels={{
+                "Full Access": "Full Access",
+                "Limited Access": "Limited Access",
+                "Read Only": "Read Only"
+              }}
+            />
+            <Field label="Subjects" value={data.subjects} onChange={(v: any) => setData((prev) => ({ ...prev, subjects: v }))} className="md:col-span-2" placeholder="Comma-separated subjects" />
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t border-border flex justify-end gap-2">
+          <button onClick={onClose} disabled={submitting} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-60">Cancel</button>
+          <button onClick={submit} disabled={submitting} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 disabled:opacity-60">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, value, onChange, type = "text", options, optionLabels, placeholder, required, disabled, error, max, className }: any) {
   const borderClass = error || (required && !value) ? "border-destructive" : "border-border";
   return (
-    <div>
+    <div className={className}>
       <label className="block text-xs font-semibold text-muted-foreground mb-1.5">{label}</label>
       {type === "select" ? (
         <select value={value} onChange={e => onChange(e.target.value)} className={`h-10 w-full rounded-lg border ${borderClass} bg-background px-3 text-sm`}>
@@ -833,6 +999,7 @@ function Field({ label, value, onChange, type = "text", options, optionLabels, p
         </select>
       ) : (
         <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
+          max={max}
           className={`h-10 w-full rounded-lg border bg-background px-3 text-sm disabled:opacity-60 ${borderClass}`} />
       )}
       {error && <div className="mt-1 text-xs text-destructive">{error}</div>}

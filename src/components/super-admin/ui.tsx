@@ -267,6 +267,7 @@ export function SaPhoneInput({
   defaultCountryName,
   className,
   placeholder = "Phone number",
+  error = false,
 }: {
   label: string;
   value: string;
@@ -274,6 +275,7 @@ export function SaPhoneInput({
   defaultCountryName?: string;
   className?: string;
   placeholder?: string;
+  error?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -303,7 +305,10 @@ export function SaPhoneInput({
           <button
             type="button"
             onClick={() => setOpen((s) => !s)}
-            className="h-10 min-w-[7.5rem] rounded-lg border border-border bg-background px-2 text-sm flex items-center gap-1.5"
+            className={cn(
+              "h-10 min-w-[7.5rem] rounded-lg border bg-background px-2 text-sm flex items-center gap-1.5",
+              error ? "border-destructive" : "border-border",
+            )}
           >
             {selectedCountry ? (
               <>
@@ -349,7 +354,10 @@ export function SaPhoneInput({
           value={parsed.nationalNumber}
           onChange={(e) => handleNumberChange(e.target.value)}
           placeholder={placeholder}
-          className="h-10 flex-1 min-w-0 rounded-lg border border-border bg-background px-3 text-sm"
+          className={cn(
+            "h-10 flex-1 min-w-0 rounded-lg border bg-background px-3 text-sm",
+            error ? "border-destructive" : "border-border",
+          )}
         />
       </div>
     </div>

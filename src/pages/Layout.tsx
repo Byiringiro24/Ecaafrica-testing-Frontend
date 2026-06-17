@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { Menu, X, Phone, Instagram, Facebook, Linkedin, Twitter } from "lucide-react";
+import { Menu, X, Phone, Instagram, Facebook, Linkedin, Twitter, MessageSquare } from "lucide-react";
 import { useState, ReactNode } from "react";
 import { NavLink } from "./NavLink";
 import logo from "@/assets/netrack-logo.png";
@@ -34,9 +34,14 @@ export default function Layout({ children }: LayoutProps) {
             <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E] animate-pulse"></span>
             Empowering African schools with modern cloud technology
           </span>
-          <a href="tel:+250786378333" className="inline-flex items-center gap-2 hover:text-[#42A5F5] transition-colors font-semibold">
-            <Phone className="h-3.5 w-3.5" /> +250 786378333 / +250 725931731
-          </a>
+          <div className="flex flex-wrap items-center gap-4">
+            <a href="tel:+250786402913" className="inline-flex items-center gap-2 hover:text-[#42A5F5] transition-colors font-semibold">
+              <Phone className="h-3.5 w-3.5" /> +250 786402913
+            </a>
+            <a href="tel:+256773666640" className="inline-flex items-center gap-2 hover:text-[#42A5F5] transition-colors font-semibold">
+              <Phone className="h-3.5 w-3.5" /> +256 773666640
+            </a>
+          </div>
         </div>
       </div>
 
@@ -80,7 +85,16 @@ export default function Layout({ children }: LayoutProps) {
             ))}
           </nav>
 
-          {/* CTA Button */}
+          <div className="hidden md:flex items-center gap-3">
+            <a
+              href="https://wa.me/250786402913"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-full border border-[#0A3D91]/15 bg-[#DCFCE7] px-3 py-2 text-sm font-semibold text-[#0A3D91] hover:bg-[#C8F6D8] transition-colors"
+            >
+              <MessageSquare className="h-4 w-4" /> WhatsApp
+            </a>
+          </div>
 
           {/* Mobile hamburger */}
           <div className="md:hidden flex items-center">

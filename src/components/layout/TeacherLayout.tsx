@@ -2,28 +2,22 @@ import { ReactNode, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, BookOpen, ClipboardCheck, GraduationCap, TrendingUp,
-  Calendar, User, LogOut, Menu, X,
+  Calendar, User, LogOut, Menu, X, MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
+import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
 import { TEACHER_ME } from "@/lib/teacherStaffData";
+import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 import logo from "@/assets/logo.png";
 
 const NAV = [
   { section: "Main", items: [
     { to: "/teacher/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  ]},
-  { section: "My Classes", items: [
     { to: "/teacher/classes", label: "My Classes", icon: BookOpen },
     { to: "/teacher/attendance", label: "Attendance", icon: ClipboardCheck },
-  ]},
-  { section: "Academic", items: [
-    { to: "/teacher/exams", label: "Exams & Results", icon: GraduationCap },
-    { to: "/teacher/progress", label: "Student Progress", icon: TrendingUp },
-  ]},
-  { section: "Personal", items: [
-    { to: "/teacher/schedule", label: "My Schedule", icon: Calendar },
-    { to: "/teacher/profile", label: "My Profile", icon: User },
+    { to: "/teacher/exams", label: "Record Marks", icon: BookOpen },
+    { to: "/teacher/messages", label: "Communicate with parents", icon: MessageSquare },
   ]},
 ];
 
@@ -31,6 +25,10 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const currentUser = useCurrentUser();
+  const initials = currentUser?.name ? getInitials(currentUser.name) : TEACHER_ME.initials;
+  const displayName = currentUser?.name ?? TEACHER_ME.name;
+  const displayRole = currentUser?.role ? formatRole(currentUser.role) : "Teacher";
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -77,17 +75,24 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
 
         <div className="border-t border-sidebar-border p-4">
           <div className="text-[11px] text-sidebar-foreground/60 mb-2">
-            Class Teacher: <span className="text-sidebar-foreground font-semibold">{TEACHER_ME.classTeacher}</span>
+            Role: <span className="text-sidebar-foreground font-semibold">{displayRole}</span>
           </div>
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground font-semibold text-sm">{TEACHER_ME.initials}</div>
+            <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground font-semibold text-sm">{initials}</div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-sidebar-foreground truncate">{TEACHER_ME.name}</div>
-              <div className="text-[11px] text-sidebar-foreground/60">Teacher</div>
+              <div className="text-sm font-semibold text-sidebar-foreground truncate">{displayName}</div>
+              <div className="text-[11px] text-sidebar-foreground/60">{displayRole}</div>
             </div>
-            <Link to="/login" className="rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-foreground" aria-label="Logout">
+            <button
+              onClick={() => {
+                clearSchoolAuth();
+                window.location.replace("/login");
+              }}
+              className="rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-foreground"
+              aria-label="Logout"
+            >
               <LogOut className="h-4 w-4" />
-            </Link>
+            </button>
           </div>
         </div>
       </aside>
@@ -107,11 +112,11 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
                 className="hidden sm:flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted"
               >
                 <div className="text-right leading-tight">
-                  <div className="text-sm font-semibold">{TEACHER_ME.name}</div>
-                  <div className="text-[11px] text-muted-foreground">Teacher</div>
+                  <div className="text-sm font-semibold">{displayName}</div>
+                  <div className="text-[11px] text-muted-foreground">{displayRole}</div>
                 </div>
                 <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground text-sm font-bold">
-                  {TEACHER_ME.initials}
+                  {initials}
                 </div>
               </button>
 
@@ -130,13 +135,16 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
                   >
                     Account Settings
                   </button>
-                  <Link
-                    to="/login"
-                    onClick={() => setProfileOpen(false)}
-                    className="block w-full text-left px-4 py-2 text-sm text-destructive hover:bg-muted"
+                  <button
+                    onClick={() => {
+                      clearSchoolAuth();
+                      setProfileOpen(false);
+                      window.location.replace("/login");
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-destructive hover:bg-muted"
                   >
                     Sign Out
-                  </Link>
+                  </button>
                 </div>
               )}
             </div>

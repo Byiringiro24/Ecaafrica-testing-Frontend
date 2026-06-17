@@ -1,14 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Search } from "lucide-react";
+import { teacherRouteGuard, getSchoolAuth } from "@/lib/schoolAuth";
+import { CheckCircle2, Download, Search } from "lucide-react";
 import { toast } from "sonner";
+import ExcelJS from "exceljs";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 
-export const Route = createFileRoute("/teacher/attendance")({ component: TeacherAttendance });
+export const Route = createFileRoute("/teacher/attendance")({
+  beforeLoad: ({ location }) => teacherRouteGuard(location),
+  component: TeacherAttendance,
+});
 
 type UiStatus = "Present" | "Absent" | "Late" | "Excused";
 type ApiStatus = "present" | "absent" | "late" | "excused";
@@ -25,6 +30,7 @@ type SectionRecord = {
   name: string;
   full_name: string;
   class_id: string;
+  class_teacher_id?: string | null;
 };
 
 type ApiStudent = {
@@ -51,6 +57,11 @@ type ApiRecord = {
   scan_method?: string | null;
   scanned_at?: string | null;
   created_at?: string | null;
+};
+
+type TeacherSectionSubject = {
+  id: string;
+  section_id: string;
 };
 
 type AttendanceRow = {
@@ -104,6 +115,60 @@ const formatTime = (value?: string | null, status?: ApiStatus) => {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 };
 
+const buildAttendanceChartImage = (counts: Record<UiStatus, number>) => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 700;
+  canvas.height = 380;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  const labels: UiStatus[] = ["Present", "Absent", "Late", "Excused"];
+  const values = labels.map((label) => counts[label] ?? 0);
+  const maxValue = Math.max(1, ...values);
+
+  const padding = 56;
+  const chartWidth = canvas.width - padding * 2;
+  const chartHeight = canvas.height - padding * 2;
+  const barGap = 22;
+  const barWidth = (chartWidth - barGap * (labels.length - 1)) / labels.length;
+  const colors = ["#16a34a", "#dc2626", "#f59e0b", "#2563eb"];
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#111827";
+  ctx.font = "bold 16px Roboto, sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("Attendance Summary", padding, padding - 20);
+
+  ctx.strokeStyle = "#e5e7eb";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(padding, padding);
+  ctx.lineTo(padding, canvas.height - padding);
+  ctx.lineTo(canvas.width - padding, canvas.height - padding);
+  ctx.stroke();
+
+  values.forEach((value, index) => {
+    const barHeight = (value / maxValue) * (chartHeight - 10);
+    const x = padding + index * (barWidth + barGap);
+    const y = canvas.height - padding - barHeight;
+
+    ctx.fillStyle = colors[index];
+    ctx.fillRect(x, y, barWidth, barHeight);
+
+    ctx.fillStyle = "#111827";
+    ctx.font = "12px Roboto, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(String(value), x + barWidth / 2, y - 8);
+
+    ctx.fillStyle = "#6b7280";
+    ctx.fillText(labels[index], x + barWidth / 2, canvas.height - padding + 16);
+  });
+
+  return canvas.toDataURL("image/png");
+};
+
 const nextManualStatus = (current?: ApiStatus) => {
   const order: ApiStatus[] = ["present", "absent", "late", "excused"];
   if (!current) return order[0];
@@ -112,8 +177,11 @@ const nextManualStatus = (current?: ApiStatus) => {
 };
 
 function TeacherAttendance() {
+  const auth = getSchoolAuth();
+  const teacherId = auth?.user?.id;
+  
   const todayValue = new Date().toISOString().slice(0, 10);
-  const [tab, setTab] = useState<"live" | "manual">("live");
+  const [tab, setTab] = useState<"live" | "history" | "manual">("live");
   const [classRecords, setClassRecords] = useState<ClassRecord[]>([]);
   const [sectionRecords, setSectionRecords] = useState<SectionRecord[]>([]);
   const [studentsById, setStudentsById] = useState<Record<string, ApiStudent>>({});
@@ -122,6 +190,9 @@ function TeacherAttendance() {
   const [dateFilter, setDateFilter] = useState(todayValue);
   const [sectionFilter, setSectionFilter] = useState("");
   const [search, setSearch] = useState("");
+  const [historyStartDate, setHistoryStartDate] = useState(todayValue);
+  const [historyEndDate, setHistoryEndDate] = useState(todayValue);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [recordsLoading, setRecordsLoading] = useState(false);
 
@@ -136,6 +207,22 @@ function TeacherAttendance() {
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
 
   const clampManualDate = (value: string) => {
+    if (value && value > todayValue) {
+      toast.error("Future dates are not allowed");
+      return todayValue;
+    }
+    return value;
+  };
+
+  const clampHistoryDate = (value: string) => {
+    if (value && value > todayValue) {
+      toast.error("Future dates are not allowed");
+      return todayValue;
+    }
+    return value;
+  };
+
+  const clampDate = (value: string) => {
     if (value && value > todayValue) {
       toast.error("Future dates are not allowed");
       return todayValue;
@@ -175,14 +262,32 @@ function TeacherAttendance() {
   };
 
   const loadClassData = async () => {
+    if (!teacherId) return;
+    
     setLoading(true);
     try {
-      const [classes, sections] = await Promise.all([
+      const [allClasses, allSections, teacherAssignments] = await Promise.all([
         apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }),
-        apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" })
+        apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" }),
+        apiRequest<TeacherSectionSubject[]>(
+          `/teacher-section-subjects?teacher_id=${teacherId}&limit=500`,
+          { auth: "school" }
+        )
       ]);
-      setClassRecords(classes);
-      setSectionRecords(sections);
+
+      setClassRecords(allClasses);
+
+      // Get section IDs from teacher assignments
+      const assignedSectionIds = new Set(
+        teacherAssignments.map((t) => t.section_id)
+      );
+
+      // Filter sections: those assigned to teacher or where teacher is class teacher
+      const teacherSections = allSections.filter(
+        (s) => assignedSectionIds.has(s.id) || s.class_teacher_id === teacherId
+      );
+
+      setSectionRecords(teacherSections);
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to load classes");
     } finally {
@@ -231,6 +336,76 @@ function TeacherAttendance() {
       toast.error(error?.message ?? "Failed to load attendance records");
     } finally {
       setRecordsLoading(false);
+    }
+  };
+
+  const [historySessions, setHistorySessions] = useState<ApiSession[]>([]);
+  const [historyRecords, setHistoryRecords] = useState<ApiRecord[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+
+  const HISTORY_PAGE_SIZE = 20;
+
+  const loadHistoryData = async (
+    startDate: string,
+    endDate: string,
+    targetSectionId: string
+  ) => {
+    if (!targetSectionId) {
+      toast.error("Select a class first");
+      return;
+    }
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+      toast.error("Invalid date range");
+      return;
+    }
+
+    setHistoryLoading(true);
+    setHistorySessions([]);
+    setHistoryRecords([]);
+    setHistoryPage(1);
+
+    try {
+      const dates: string[] = [];
+      const current = new Date(start);
+      while (current <= end) {
+        dates.push(current.toISOString().slice(0, 10));
+        current.setDate(current.getDate() + 1);
+      }
+
+      const sessionLists = await Promise.all(
+        dates.map((date) =>
+          apiRequest<ApiSession[]>(
+            `/attendance/sessions?date=${date}&section_id=${targetSectionId}&limit=200`,
+            { auth: "school" }
+          ).catch(() => [])
+        )
+      );
+
+      const allHistorySessions = sessionLists.flat();
+      setHistorySessions(allHistorySessions);
+
+      const recordBatches = await Promise.all(
+        allHistorySessions.map((session) =>
+          apiRequest<ApiRecord[]>(
+            `/attendance/records?session_id=${session.id}&limit=2000`,
+            { auth: "school" }
+          ).catch(() => [])
+        )
+      );
+
+      setHistoryRecords(recordBatches.flat());
+
+      const sectionIds = Array.from(
+        new Set(allHistorySessions.map((session) => session.section_id))
+      );
+      await Promise.all(sectionIds.map((id) => fetchStudentsForSection(id)));
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load attendance history");
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
@@ -343,7 +518,7 @@ function TeacherAttendance() {
 
   useEffect(() => {
     loadClassData();
-  }, []);
+  }, [teacherId]);
 
   useEffect(() => {
     if (!sectionFilter && classOptions.length) {
@@ -396,6 +571,33 @@ function TeacherAttendance() {
     });
   }, [records, sessionMap, studentsById, classMap, sectionMap]);
 
+  const historyRows = useMemo<AttendanceRow[]>(() => {
+    return historyRecords.map((record) => {
+      const session = historySessions.find((s) => s.id === record.session_id);
+      const sectionId = session?.section_id ?? "";
+      const student = studentsById[record.student_id];
+      const studentName = student
+        ? `${student.first_name} ${student.last_name}`.trim()
+        : "Unknown student";
+      const cardId = student?.student_id_number ?? "--";
+      const status = STATUS_LABEL[record.status];
+      const timeIn = formatTime(record.scanned_at ?? record.created_at, record.status);
+      const className = classLabelForSection(sectionId);
+
+      return {
+        id: record.id,
+        studentId: record.student_id,
+        studentName,
+        cardId,
+        className,
+        timeIn,
+        status,
+        sessionId: record.session_id,
+        sectionId
+      };
+    });
+  }, [historyRecords, historySessions, sessionMap, studentsById, classMap, sectionMap]);
+
   const counts = useMemo(() => {
     return records.reduce(
       (acc, record) => {
@@ -410,6 +612,20 @@ function TeacherAttendance() {
     );
   }, [records]);
 
+  const historyCounts = useMemo(() => {
+    return historyRecords.reduce(
+      (acc, record) => {
+        acc.total += 1;
+        if (record.status === "present") acc.present += 1;
+        if (record.status === "absent") acc.absent += 1;
+        if (record.status === "late") acc.late += 1;
+        if (record.status === "excused") acc.excused += 1;
+        return acc;
+      },
+      { total: 0, present: 0, absent: 0, late: 0, excused: 0 }
+    );
+  }, [historyRecords]);
+
   const filtered = useMemo(() => {
     if (!search) return rows;
     const target = search.toLowerCase();
@@ -417,6 +633,109 @@ function TeacherAttendance() {
       `${row.studentName} ${row.cardId}`.toLowerCase().includes(target)
     );
   }, [rows, search]);
+
+  const historyFiltered = useMemo(() => {
+    if (!search) return historyRows;
+    const target = search.toLowerCase();
+    return historyRows.filter((row) =>
+      `${row.studentName} ${row.cardId}`.toLowerCase().includes(target)
+    );
+  }, [historyRows, search]);
+
+  const exportHistory = async () => {
+    if (historyFiltered.length === 0) {
+      toast.info("No attendance records to export");
+      return;
+    }
+
+    const exportCounts = historyFiltered.reduce<Record<UiStatus, number>>(
+      (acc, row) => {
+        acc[row.status] += 1;
+        return acc;
+      },
+      { Present: 0, Absent: 0, Late: 0, Excused: 0 }
+    );
+
+    const chartImage = buildAttendanceChartImage(exportCounts);
+    if (!chartImage) {
+      toast.error("Failed to render chart");
+      return;
+    }
+
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet("Attendance History");
+
+      const header = [
+        "#",
+        "Student",
+        "Card ID",
+        "Class",
+        "Time In",
+        "Status"
+      ];
+
+      sheet.addRow(header);
+      sheet.getRow(1).font = { bold: true };
+
+      historyFiltered.forEach((row, index) => {
+        sheet.addRow([
+          index + 1,
+          row.studentName,
+          row.cardId,
+          row.className,
+          row.timeIn,
+          row.status
+        ]);
+      });
+
+      sheet.columns = [
+        { width: 6 },
+        { width: 28 },
+        { width: 14 },
+        { width: 18 },
+        { width: 12 },
+        { width: 12 }
+      ];
+
+      const summaryHeaderRow = sheet.addRow([]);
+      summaryHeaderRow.getCell(1).value = "";
+      sheet.addRow(["", "", "", "", "Status", "Count"]).font = { bold: true };
+      const summaryRows: Array<[UiStatus, number]> = [
+        ["Present", exportCounts.Present],
+        ["Absent", exportCounts.Absent],
+        ["Late", exportCounts.Late],
+        ["Excused", exportCounts.Excused]
+      ];
+      summaryRows.forEach((row, idx) => {
+        sheet.addRow(["", "", "", "", row[0], row[1]]);
+      });
+
+      const imageId = workbook.addImage({
+        base64: chartImage.split(",")[1],
+        extension: "png"
+      });
+
+      sheet.addImage(imageId, {
+        tl: { col: 6, row: 2 },
+        ext: { width: 640, height: 340 }
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `attendance-history-${historyStartDate}-to-${historyEndDate}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success("Attendance history exported");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to export attendance history");
+    }
+  };
 
   const manualFiltered = useMemo(() => {
     if (!manualSearch) return manualStudents;
@@ -446,7 +765,7 @@ function TeacherAttendance() {
   return (
     <TeacherLayout title="Attendance" subtitle="Live attendance and manual entry">
       <div className="flex gap-1 border-b border-border mb-5">
-        {(["live", "manual"] as const).map((item) => (
+        {(["live", "history", "manual"] as const).map((item) => (
           <button
             key={item}
             onClick={() => setTab(item)}
@@ -456,7 +775,7 @@ function TeacherAttendance() {
                 : "border-transparent text-muted-foreground"
             }`}
           >
-            {item === "live" ? "Live Attendance" : "Manual Attendance"}
+            {item === "live" ? "Live Attendance" : item === "history" ? "Attendance History" : "Make Attendance"}
           </button>
         ))}
       </div>
@@ -467,7 +786,8 @@ function TeacherAttendance() {
             <input
               type="date"
               value={dateFilter}
-              onChange={(event) => setDateFilter(event.target.value)}
+              max={todayValue}
+              onChange={(event) => setDateFilter(clampDate(event.target.value))}
               className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
             />
             <select
@@ -543,6 +863,121 @@ function TeacherAttendance() {
                     <tr>
                       <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
                         No records available for this selection.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {tab === "history" && (
+        <>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap gap-3 items-center">
+            <input
+              type="date"
+              value={historyStartDate}
+              max={todayValue}
+              onChange={(event) => setHistoryStartDate(clampHistoryDate(event.target.value))}
+              className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+            />
+            <span className="text-sm text-muted-foreground">to</span>
+            <input
+              type="date"
+              value={historyEndDate}
+              max={todayValue}
+              onChange={(event) => setHistoryEndDate(clampHistoryDate(event.target.value))}
+              className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+            />
+            <select
+              value={sectionFilter}
+              onChange={(event) => setSectionFilter(event.target.value)}
+              className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+              disabled={loading}
+            >
+              {classOptions.length === 0 && (
+                <option value="">No classes yet</option>
+              )}
+              {classOptions.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
+            </select>
+            <div className="relative flex-1 min-w-52">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search by name..."
+                className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm"
+              />
+            </div>
+            <button
+              onClick={() => loadHistoryData(historyStartDate, historyEndDate, sectionFilter)}
+              disabled={historyLoading || !sectionFilter}
+              className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              Load History
+            </button>
+            <button
+              onClick={exportHistory}
+              disabled={historyFiltered.length === 0}
+              className="h-10 inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 text-sm font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+            >
+              <Download className="h-4 w-4" /> Export Excel
+            </button>
+          </div>
+
+          <div className="mt-5 rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-border flex flex-wrap gap-2 items-center justify-between">
+              <h3 className="font-display font-bold">Attendance History</h3>
+              <div className="text-xs text-muted-foreground space-x-3">
+                <span>Total: <b className="text-foreground">{historyCounts.total}</b></span>
+                <span>Present: <b className="text-success">{historyCounts.present}</b></span>
+                <span>Absent: <b className="text-destructive">{historyCounts.absent}</b></span>
+                <span>Late: <b className="text-amber-600">{historyCounts.late}</b></span>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="text-left px-5 py-3">#</th>
+                    <th className="text-left px-5 py-3">Student</th>
+                    <th className="text-left px-5 py-3">Card ID</th>
+                    <th className="text-left px-5 py-3">Class</th>
+                    <th className="text-left px-5 py-3">Time In</th>
+                    <th className="text-left px-5 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historyLoading && (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-6">
+                        <Skeleton className="h-6 w-full" />
+                      </td>
+                    </tr>
+                  )}
+                  {!historyLoading && historyFiltered.map((row, i) => (
+                    <tr key={row.id} className="border-t border-border odd:bg-background even:bg-muted/20">
+                      <td className="px-5 py-3 text-muted-foreground">{i + 1}</td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={row.studentName} size="sm" />
+                          <span className="font-medium">{row.studentName}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{row.cardId}</td>
+                      <td className="px-5 py-3">{row.className}</td>
+                      <td className="px-5 py-3">{row.timeIn}</td>
+                      <td className="px-5 py-3"><StatusBadge status={row.status} /></td>
+                    </tr>
+                  ))}
+                  {!historyLoading && historyFiltered.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
+                        No history records loaded yet.
                       </td>
                     </tr>
                   )}
@@ -635,7 +1070,7 @@ function TeacherAttendance() {
             <div className="mt-5 grid lg:grid-cols-[1.6fr_0.9fr] gap-5">
               <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
                 <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-                  <h3 className="font-display font-bold">Manual Attendance List</h3>
+                  <h3 className="font-display font-bold">Make Attendance List</h3>
                   <span className="text-xs text-muted-foreground">{manualFiltered.length} students</span>
                 </div>
                 <div className="overflow-x-auto">

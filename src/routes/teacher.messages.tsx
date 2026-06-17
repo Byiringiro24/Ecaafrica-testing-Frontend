@@ -1,11 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Send, Search, Plus, X, Loader2 } from "lucide-react";
+import { teacherRouteGuard } from "@/lib/schoolAuth";
 import { toast } from "sonner";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { PARENT_MESSAGES, SMS_TEMPLATES } from "@/lib/teacherStaffData";
 
-export const Route = createFileRoute("/teacher/messages")({ component: MessagesPage });
+export const Route = createFileRoute("/teacher/messages")({
+  beforeLoad: ({ location }) => teacherRouteGuard(location),
+  component: MessagesPage
+});
 
 function MessagesPage() {
   const [active, setActive] = useState(PARENT_MESSAGES[0].id);

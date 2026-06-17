@@ -143,6 +143,8 @@ export interface ClassInfo {
   name: string;
   fullName?: string;
   level: string;
+  levelId?: string;
+  levelLabel?: string;
   section: string;
   teacher: string;
   teacherId?: string | null;
@@ -173,13 +175,13 @@ export const CLASS_LIST: ClassInfo[] = CLASSES.map((c, i) => {
   };
 });
 
+function hashLevel(value: string) {
+  return Array.from(value).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+}
+
 export function levelColor(level: string) {
-  if (level.includes("1")) return "indigo";
-  if (level.includes("2")) return "blue";
-  if (level.includes("3")) return "teal";
-  if (level.includes("4")) return "green";
-  if (level.includes("5")) return "amber";
-  return "rose";
+  const colors = ["indigo", "blue", "teal", "green", "amber", "rose"] as const;
+  return colors[hashLevel(level) % colors.length];
 }
 
 export function levelBorderClass(level: string) {

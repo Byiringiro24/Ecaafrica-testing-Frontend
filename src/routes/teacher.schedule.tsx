@@ -1,10 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { teacherRouteGuard } from "@/lib/schoolAuth";
 import { ChevronLeft, ChevronRight, Printer, List, Grid3X3 } from "lucide-react";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { TODAY_SCHEDULE, TEACHER_ME } from "@/lib/teacherStaffData";
 
-export const Route = createFileRoute("/teacher/schedule")({ component: SchedulePage });
+export const Route = createFileRoute("/teacher/schedule")({
+  beforeLoad: ({ location }) => teacherRouteGuard(location),
+  component: SchedulePage
+});
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 const PERIODS = [

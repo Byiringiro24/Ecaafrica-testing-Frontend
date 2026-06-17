@@ -10,6 +10,7 @@ import logo from "@/assets/netrack-logo.png";
 import { toast } from "sonner";
 import { apiRequest } from "@/lib/api";
 import { setPlatformAuth } from "@/lib/platformAuth";
+import { setSchoolAuth } from "@/lib/schoolAuth";
 
 type LoginResponse = {
   user: { id: string; name?: string | null; email?: string | null; role?: string | null };
@@ -60,21 +61,25 @@ function LoginPage() {
           user: result.user
         });
       } else {
-        window.localStorage.setItem(
-          "eca_school_auth",
-          JSON.stringify({
-            accessToken: result.accessToken,
-            refreshToken: result.refreshToken ?? null,
-            user: result.user
-          })
-        );
+        setSchoolAuth({
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken ?? null,
+          user: result.user
+        });
       }
 
       toast.success(
-        `Welcome back, ${result.user?.name ?? (isPlatform ? "Platform Admin" : "School Admin")}!`
+        `Welcome back, ${result.user?.name ?? (isPlatform ? "Platform Admin" : "School User")}!`
       );
-      const fallbackRoute = isPlatform ? "/super-admin" : "/dashboard";
-      navigate({ to: isPlatform ? (redirect || fallbackRoute) : fallbackRoute });
+      const role = result.user?.role?.toLowerCase?.();
+      const fallbackRoute = isPlatform
+        ? "/super-admin"
+        : role === "teacher"
+        ? "/teacher/dashboard"
+        : role === "staff"
+        ? "/staff/dashboard"
+        : "/dashboard";
+      navigate({ to: isPlatform ? (redirect || fallbackRoute) : (redirect || fallbackRoute) });
     } catch (err) {
       const message =
         typeof err === "object" && err !== null && "message" in err
@@ -115,7 +120,7 @@ function LoginPage() {
             <p className="text-xs text-[#5F6B7A]">
               {isPlatform
                 ? "Sign in with your platform admin credentials"
-                : "Sign in with your school admin credentials"}
+                : "Sign in with your school credentials"}
             </p>
           </div>
 

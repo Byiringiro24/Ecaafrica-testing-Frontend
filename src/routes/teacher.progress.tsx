@@ -1,11 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { teacherRouteGuard } from "@/lib/schoolAuth";
 import { AlertTriangle, TrendingUp, TrendingDown, Minus, X, MessageSquare, Flag } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { TEACHER_ME, studentsInClass } from "@/lib/teacherStaffData";
 
-export const Route = createFileRoute("/teacher/progress")({ component: ProgressPage });
+export const Route = createFileRoute("/teacher/progress")({
+  beforeLoad: ({ location }) => teacherRouteGuard(location),
+  component: ProgressPage
+});
 
 function ProgressPage() {
   const [cls, setCls] = useState(TEACHER_ME.classes[0]);

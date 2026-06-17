@@ -1,10 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
+import { teacherRouteGuard } from "@/lib/schoolAuth";
 import { Bell, ClipboardCheck, GraduationCap, MessageSquare, Info, CheckCheck } from "lucide-react";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { TEACHER_NOTIFICATIONS } from "@/lib/teacherStaffData";
 
-export const Route = createFileRoute("/teacher/notifications")({ component: NotificationsPage });
+export const Route = createFileRoute("/teacher/notifications")({
+  beforeLoad: ({ location }) => teacherRouteGuard(location),
+  component: NotificationsPage
+});
 
 const ICONS: any = { attendance: ClipboardCheck, academic: GraduationCap, message: MessageSquare, system: Info };
 const COLORS: any = { attendance: "bg-red-100 text-red-600", academic: "bg-indigo-100 text-indigo-700", message: "bg-blue-100 text-blue-600", system: "bg-gray-100 text-gray-600" };

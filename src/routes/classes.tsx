@@ -27,14 +27,21 @@ import {
 
 export const Route = createFileRoute("/classes")({ component: ClassesPage });
 
-const DEFAULT_LEVELS = ["Senior 1", "Senior 2", "Senior 3", "Senior 4", "Senior 5", "Senior 6"];
-
 type ClassRecord = {
   id: string;
   name: string;
   level: number;
+  level_id?: string | null;
+  level_label?: string | null;
   description?: string | null;
   academic_year_id?: string | null;
+};
+
+type LevelRecord = {
+  id: string;
+  label: string;
+  sort_order: number;
+  is_active?: boolean;
 };
 
 type SectionRecord = {
@@ -60,7 +67,7 @@ type TeacherRecord = {
 };
 
 type ClassFormPayload = {
-  level: string;
+  levelId: string;
   section: string;
   teacherId?: string | null;
   room?: string | null;
@@ -111,7 +118,7 @@ const getLastDates = (days: number) => {
 
 function ClassesPage() {
   const [list, setList] = useState<ClassInfo[]>([]);
-  const [levels, setLevels] = useState(DEFAULT_LEVELS);
+  const [levels, setLevels] = useState<LevelRecord[]>([]);
   const [classRecords, setClassRecords] = useState<ClassRecord[]>([]);
   const [sectionRecords, setSectionRecords] = useState<SectionRecord[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYearRecord[]>([]);
@@ -147,7 +154,7 @@ function ClassesPage() {
       if (!cls) return acc;
 
       const displayName = `${cls.name}${section.name}`;
-      const levelLabel = `Senior ${cls.level}`;
+      const levelLabel = cls.level_label ?? `Level ${cls.level}`;
       const teacher = section.class_teacher_id
         ? teacherLookup.get(section.class_teacher_id)?.name ?? "Unassigned"
         : "Unassigned";
@@ -157,6 +164,8 @@ function ClassesPage() {
         name: displayName,
         fullName: section.full_name,
         level: levelLabel,
+        levelId: cls.level_id ?? undefined,
+        levelLabel,
         section: section.name,
         teacher,
         teacherId: section.class_teacher_id ?? null,
@@ -214,17 +223,21 @@ function ClassesPage() {
       setClassRecords(classes);
       setSectionRecords(sections);
       void loadStudentCounts(sections);
-
-      const derivedLevels = Array.from(
-        new Set(classes.map((item) => `Senior ${item.level}`))
-      );
-      if (derivedLevels.length) {
-        setLevels((prev) => Array.from(new Set([...prev, ...derivedLevels])));
-      }
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to load classes");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadLevels = async () => {
+    try {
+      const levelRecords = await apiRequest<LevelRecord[]>("/levels?limit=200", {
+        auth: "school"
+      });
+      setLevels(levelRecords);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load levels");
     }
   };
 
@@ -253,6 +266,7 @@ function ClassesPage() {
   };
 
   useEffect(() => {
+    loadLevels();
     loadClassData();
     loadAcademicYears();
     loadTeachers();
@@ -317,7 +331,7 @@ function ClassesPage() {
   };
 
   const handleSaveClass = async (payload: ClassFormPayload, target?: ClassInfo) => {
-    const levelNumber = parseLevelNumber(payload.level);
+    const selectedLevel = levels.find((item) => item.id === payload.levelId);
     const sectionName = payload.section.trim().toUpperCase();
     const roomValue = (payload.room ?? "").trim();
     const normalizedYearId =
@@ -330,9 +344,14 @@ function ClassesPage() {
       return false;
     }
 
+    if (!selectedLevel) {
+      toast.error("Select a level first");
+      return false;
+    }
+
     setSaving(true);
     try {
-      const className = toClassName(levelNumber);
+      const className = selectedLevel.label;
       let classRecord = classRecords.find(
         (item) =>
           item.name === className &&
@@ -344,7 +363,8 @@ function ClassesPage() {
       if (!classRecord) {
         const classPayload: Record<string, any> = {
           name: className,
-          level: levelNumber
+          level_id: selectedLevel.id,
+          level: selectedLevel.sort_order
         };
         if (normalizedYearId) {
           classPayload.academic_year_id = normalizedYearId;
@@ -420,9 +440,9 @@ function ClassesPage() {
   };
 
   return (
-    <AppLayout title="Class Management" subtitle={`${list.length} classes — Senior 1 to Senior 6`}>
+    <AppLayout title="Class Management" subtitle={`${list.length} classes — school-defined levels`}>
       <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[220px]">
+        <div className="relative flex-1 min-w-55">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search class or teacher…"
             className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
@@ -433,7 +453,7 @@ function ClassesPage() {
         </button>
         <button onClick={() => setLevelOpen(true)}
           className="h-10 inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 text-sm font-semibold hover:bg-muted">
-          <Plus className="h-4 w-4" /> Add Level
+          <Plus className="h-4 w-4" /> Add Level createded
         </button>
       </div>
 
@@ -479,7 +499,8 @@ function ClassesPage() {
                   <span className="text-xs text-muted-foreground">{c.studentCount}/{c.capacity}</span>
                 </div>
                 <div className="mt-3">
-                  <div className="font-semibold">{c.level} — Section {c.section}</div>
+                  <div className="font-semibold">{c.name}</div>
+                  <div className="mt-1 text-sm text-muted-foreground">{c.level} — Section {c.section}</div>
                   <div className="mt-1.5 flex items-center gap-2 text-sm text-muted-foreground"><User className="h-3.5 w-3.5" />{c.teacher}</div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground"><DoorOpen className="h-3.5 w-3.5" />{c.room || "—"}</div>
                 </div>
@@ -493,10 +514,10 @@ function ClassesPage() {
                   </div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <button onClick={() => setDetail(c)} className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">
+                  <button onClick={() => setDetail(c)} className="flex-1 min-w-35 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">
                     <Eye className="h-3.5 w-3.5" /> View Details
                   </button>
-                  <button onClick={() => setEditing(c)} className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary/10 text-primary px-3 py-2 text-xs font-semibold hover:bg-primary/20">
+                  <button onClick={() => setEditing(c)} className="flex-1 min-w-35 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary/10 text-primary px-3 py-2 text-xs font-semibold hover:bg-primary/20">
                     <Pencil className="h-3.5 w-3.5" /> Edit
                   </button>
                   <button
@@ -507,7 +528,7 @@ function ClassesPage() {
                       }
                       setImportOpen(c);
                     }}
-                    className={`flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted ${!canImport ? "opacity-60 cursor-not-allowed" : ""}`}
+                    className={`flex-1 min-w-35 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted ${!canImport ? "opacity-60 cursor-not-allowed" : ""}`}
                     title={!canImport ? "School Admin only" : ""}
                     disabled={!canImport}
                   >
@@ -584,9 +605,21 @@ function ClassesPage() {
       )}
       {levelOpen && (
         <LevelFormModal
-          levels={levels}
           onClose={() => setLevelOpen(false)}
-          onSave={(level) => { setLevels(p => [...p, level]); toast.success(`${level} added`); }}
+          onSave={async (level) => {
+            try {
+              const created = await apiRequest<LevelRecord>("/levels", {
+                method: "POST",
+                body: JSON.stringify({ label: level }),
+                auth: "school"
+              });
+              setLevels((current) => [...current, created]);
+              toast.success(`${level} added`);
+            } catch (error: any) {
+              toast.error(error?.message ?? "Failed to add level");
+              throw error;
+            }
+          }}
         />
       )}
     </AppLayout>
@@ -725,7 +758,7 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
                 <div className="space-y-2">
                   {Array.from({ length: 5 }).map((_, i) => (
                     <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-border">
-                      <Skeleton className="h-8 w-8 rounded-full flex-shrink-0" />
+                      <Skeleton className="h-8 w-8 rounded-full shrink-0" />
                       <div className="flex-1 space-y-1">
                         <Skeleton className="h-3 w-32" />
                         <Skeleton className="h-3 w-20" />
@@ -829,7 +862,7 @@ function ClassFormModal({
   onDelete
 }: {
   cls?: ClassInfo;
-  levels: string[];
+  levels: LevelRecord[];
   teachers: TeacherRecord[];
   academicYears: AcademicYearRecord[];
   defaultAcademicYearId?: string | null;
@@ -838,7 +871,7 @@ function ClassFormModal({
   onSubmit: (payload: ClassFormPayload) => Promise<void>;
   onDelete?: () => Promise<void>;
 }) {
-  const [level, setLevel] = useState(cls?.level || levels[0] || "Senior 1");
+  const [levelId, setLevelId] = useState(cls?.levelId || levels[0]?.id || "");
   const [section, setSection] = useState(cls?.section || "A");
   const [teacherId, setTeacherId] = useState<string>(cls?.teacherId ?? "");
   const [room, setRoom] = useState(cls?.room ?? "");
@@ -847,7 +880,6 @@ function ClassFormModal({
   const [academicYearId, setAcademicYearId] = useState<string>(
     cls?.academicYearId ?? defaultAcademicYearId ?? ""
   );
-  const levelOptions = levels.includes(level) ? levels : [level, ...levels];
 
   useEffect(() => {
     if (!cls && !academicYearId && defaultAcademicYearId) {
@@ -855,9 +887,15 @@ function ClassFormModal({
     }
   }, [cls, academicYearId, defaultAcademicYearId]);
 
+  useEffect(() => {
+    if (!levelId && levels[0]) {
+      setLevelId(levels[0].id);
+    }
+  }, [levelId, levels]);
+
   const save = async () => {
     await onSubmit({
-      level,
+      levelId,
       section,
       teacherId: teacherId || null,
       room,
@@ -867,14 +905,23 @@ function ClassFormModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[55] grid place-items-center bg-black/50 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-55 grid place-items-center bg-black/50 backdrop-blur-sm p-4">
       <div className="w-full max-w-md rounded-2xl bg-card shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h3 className="font-display font-bold">{cls ? "Edit Class" : "Add New Class"}</h3>
           <button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-4 w-4" /></button>
         </div>
         <div className="px-6 py-5 grid grid-cols-2 gap-4">
-          <Field label="Level"><select value={level} onChange={e => setLevel(e.target.value)} className={inp}>{levelOptions.map(l => <option key={l}>{l}</option>)}</select></Field>
+          <Field label="Level">
+            <select value={levelId} onChange={e => setLevelId(e.target.value)} className={inp}>
+              <option value="">Select level</option>
+              {levels.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label="Section"><input value={section} onChange={e => setSection(e.target.value.toUpperCase())} className={inp} /></Field>
           {academicYears.length > 0 ? (
             <Field label="Academic year" full>
@@ -1092,7 +1139,7 @@ function ClassImportModal({
     hasHeaderIssues;
 
   return (
-    <div className="fixed inset-0 z-[55] grid place-items-center bg-black/50 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-55 grid place-items-center bg-black/50 backdrop-blur-sm p-4">
       <div className="w-full max-w-xl rounded-2xl bg-card shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h3 className="font-display font-bold">Import Students</h3>
@@ -1211,34 +1258,35 @@ function IssueList({ title, issues }: { title: string; issues: StudentImportIssu
   );
 }
 
-function LevelFormModal({ levels, onClose, onSave }: { levels: string[]; onClose: () => void; onSave: (level: string) => void; }) {
+function LevelFormModal({ onClose, onSave }: { onClose: () => void; onSave: (level: string) => Promise<void>; }) {
   const [name, setName] = useState("");
 
-  const save = () => {
+  const save = async () => {
     const next = name.trim();
     if (!next) {
       toast.error("Level name is required");
       return;
     }
-    if (levels.some(l => l.toLowerCase() === next.toLowerCase())) {
-      toast.error("Level already exists");
-      return;
+
+    try {
+      await onSave(next);
+      onClose();
+    } catch {
+      // error already surfaced by caller
     }
-    onSave(next);
-    onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-[55] grid place-items-center bg-black/50 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-55 grid place-items-center bg-black/50 backdrop-blur-sm p-4">
       <div className="w-full max-w-md rounded-2xl bg-card shadow-2xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h3 className="font-display font-bold">Add New Level</h3>
+          <h3 className="font-display font-bold">Add Level createded</h3>
           <button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-4 w-4" /></button>
         </div>
         <div className="px-6 py-5">
           <label className="block">
             <span className="text-xs font-semibold mb-1.5 block">Level Name</span>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Senior 7" className={inp} />
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Level 7" className={inp} />
           </label>
         </div>
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-border">

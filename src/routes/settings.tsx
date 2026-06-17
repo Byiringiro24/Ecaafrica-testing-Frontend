@@ -1,12 +1,12 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Building2, Calendar, Database, MessageSquare, Plus, Upload, User } from "lucide-react";
+import { Building2, LockKeyhole, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 
 export const Route = createFileRoute("/settings")({ component: SettingsPage });
 
-type TabId = "school" | "sms" | "calendar" | "profile" | "system";
+type TabId = "school" | "reset-password";
 
 type AcademicYear = {
   id: string;
@@ -18,17 +18,14 @@ type AcademicYear = {
 
 const tabs: Array<{ id: TabId; label: string; icon: typeof Building2 }> = [
   { id: "school", label: "School", icon: Building2 },
-  { id: "sms", label: "SMS", icon: MessageSquare },
-  { id: "calendar", label: "Calendar", icon: Calendar },
-  { id: "profile", label: "Profile", icon: User },
-  { id: "system", label: "System", icon: Database },
+  { id: "reset-password", label: "Reset Password", icon: LockKeyhole },
 ];
 
 function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>("school");
 
   return (
-    <AppLayout title="Settings" subtitle="Configure school, communication, calendar, and account preferences">
+    <AppLayout title="Settings" subtitle="Configure school, communication, and account preferences">
       <div className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-border bg-background p-2">
         {tabs.map(({ id, label, icon: Icon }) => {
           const active = activeTab === id;
@@ -50,10 +47,7 @@ function SettingsPage() {
       </div>
 
       {activeTab === "school" && <SchoolTab />}
-      {activeTab === "sms" && <SMSTab />}
-      {activeTab === "calendar" && <CalendarTab />}
-      {activeTab === "profile" && <ProfileTab />}
-      {activeTab === "system" && <SystemTab />}
+      {activeTab === "reset-password" && <ResetPasswordTab />}
     </AppLayout>
   );
 }
@@ -69,6 +63,7 @@ function SchoolTab() {
     { id: "ay-1", name: "2025/2026", startDate: "2025-09-01", endDate: "2026-06-30", isCurrent: true },
     { id: "ay-2", name: "2024/2025", startDate: "2024-09-02", endDate: "2025-06-28", isCurrent: false },
   ]);
+  const [editingYearId, setEditingYearId] = useState<string | null>(null);
   const [yearName, setYearName] = useState("");
   const [yearStart, setYearStart] = useState("");
   const [yearEnd, setYearEnd] = useState("");
@@ -94,35 +89,46 @@ function SchoolTab() {
       return;
     }
 
+    const nextYear = {
+      id: editingYearId ?? `ay-${Date.now()}`,
+      name: yearName.trim(),
+      startDate: yearStart,
+      endDate: yearEnd,
+      isCurrent: yearCurrent,
+    };
+
     setAcademicYears((prev) => {
-      const next = yearCurrent ? prev.map((year) => ({ ...year, isCurrent: false })) : prev;
-      return [
-        ...next,
-        {
-          id: `ay-${Date.now()}`,
-          name: yearName.trim(),
-          startDate: yearStart,
-          endDate: yearEnd,
-          isCurrent: yearCurrent,
-        },
-      ];
+      const clearedCurrent = yearCurrent ? prev.map((year) => ({ ...year, isCurrent: false })) : prev;
+
+      if (editingYearId) {
+        return clearedCurrent.map((year) => (year.id === editingYearId ? nextYear : year));
+      }
+
+      return [...clearedCurrent, nextYear];
     });
 
     setYearName("");
     setYearStart("");
     setYearEnd("");
     setYearCurrent(true);
-    toast.success("Academic year added");
+    setEditingYearId(null);
+    toast.success(editingYearId ? "Academic year updated" : "Academic year added");
+  };
+
+  const handleEditYear = (id: string) => {
+    const year = academicYears.find((item) => item.id === id);
+    if (!year) return;
+
+    setEditingYearId(year.id);
+    setYearName(year.name);
+    setYearStart(year.startDate);
+    setYearEnd(year.endDate);
+    setYearCurrent(year.isCurrent);
   };
 
   const handleSetCurrent = (id: string) => {
     setAcademicYears((prev) => prev.map((year) => ({ ...year, isCurrent: year.id === id })));
     toast.success("Academic year updated");
-  };
-
-  const handleDeleteYear = (id: string) => {
-    setAcademicYears((prev) => prev.filter((year) => year.id !== id));
-    toast.success("Academic year deleted");
   };
 
   return (
@@ -131,21 +137,21 @@ function SchoolTab() {
         <div className="space-y-4">
           <h3 className="font-display text-lg font-bold">School Details</h3>
           <Field label="School name">
-            <input value={schoolName} onChange={(event) => setSchoolName(event.target.value)} className={inputClass} />
+            <input value={schoolName} readOnly className={inputClass} />
           </Field>
           <Field label="Address">
-            <input value={address} onChange={(event) => setAddress(event.target.value)} className={inputClass} />
+            <input value={address} readOnly className={inputClass} />
           </Field>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="District">
-              <input value={district} onChange={(event) => setDistrict(event.target.value)} className={inputClass} />
+              <input value={district} readOnly className={inputClass} />
             </Field>
             <Field label="Province">
-              <input value={province} onChange={(event) => setProvince(event.target.value)} className={inputClass} />
+              <input value={province} readOnly className={inputClass} />
             </Field>
           </div>
           <Field label="Principal">
-            <input value={principal} onChange={(event) => setPrincipal(event.target.value)} className={inputClass} />
+            <input value={principal} readOnly className={inputClass} />
           </Field>
         </div>
 
@@ -214,8 +220,8 @@ function SchoolTab() {
                         Set current
                       </button>
                     )}
-                    <button type="button" onClick={() => handleDeleteYear(year.id)} className="text-xs font-semibold text-destructive hover:underline">
-                      Delete
+                    <button type="button" onClick={() => handleEditYear(year.id)} className="text-xs font-semibold text-primary hover:underline">
+                      Edit
                     </button>
                   </td>
                 </tr>
@@ -246,121 +252,28 @@ function SchoolTab() {
 
         <button type="button" onClick={handleAddYear} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
           <Plus className="h-4 w-4" />
-          Add academic year
+          {editingYearId ? "Update academic year" : "Add academic year"}
         </button>
       </section>
     </div>
   );
 }
 
-function SMSTab() {
-  const [monthlyLimit, setMonthlyLimit] = useState(5000);
-  const used = 1240;
-
+function ResetPasswordTab() {
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-border bg-background p-5">
-        <h3 className="font-display text-lg font-bold">SMS Configuration</h3>
-        <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <Field label="Monthly SMS limit">
-            <input type="number" value={monthlyLimit} onChange={(event) => setMonthlyLimit(Number(event.target.value) || 0)} className={inputClass} />
-          </Field>
-        </div>
-
-        <div className="mt-4 rounded-xl border border-border p-4">
-          <div className="mb-2 flex justify-between text-xs">
-            <span className="font-semibold">SMS usage this month</span>
-            <span className="text-muted-foreground">{used.toLocaleString()} / {monthlyLimit.toLocaleString()}</span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-muted">
-            <div className="h-full bg-primary" style={{ width: `${Math.min((used / Math.max(monthlyLimit, 1)) * 100, 100)}%` }} />
-          </div>
-        </div>
+        <h3 className="font-display text-lg font-bold">Reset Password</h3>
+        <p className="mt-2 text-sm text-muted-foreground">Send a password reset link to the current account email.</p>
       </section>
-
       <section className="rounded-2xl border border-border bg-background p-5">
-        <h4 className="font-display text-base font-bold">Notification Triggers</h4>
-        <div className="mt-4 space-y-2">
-          {[
-            "Send SMS when student is marked Present",
-            "Send SMS when student is marked Absent",
-            "Send SMS when student is marked Late",
-            "Send daily summary to all parents",
-          ].map((label, index) => (
-            <Toggle key={label} label={label} checked={index !== 0} onChange={() => undefined} />
-          ))}
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-border bg-background p-5">
-        <h4 className="font-display text-base font-bold">Default Templates</h4>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Variables: <code className="rounded bg-muted px-1.5 py-0.5">{`{parentName} {studentName} {class} {status} {date} {time}`}</code>
-        </p>
-        <div className="mt-4 space-y-3">
-          {["Present", "Absent", "Late"].map((status) => (
-            <Field key={status} label={`${status} template`}>
-              <textarea
-                rows={2}
-                className={`${inputClass} min-h-24 resize-y py-3`}
-                defaultValue={`Mubyeyi {parentName}, umwana wanyu {studentName} wo mu {class} ${status.toLowerCase()} ku ishuri uyu munsi {date} saa {time}.`}
-              />
-            </Field>
-          ))}
-        </div>
-        <button type="button" onClick={() => toast.success("SMS settings saved")} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
-          Save Changes
+        <Field label="Email address">
+          <input value="admin@educationcareafrica.rw" readOnly className={inputClass} />
+        </Field>
+        <button type="button" onClick={() => toast.success("Password reset link sent")} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
+          <LockKeyhole className="h-4 w-4" />
+          Send reset link
         </button>
-      </section>
-    </div>
-  );
-}
-
-function CalendarTab() {
-  return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-border bg-background p-5">
-        <h3 className="font-display text-lg font-bold">Calendar Settings</h3>
-        <p className="mt-2 text-sm text-muted-foreground">Use this section to manage academic terms and holidays.</p>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <SimpleCard title="Terms" description="Create and review academic terms." />
-        <SimpleCard title="Holidays" description="Maintain school and public holiday dates." />
-      </section>
-    </div>
-  );
-}
-
-function ProfileTab() {
-  return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-border bg-background p-5">
-        <h3 className="font-display text-lg font-bold">Profile</h3>
-        <p className="mt-2 text-sm text-muted-foreground">Update your account and communication preferences.</p>
-      </section>
-      <SimpleCard title="Personal details" description="Name, email, and phone number settings live here." />
-    </div>
-  );
-}
-
-function SystemTab() {
-  const [featureFlags, setFeatureFlags] = useState({ attendance: true, boarding: false, finance: true });
-
-  return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-border bg-background p-5">
-        <h3 className="font-display text-lg font-bold">System Settings</h3>
-        <p className="mt-2 text-sm text-muted-foreground">Control global product behavior and feature availability.</p>
-      </section>
-
-      <section className="rounded-2xl border border-border bg-background p-5">
-        <h4 className="font-display text-base font-bold">Feature Flags</h4>
-        <div className="mt-4 space-y-2">
-          <Toggle label="Attendance module" checked={featureFlags.attendance} onChange={(checked) => setFeatureFlags((prev) => ({ ...prev, attendance: checked }))} />
-          <Toggle label="Boarding module" checked={featureFlags.boarding} onChange={(checked) => setFeatureFlags((prev) => ({ ...prev, boarding: checked }))} />
-          <Toggle label="Finance module" checked={featureFlags.finance} onChange={(checked) => setFeatureFlags((prev) => ({ ...prev, finance: checked }))} />
-        </div>
       </section>
     </div>
   );

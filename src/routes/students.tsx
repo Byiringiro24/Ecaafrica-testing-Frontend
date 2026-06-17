@@ -146,7 +146,7 @@ function StudentsPage() {
             <StatCard label="Male" value={male} />
             <StatCard label="Female" value={female} />
             <StatCard label="Boarding" value={boarding} />
-            <StatCard label="Day Students" value={day} />
+            <StatCard label="Day Schooler" value={day} />
           </div>
 
           <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap gap-3 items-center">
@@ -167,7 +167,7 @@ function StudentsPage() {
             <select value={residencyFilter} onChange={(e) => setResidencyFilter(e.target.value as "All" | "Boarding" | "Day")}
               className="h-10 rounded-lg border border-border bg-background px-3 text-sm">
               <option value="All">All Students</option>
-              <option value="Day">Day Student</option>
+              <option value="Day">Day Schooler</option>
               <option value="Boarding">Boarding Student</option>
             </select>
             <div className="flex rounded-lg border border-border overflow-hidden">
@@ -619,7 +619,7 @@ function EditStudentModal({
               </EField>
               <EField label="Residency">
                 <select value={form.residency} onChange={e => set("residency", e.target.value)} className={eCls()}>
-                  <option value="Day">Day Student</option>
+                  <option value="Day">Day Schooler</option>
                   <option value="Boarding">Boarding Student</option>
                 </select>
               </EField>

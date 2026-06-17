@@ -6,6 +6,8 @@ export type SchoolUser = {
   school_country?: string | null;
 };
 
+import { redirect } from "@tanstack/react-router";
+
 export type SchoolAuthState = {
   accessToken: string;
   refreshToken?: string | null;
@@ -46,4 +48,28 @@ export const isSchoolAdminRole = (role?: string | null) => {
   if (!role) return false;
   const normalized = role.trim().toLowerCase();
   return normalized === "school_admin" || normalized === "school admin";
+};
+
+export const isTeacherRole = (role?: string | null) => {
+  if (!role) return false;
+  return role.trim().toLowerCase() === "teacher";
+};
+
+export const teacherRouteGuard = (location: { pathname: string; search?: unknown }) => {
+  const auth = getSchoolAuth();
+  if (auth?.accessToken && isTeacherRole(auth.user?.role)) {
+    return;
+  }
+
+  const rawSearch = location.search;
+  const search = typeof rawSearch === "string"
+    ? rawSearch
+    : new URLSearchParams((rawSearch as Record<string, string>) ?? {}).toString();
+  const searchSuffix = search
+    ? search.startsWith("?")
+      ? search
+      : `?${search}`
+    : "";
+  const redirectTo = `${location.pathname}${searchSuffix}`;
+  throw redirect({ to: "/login", search: { redirect: redirectTo } });
 };

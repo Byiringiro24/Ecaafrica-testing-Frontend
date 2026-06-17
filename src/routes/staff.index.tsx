@@ -874,7 +874,7 @@ function RegisterStaffModal({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
-      <div className="bg-card rounded-2xl shadow-2xl max-w-2xl w-full">
+      <div className="bg-card rounded-2xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
         <div className="px-6 py-4 border-b border-border flex justify-between items-center">
           <div>
             <h3 className="font-display font-bold">Register New Staff</h3>
@@ -887,7 +887,7 @@ function RegisterStaffModal({
             <div className="h-full bg-primary transition-all" style={{ width: `${(step / 2) * 100}%` }} />
           </div>
         </div>
-        <div className="px-6 py-4 space-y-4">
+        <div className="flex-1 min-h-0 px-6 py-4 space-y-4 overflow-y-auto">
           {submissionError && (
             <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {submissionError}

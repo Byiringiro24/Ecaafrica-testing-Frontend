@@ -1,12 +1,21 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Building2, LockKeyhole, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { apiRequest } from "@/lib/api";
 
 export const Route = createFileRoute("/settings")({ component: SettingsPage });
 
 type TabId = "school" | "reset-password";
+
+type AcademicYearApi = {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_current: boolean;
+};
 
 type AcademicYear = {
   id: string;
@@ -59,10 +68,7 @@ function SchoolTab() {
   const [province, setProvince] = useState("Kigali City");
   const [principal, setPrincipal] = useState("Dr. Niyomugabo Jean");
   const [logoPreview, setLogoPreview] = useState<string>("");
-  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([
-    { id: "ay-1", name: "2025/2026", startDate: "2025-09-01", endDate: "2026-06-30", isCurrent: true },
-    { id: "ay-2", name: "2024/2025", startDate: "2024-09-02", endDate: "2025-06-28", isCurrent: false },
-  ]);
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [editingYearId, setEditingYearId] = useState<string | null>(null);
   const [yearName, setYearName] = useState("");
   const [yearStart, setYearStart] = useState("");
@@ -70,6 +76,29 @@ function SchoolTab() {
   const [yearCurrent, setYearCurrent] = useState(true);
 
   const currentYear = useMemo(() => academicYears.find((year) => year.isCurrent), [academicYears]);
+
+  const normalizeAcademicYear = (year: any): AcademicYear => ({
+    id: year.id,
+    name: year.name,
+    startDate: year.start_date ?? year.startDate,
+    endDate: year.end_date ?? year.endDate,
+    isCurrent: year.is_current ?? year.isCurrent ?? false,
+  });
+
+  useEffect(() => {
+    const loadAcademicYears = async () => {
+      try {
+        const years = await apiRequest<AcademicYearApi[]>('/academic-years?limit=100', {
+          auth: 'school'
+        });
+        setAcademicYears(years.map(normalizeAcademicYear));
+      } catch (error: any) {
+        toast.error(error?.message ?? 'Failed to load academic years');
+      }
+    };
+
+    void loadAcademicYears();
+  }, []);
 
   const handleLogoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -83,36 +112,57 @@ function SchoolTab() {
     reader.readAsDataURL(file);
   };
 
-  const handleAddYear = () => {
+  const handleAddYear = async () => {
     if (!yearName.trim() || !yearStart || !yearEnd) {
       toast.error("Name, start date, and end date are required");
       return;
     }
 
     const nextYear = {
-      id: editingYearId ?? `ay-${Date.now()}`,
       name: yearName.trim(),
-      startDate: yearStart,
-      endDate: yearEnd,
-      isCurrent: yearCurrent,
+      start_date: yearStart,
+      end_date: yearEnd,
+      is_current: yearCurrent,
     };
 
-    setAcademicYears((prev) => {
-      const clearedCurrent = yearCurrent ? prev.map((year) => ({ ...year, isCurrent: false })) : prev;
-
+    try {
       if (editingYearId) {
-        return clearedCurrent.map((year) => (year.id === editingYearId ? nextYear : year));
+        const updated = await apiRequest<AcademicYearApi>(`/academic-years/${editingYearId}`, {
+          method: "PATCH",
+          body: JSON.stringify(nextYear),
+          auth: "school"
+        });
+
+        setAcademicYears((prev) =>
+          prev.map((year) =>
+            year.id === editingYearId
+              ? normalizeAcademicYear(updated)
+              : year
+          )
+        );
+        toast.success("Academic year updated");
+      } else {
+        const created = await apiRequest<AcademicYearApi>('/academic-years', {
+          method: "POST",
+          body: JSON.stringify(nextYear),
+          auth: "school"
+        });
+
+        setAcademicYears((prev) => {
+          const clearedCurrent = nextYear.is_current ? prev.map((year) => ({ ...year, isCurrent: false })) : prev;
+          return [...clearedCurrent, normalizeAcademicYear(created)];
+        });
+        toast.success("Academic year added");
       }
 
-      return [...clearedCurrent, nextYear];
-    });
-
-    setYearName("");
-    setYearStart("");
-    setYearEnd("");
-    setYearCurrent(true);
-    setEditingYearId(null);
-    toast.success(editingYearId ? "Academic year updated" : "Academic year added");
+      setYearName("");
+      setYearStart("");
+      setYearEnd("");
+      setYearCurrent(true);
+      setEditingYearId(null);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to save academic year");
+    }
   };
 
   const handleEditYear = (id: string) => {
@@ -126,9 +176,19 @@ function SchoolTab() {
     setYearCurrent(year.isCurrent);
   };
 
-  const handleSetCurrent = (id: string) => {
-    setAcademicYears((prev) => prev.map((year) => ({ ...year, isCurrent: year.id === id })));
-    toast.success("Academic year updated");
+  const handleSetCurrent = async (id: string) => {
+    try {
+      await apiRequest<AcademicYear>(`/academic-years/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_current: true }),
+        auth: "school"
+      });
+
+      setAcademicYears((prev) => prev.map((year) => ({ ...year, isCurrent: year.id === id })));
+      toast.success("Academic year updated");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to update academic year");
+    }
   };
 
   return (

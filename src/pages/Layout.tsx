@@ -11,6 +11,7 @@ const nav = [
   { to: "/features", label: "Features" },
   { to: "/pricing", label: "Pricing" },
   { to: "/contact", label: "Contact" },
+  { to: "/login", label: "Login" },
 ];
 
 interface LayoutProps {

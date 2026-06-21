@@ -55,9 +55,57 @@ export const isTeacherRole = (role?: string | null) => {
   return role.trim().toLowerCase() === "teacher";
 };
 
+export const isGateKeeperRole = (role?: string | null) => {
+  if (!role) return false;
+  return role.trim().toLowerCase() === "gate_keeper";
+};
+
+export const isBoardingOfficerRole = (role?: string | null) => {
+  if (!role) return false;
+  return role.trim().toLowerCase() === "boarding_officer";
+};
+
 export const teacherRouteGuard = (location: { pathname: string; search?: unknown }) => {
   const auth = getSchoolAuth();
   if (auth?.accessToken && isTeacherRole(auth.user?.role)) {
+    return;
+  }
+
+  const rawSearch = location.search;
+  const search = typeof rawSearch === "string"
+    ? rawSearch
+    : new URLSearchParams((rawSearch as Record<string, string>) ?? {}).toString();
+  const searchSuffix = search
+    ? search.startsWith("?")
+      ? search
+      : `?${search}`
+    : "";
+  const redirectTo = `${location.pathname}${searchSuffix}`;
+  throw redirect({ to: "/login", search: { redirect: redirectTo } });
+};
+
+export const gateKeeperRouteGuard = (location: { pathname: string; search?: unknown }) => {
+  const auth = getSchoolAuth();
+  if (auth?.accessToken && isGateKeeperRole(auth.user?.role)) {
+    return;
+  }
+
+  const rawSearch = location.search;
+  const search = typeof rawSearch === "string"
+    ? rawSearch
+    : new URLSearchParams((rawSearch as Record<string, string>) ?? {}).toString();
+  const searchSuffix = search
+    ? search.startsWith("?")
+      ? search
+      : `?${search}`
+    : "";
+  const redirectTo = `${location.pathname}${searchSuffix}`;
+  throw redirect({ to: "/login", search: { redirect: redirectTo } });
+};
+
+export const boardingOfficerRouteGuard = (location: { pathname: string; search?: unknown }) => {
+  const auth = getSchoolAuth();
+  if (auth?.accessToken && isBoardingOfficerRole(auth.user?.role)) {
     return;
   }
 

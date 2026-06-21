@@ -26,6 +26,7 @@ import { Route as GateRouteImport } from './routes/gate'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as FeesRouteImport } from './routes/fees'
 import { Route as FeaturesRouteImport } from './routes/features'
+import { Route as ExamsRouteImport } from './routes/exams'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as ClassesRouteImport } from './routes/classes'
@@ -35,6 +36,7 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SuperAdminIndexRouteImport } from './routes/super-admin.index'
 import { Route as StaffIndexRouteImport } from './routes/staff.index'
+import { Route as ExamsIndexRouteImport } from './routes/exams.index'
 import { Route as BoardingIndexRouteImport } from './routes/boarding.index'
 import { Route as TeacherScheduleRouteImport } from './routes/teacher.schedule'
 import { Route as TeacherProgressRouteImport } from './routes/teacher.progress'
@@ -64,11 +66,29 @@ import { Route as StaffGateRouteImport } from './routes/staff.gate'
 import { Route as StaffDashboardRouteImport } from './routes/staff.dashboard'
 import { Route as StaffBoardingRouteImport } from './routes/staff.boarding'
 import { Route as StaffAlertsRouteImport } from './routes/staff.alerts'
+import { Route as GateKeeperVisitorsRouteImport } from './routes/gate-keeper.visitors'
+import { Route as GateKeeperDeviceStatusRouteImport } from './routes/gate-keeper.device-status'
+import { Route as GateKeeperDashboardRouteImport } from './routes/gate-keeper.dashboard'
+import { Route as GateKeeperBoardingLeaveRouteImport } from './routes/gate-keeper.boarding-leave'
+import { Route as GateKeeperAttendanceRouteImport } from './routes/gate-keeper.attendance'
+import { Route as ExamsScheduleRouteImport } from './routes/exams.schedule'
+import { Route as ExamsReviewRouteImport } from './routes/exams.review'
+import { Route as ExamsPublishedRouteImport } from './routes/exams.published'
+import { Route as ExamsAnalyticsRouteImport } from './routes/exams.analytics'
 import { Route as BoardingDevicesRouteImport } from './routes/boarding.devices'
 import { Route as BoardingDeviceStudentsRouteImport } from './routes/boarding.device-students'
 import { Route as BoardingDeviceLogsRouteImport } from './routes/boarding.device-logs'
+import { Route as BoardingOfficerReportsRouteImport } from './routes/boarding-officer.reports'
+import { Route as BoardingOfficerLeavesRouteImport } from './routes/boarding-officer.leaves'
+import { Route as BoardingOfficerDormitoryRouteImport } from './routes/boarding-officer.dormitory'
+import { Route as BoardingOfficerDashboardRouteImport } from './routes/boarding-officer.dashboard'
+import { Route as BoardingOfficerAttendanceRouteImport } from './routes/boarding-officer.attendance'
 import { Route as SuperAdminSchoolsIndexRouteImport } from './routes/super-admin.schools.index'
+import { Route as GateKeeperAttendanceIndexRouteImport } from './routes/gate-keeper.attendance.index'
 import { Route as SuperAdminSchoolsIdRouteImport } from './routes/super-admin.schools.$id'
+import { Route as GateKeeperAttendanceMakeAttendanceRouteImport } from './routes/gate-keeper.attendance.make-attendance'
+import { Route as GateKeeperAttendanceHistoryRouteImport } from './routes/gate-keeper.attendance.history'
+import { Route as GateKeeperAttendanceDeviceAttendanceRouteImport } from './routes/gate-keeper.attendance.device-attendance'
 
 const VisitorsRoute = VisitorsRouteImport.update({
   id: '/visitors',
@@ -155,6 +175,11 @@ const FeaturesRoute = FeaturesRouteImport.update({
   path: '/features',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ExamsRoute = ExamsRouteImport.update({
+  id: '/exams',
+  path: '/exams',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -199,6 +224,11 @@ const StaffIndexRoute = StaffIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => StaffRoute,
+} as any)
+const ExamsIndexRoute = ExamsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ExamsRoute,
 } as any)
 const BoardingIndexRoute = BoardingIndexRouteImport.update({
   id: '/',
@@ -345,6 +375,51 @@ const StaffAlertsRoute = StaffAlertsRouteImport.update({
   path: '/alerts',
   getParentRoute: () => StaffRoute,
 } as any)
+const GateKeeperVisitorsRoute = GateKeeperVisitorsRouteImport.update({
+  id: '/gate-keeper/visitors',
+  path: '/gate-keeper/visitors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GateKeeperDeviceStatusRoute = GateKeeperDeviceStatusRouteImport.update({
+  id: '/gate-keeper/device-status',
+  path: '/gate-keeper/device-status',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GateKeeperDashboardRoute = GateKeeperDashboardRouteImport.update({
+  id: '/gate-keeper/dashboard',
+  path: '/gate-keeper/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GateKeeperBoardingLeaveRoute = GateKeeperBoardingLeaveRouteImport.update({
+  id: '/gate-keeper/boarding-leave',
+  path: '/gate-keeper/boarding-leave',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GateKeeperAttendanceRoute = GateKeeperAttendanceRouteImport.update({
+  id: '/gate-keeper/attendance',
+  path: '/gate-keeper/attendance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExamsScheduleRoute = ExamsScheduleRouteImport.update({
+  id: '/schedule',
+  path: '/schedule',
+  getParentRoute: () => ExamsRoute,
+} as any)
+const ExamsReviewRoute = ExamsReviewRouteImport.update({
+  id: '/review',
+  path: '/review',
+  getParentRoute: () => ExamsRoute,
+} as any)
+const ExamsPublishedRoute = ExamsPublishedRouteImport.update({
+  id: '/published',
+  path: '/published',
+  getParentRoute: () => ExamsRoute,
+} as any)
+const ExamsAnalyticsRoute = ExamsAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => ExamsRoute,
+} as any)
 const BoardingDevicesRoute = BoardingDevicesRouteImport.update({
   id: '/devices',
   path: '/devices',
@@ -360,16 +435,68 @@ const BoardingDeviceLogsRoute = BoardingDeviceLogsRouteImport.update({
   path: '/device-logs',
   getParentRoute: () => BoardingRoute,
 } as any)
+const BoardingOfficerReportsRoute = BoardingOfficerReportsRouteImport.update({
+  id: '/boarding-officer/reports',
+  path: '/boarding-officer/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BoardingOfficerLeavesRoute = BoardingOfficerLeavesRouteImport.update({
+  id: '/boarding-officer/leaves',
+  path: '/boarding-officer/leaves',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BoardingOfficerDormitoryRoute =
+  BoardingOfficerDormitoryRouteImport.update({
+    id: '/boarding-officer/dormitory',
+    path: '/boarding-officer/dormitory',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const BoardingOfficerDashboardRoute =
+  BoardingOfficerDashboardRouteImport.update({
+    id: '/boarding-officer/dashboard',
+    path: '/boarding-officer/dashboard',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const BoardingOfficerAttendanceRoute =
+  BoardingOfficerAttendanceRouteImport.update({
+    id: '/boarding-officer/attendance',
+    path: '/boarding-officer/attendance',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const SuperAdminSchoolsIndexRoute = SuperAdminSchoolsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => SuperAdminSchoolsRoute,
 } as any)
+const GateKeeperAttendanceIndexRoute =
+  GateKeeperAttendanceIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => GateKeeperAttendanceRoute,
+  } as any)
 const SuperAdminSchoolsIdRoute = SuperAdminSchoolsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => SuperAdminSchoolsRoute,
 } as any)
+const GateKeeperAttendanceMakeAttendanceRoute =
+  GateKeeperAttendanceMakeAttendanceRouteImport.update({
+    id: '/make-attendance',
+    path: '/make-attendance',
+    getParentRoute: () => GateKeeperAttendanceRoute,
+  } as any)
+const GateKeeperAttendanceHistoryRoute =
+  GateKeeperAttendanceHistoryRouteImport.update({
+    id: '/history',
+    path: '/history',
+    getParentRoute: () => GateKeeperAttendanceRoute,
+  } as any)
+const GateKeeperAttendanceDeviceAttendanceRoute =
+  GateKeeperAttendanceDeviceAttendanceRouteImport.update({
+    id: '/device-attendance',
+    path: '/device-attendance',
+    getParentRoute: () => GateKeeperAttendanceRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -379,6 +506,7 @@ export interface FileRoutesByFullPath {
   '/classes': typeof ClassesRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
+  '/exams': typeof ExamsRouteWithChildren
   '/features': typeof FeaturesRoute
   '/fees': typeof FeesRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -396,9 +524,23 @@ export interface FileRoutesByFullPath {
   '/students': typeof StudentsRoute
   '/super-admin': typeof SuperAdminRouteWithChildren
   '/visitors': typeof VisitorsRoute
+  '/boarding-officer/attendance': typeof BoardingOfficerAttendanceRoute
+  '/boarding-officer/dashboard': typeof BoardingOfficerDashboardRoute
+  '/boarding-officer/dormitory': typeof BoardingOfficerDormitoryRoute
+  '/boarding-officer/leaves': typeof BoardingOfficerLeavesRoute
+  '/boarding-officer/reports': typeof BoardingOfficerReportsRoute
   '/boarding/device-logs': typeof BoardingDeviceLogsRoute
   '/boarding/device-students': typeof BoardingDeviceStudentsRoute
   '/boarding/devices': typeof BoardingDevicesRoute
+  '/exams/analytics': typeof ExamsAnalyticsRoute
+  '/exams/published': typeof ExamsPublishedRoute
+  '/exams/review': typeof ExamsReviewRoute
+  '/exams/schedule': typeof ExamsScheduleRoute
+  '/gate-keeper/attendance': typeof GateKeeperAttendanceRouteWithChildren
+  '/gate-keeper/boarding-leave': typeof GateKeeperBoardingLeaveRoute
+  '/gate-keeper/dashboard': typeof GateKeeperDashboardRoute
+  '/gate-keeper/device-status': typeof GateKeeperDeviceStatusRoute
+  '/gate-keeper/visitors': typeof GateKeeperVisitorsRoute
   '/staff/alerts': typeof StaffAlertsRoute
   '/staff/boarding': typeof StaffBoardingRoute
   '/staff/dashboard': typeof StaffDashboardRoute
@@ -428,9 +570,14 @@ export interface FileRoutesByFullPath {
   '/teacher/progress': typeof TeacherProgressRoute
   '/teacher/schedule': typeof TeacherScheduleRoute
   '/boarding/': typeof BoardingIndexRoute
+  '/exams/': typeof ExamsIndexRoute
   '/staff/': typeof StaffIndexRoute
   '/super-admin/': typeof SuperAdminIndexRoute
+  '/gate-keeper/attendance/device-attendance': typeof GateKeeperAttendanceDeviceAttendanceRoute
+  '/gate-keeper/attendance/history': typeof GateKeeperAttendanceHistoryRoute
+  '/gate-keeper/attendance/make-attendance': typeof GateKeeperAttendanceMakeAttendanceRoute
   '/super-admin/schools/$id': typeof SuperAdminSchoolsIdRoute
+  '/gate-keeper/attendance/': typeof GateKeeperAttendanceIndexRoute
   '/super-admin/schools/': typeof SuperAdminSchoolsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -455,9 +602,22 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/students': typeof StudentsRoute
   '/visitors': typeof VisitorsRoute
+  '/boarding-officer/attendance': typeof BoardingOfficerAttendanceRoute
+  '/boarding-officer/dashboard': typeof BoardingOfficerDashboardRoute
+  '/boarding-officer/dormitory': typeof BoardingOfficerDormitoryRoute
+  '/boarding-officer/leaves': typeof BoardingOfficerLeavesRoute
+  '/boarding-officer/reports': typeof BoardingOfficerReportsRoute
   '/boarding/device-logs': typeof BoardingDeviceLogsRoute
   '/boarding/device-students': typeof BoardingDeviceStudentsRoute
   '/boarding/devices': typeof BoardingDevicesRoute
+  '/exams/analytics': typeof ExamsAnalyticsRoute
+  '/exams/published': typeof ExamsPublishedRoute
+  '/exams/review': typeof ExamsReviewRoute
+  '/exams/schedule': typeof ExamsScheduleRoute
+  '/gate-keeper/boarding-leave': typeof GateKeeperBoardingLeaveRoute
+  '/gate-keeper/dashboard': typeof GateKeeperDashboardRoute
+  '/gate-keeper/device-status': typeof GateKeeperDeviceStatusRoute
+  '/gate-keeper/visitors': typeof GateKeeperVisitorsRoute
   '/staff/alerts': typeof StaffAlertsRoute
   '/staff/boarding': typeof StaffBoardingRoute
   '/staff/dashboard': typeof StaffDashboardRoute
@@ -486,9 +646,14 @@ export interface FileRoutesByTo {
   '/teacher/progress': typeof TeacherProgressRoute
   '/teacher/schedule': typeof TeacherScheduleRoute
   '/boarding': typeof BoardingIndexRoute
+  '/exams': typeof ExamsIndexRoute
   '/staff': typeof StaffIndexRoute
   '/super-admin': typeof SuperAdminIndexRoute
+  '/gate-keeper/attendance/device-attendance': typeof GateKeeperAttendanceDeviceAttendanceRoute
+  '/gate-keeper/attendance/history': typeof GateKeeperAttendanceHistoryRoute
+  '/gate-keeper/attendance/make-attendance': typeof GateKeeperAttendanceMakeAttendanceRoute
   '/super-admin/schools/$id': typeof SuperAdminSchoolsIdRoute
+  '/gate-keeper/attendance': typeof GateKeeperAttendanceIndexRoute
   '/super-admin/schools': typeof SuperAdminSchoolsIndexRoute
 }
 export interface FileRoutesById {
@@ -500,6 +665,7 @@ export interface FileRoutesById {
   '/classes': typeof ClassesRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
+  '/exams': typeof ExamsRouteWithChildren
   '/features': typeof FeaturesRoute
   '/fees': typeof FeesRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -517,9 +683,23 @@ export interface FileRoutesById {
   '/students': typeof StudentsRoute
   '/super-admin': typeof SuperAdminRouteWithChildren
   '/visitors': typeof VisitorsRoute
+  '/boarding-officer/attendance': typeof BoardingOfficerAttendanceRoute
+  '/boarding-officer/dashboard': typeof BoardingOfficerDashboardRoute
+  '/boarding-officer/dormitory': typeof BoardingOfficerDormitoryRoute
+  '/boarding-officer/leaves': typeof BoardingOfficerLeavesRoute
+  '/boarding-officer/reports': typeof BoardingOfficerReportsRoute
   '/boarding/device-logs': typeof BoardingDeviceLogsRoute
   '/boarding/device-students': typeof BoardingDeviceStudentsRoute
   '/boarding/devices': typeof BoardingDevicesRoute
+  '/exams/analytics': typeof ExamsAnalyticsRoute
+  '/exams/published': typeof ExamsPublishedRoute
+  '/exams/review': typeof ExamsReviewRoute
+  '/exams/schedule': typeof ExamsScheduleRoute
+  '/gate-keeper/attendance': typeof GateKeeperAttendanceRouteWithChildren
+  '/gate-keeper/boarding-leave': typeof GateKeeperBoardingLeaveRoute
+  '/gate-keeper/dashboard': typeof GateKeeperDashboardRoute
+  '/gate-keeper/device-status': typeof GateKeeperDeviceStatusRoute
+  '/gate-keeper/visitors': typeof GateKeeperVisitorsRoute
   '/staff/alerts': typeof StaffAlertsRoute
   '/staff/boarding': typeof StaffBoardingRoute
   '/staff/dashboard': typeof StaffDashboardRoute
@@ -549,9 +729,14 @@ export interface FileRoutesById {
   '/teacher/progress': typeof TeacherProgressRoute
   '/teacher/schedule': typeof TeacherScheduleRoute
   '/boarding/': typeof BoardingIndexRoute
+  '/exams/': typeof ExamsIndexRoute
   '/staff/': typeof StaffIndexRoute
   '/super-admin/': typeof SuperAdminIndexRoute
+  '/gate-keeper/attendance/device-attendance': typeof GateKeeperAttendanceDeviceAttendanceRoute
+  '/gate-keeper/attendance/history': typeof GateKeeperAttendanceHistoryRoute
+  '/gate-keeper/attendance/make-attendance': typeof GateKeeperAttendanceMakeAttendanceRoute
   '/super-admin/schools/$id': typeof SuperAdminSchoolsIdRoute
+  '/gate-keeper/attendance/': typeof GateKeeperAttendanceIndexRoute
   '/super-admin/schools/': typeof SuperAdminSchoolsIndexRoute
 }
 export interface FileRouteTypes {
@@ -564,6 +749,7 @@ export interface FileRouteTypes {
     | '/classes'
     | '/contact'
     | '/dashboard'
+    | '/exams'
     | '/features'
     | '/fees'
     | '/forgot-password'
@@ -581,9 +767,23 @@ export interface FileRouteTypes {
     | '/students'
     | '/super-admin'
     | '/visitors'
+    | '/boarding-officer/attendance'
+    | '/boarding-officer/dashboard'
+    | '/boarding-officer/dormitory'
+    | '/boarding-officer/leaves'
+    | '/boarding-officer/reports'
     | '/boarding/device-logs'
     | '/boarding/device-students'
     | '/boarding/devices'
+    | '/exams/analytics'
+    | '/exams/published'
+    | '/exams/review'
+    | '/exams/schedule'
+    | '/gate-keeper/attendance'
+    | '/gate-keeper/boarding-leave'
+    | '/gate-keeper/dashboard'
+    | '/gate-keeper/device-status'
+    | '/gate-keeper/visitors'
     | '/staff/alerts'
     | '/staff/boarding'
     | '/staff/dashboard'
@@ -613,9 +813,14 @@ export interface FileRouteTypes {
     | '/teacher/progress'
     | '/teacher/schedule'
     | '/boarding/'
+    | '/exams/'
     | '/staff/'
     | '/super-admin/'
+    | '/gate-keeper/attendance/device-attendance'
+    | '/gate-keeper/attendance/history'
+    | '/gate-keeper/attendance/make-attendance'
     | '/super-admin/schools/$id'
+    | '/gate-keeper/attendance/'
     | '/super-admin/schools/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -640,9 +845,22 @@ export interface FileRouteTypes {
     | '/settings'
     | '/students'
     | '/visitors'
+    | '/boarding-officer/attendance'
+    | '/boarding-officer/dashboard'
+    | '/boarding-officer/dormitory'
+    | '/boarding-officer/leaves'
+    | '/boarding-officer/reports'
     | '/boarding/device-logs'
     | '/boarding/device-students'
     | '/boarding/devices'
+    | '/exams/analytics'
+    | '/exams/published'
+    | '/exams/review'
+    | '/exams/schedule'
+    | '/gate-keeper/boarding-leave'
+    | '/gate-keeper/dashboard'
+    | '/gate-keeper/device-status'
+    | '/gate-keeper/visitors'
     | '/staff/alerts'
     | '/staff/boarding'
     | '/staff/dashboard'
@@ -671,9 +889,14 @@ export interface FileRouteTypes {
     | '/teacher/progress'
     | '/teacher/schedule'
     | '/boarding'
+    | '/exams'
     | '/staff'
     | '/super-admin'
+    | '/gate-keeper/attendance/device-attendance'
+    | '/gate-keeper/attendance/history'
+    | '/gate-keeper/attendance/make-attendance'
     | '/super-admin/schools/$id'
+    | '/gate-keeper/attendance'
     | '/super-admin/schools'
   id:
     | '__root__'
@@ -684,6 +907,7 @@ export interface FileRouteTypes {
     | '/classes'
     | '/contact'
     | '/dashboard'
+    | '/exams'
     | '/features'
     | '/fees'
     | '/forgot-password'
@@ -701,9 +925,23 @@ export interface FileRouteTypes {
     | '/students'
     | '/super-admin'
     | '/visitors'
+    | '/boarding-officer/attendance'
+    | '/boarding-officer/dashboard'
+    | '/boarding-officer/dormitory'
+    | '/boarding-officer/leaves'
+    | '/boarding-officer/reports'
     | '/boarding/device-logs'
     | '/boarding/device-students'
     | '/boarding/devices'
+    | '/exams/analytics'
+    | '/exams/published'
+    | '/exams/review'
+    | '/exams/schedule'
+    | '/gate-keeper/attendance'
+    | '/gate-keeper/boarding-leave'
+    | '/gate-keeper/dashboard'
+    | '/gate-keeper/device-status'
+    | '/gate-keeper/visitors'
     | '/staff/alerts'
     | '/staff/boarding'
     | '/staff/dashboard'
@@ -733,9 +971,14 @@ export interface FileRouteTypes {
     | '/teacher/progress'
     | '/teacher/schedule'
     | '/boarding/'
+    | '/exams/'
     | '/staff/'
     | '/super-admin/'
+    | '/gate-keeper/attendance/device-attendance'
+    | '/gate-keeper/attendance/history'
+    | '/gate-keeper/attendance/make-attendance'
     | '/super-admin/schools/$id'
+    | '/gate-keeper/attendance/'
     | '/super-admin/schools/'
   fileRoutesById: FileRoutesById
 }
@@ -747,6 +990,7 @@ export interface RootRouteChildren {
   ClassesRoute: typeof ClassesRoute
   ContactRoute: typeof ContactRoute
   DashboardRoute: typeof DashboardRoute
+  ExamsRoute: typeof ExamsRouteWithChildren
   FeaturesRoute: typeof FeaturesRoute
   FeesRoute: typeof FeesRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
@@ -764,6 +1008,16 @@ export interface RootRouteChildren {
   StudentsRoute: typeof StudentsRoute
   SuperAdminRoute: typeof SuperAdminRouteWithChildren
   VisitorsRoute: typeof VisitorsRoute
+  BoardingOfficerAttendanceRoute: typeof BoardingOfficerAttendanceRoute
+  BoardingOfficerDashboardRoute: typeof BoardingOfficerDashboardRoute
+  BoardingOfficerDormitoryRoute: typeof BoardingOfficerDormitoryRoute
+  BoardingOfficerLeavesRoute: typeof BoardingOfficerLeavesRoute
+  BoardingOfficerReportsRoute: typeof BoardingOfficerReportsRoute
+  GateKeeperAttendanceRoute: typeof GateKeeperAttendanceRouteWithChildren
+  GateKeeperBoardingLeaveRoute: typeof GateKeeperBoardingLeaveRoute
+  GateKeeperDashboardRoute: typeof GateKeeperDashboardRoute
+  GateKeeperDeviceStatusRoute: typeof GateKeeperDeviceStatusRoute
+  GateKeeperVisitorsRoute: typeof GateKeeperVisitorsRoute
   TeacherAttendanceRoute: typeof TeacherAttendanceRoute
   TeacherClassesRoute: typeof TeacherClassesRoute
   TeacherDashboardRoute: typeof TeacherDashboardRoute
@@ -896,6 +1150,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FeaturesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/exams': {
+      id: '/exams'
+      path: '/exams'
+      fullPath: '/exams'
+      preLoaderRoute: typeof ExamsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
@@ -958,6 +1219,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/staff/'
       preLoaderRoute: typeof StaffIndexRouteImport
       parentRoute: typeof StaffRoute
+    }
+    '/exams/': {
+      id: '/exams/'
+      path: '/'
+      fullPath: '/exams/'
+      preLoaderRoute: typeof ExamsIndexRouteImport
+      parentRoute: typeof ExamsRoute
     }
     '/boarding/': {
       id: '/boarding/'
@@ -1162,6 +1430,69 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StaffAlertsRouteImport
       parentRoute: typeof StaffRoute
     }
+    '/gate-keeper/visitors': {
+      id: '/gate-keeper/visitors'
+      path: '/gate-keeper/visitors'
+      fullPath: '/gate-keeper/visitors'
+      preLoaderRoute: typeof GateKeeperVisitorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gate-keeper/device-status': {
+      id: '/gate-keeper/device-status'
+      path: '/gate-keeper/device-status'
+      fullPath: '/gate-keeper/device-status'
+      preLoaderRoute: typeof GateKeeperDeviceStatusRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gate-keeper/dashboard': {
+      id: '/gate-keeper/dashboard'
+      path: '/gate-keeper/dashboard'
+      fullPath: '/gate-keeper/dashboard'
+      preLoaderRoute: typeof GateKeeperDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gate-keeper/boarding-leave': {
+      id: '/gate-keeper/boarding-leave'
+      path: '/gate-keeper/boarding-leave'
+      fullPath: '/gate-keeper/boarding-leave'
+      preLoaderRoute: typeof GateKeeperBoardingLeaveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gate-keeper/attendance': {
+      id: '/gate-keeper/attendance'
+      path: '/gate-keeper/attendance'
+      fullPath: '/gate-keeper/attendance'
+      preLoaderRoute: typeof GateKeeperAttendanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/exams/schedule': {
+      id: '/exams/schedule'
+      path: '/schedule'
+      fullPath: '/exams/schedule'
+      preLoaderRoute: typeof ExamsScheduleRouteImport
+      parentRoute: typeof ExamsRoute
+    }
+    '/exams/review': {
+      id: '/exams/review'
+      path: '/review'
+      fullPath: '/exams/review'
+      preLoaderRoute: typeof ExamsReviewRouteImport
+      parentRoute: typeof ExamsRoute
+    }
+    '/exams/published': {
+      id: '/exams/published'
+      path: '/published'
+      fullPath: '/exams/published'
+      preLoaderRoute: typeof ExamsPublishedRouteImport
+      parentRoute: typeof ExamsRoute
+    }
+    '/exams/analytics': {
+      id: '/exams/analytics'
+      path: '/analytics'
+      fullPath: '/exams/analytics'
+      preLoaderRoute: typeof ExamsAnalyticsRouteImport
+      parentRoute: typeof ExamsRoute
+    }
     '/boarding/devices': {
       id: '/boarding/devices'
       path: '/devices'
@@ -1183,6 +1514,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BoardingDeviceLogsRouteImport
       parentRoute: typeof BoardingRoute
     }
+    '/boarding-officer/reports': {
+      id: '/boarding-officer/reports'
+      path: '/boarding-officer/reports'
+      fullPath: '/boarding-officer/reports'
+      preLoaderRoute: typeof BoardingOfficerReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/boarding-officer/leaves': {
+      id: '/boarding-officer/leaves'
+      path: '/boarding-officer/leaves'
+      fullPath: '/boarding-officer/leaves'
+      preLoaderRoute: typeof BoardingOfficerLeavesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/boarding-officer/dormitory': {
+      id: '/boarding-officer/dormitory'
+      path: '/boarding-officer/dormitory'
+      fullPath: '/boarding-officer/dormitory'
+      preLoaderRoute: typeof BoardingOfficerDormitoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/boarding-officer/dashboard': {
+      id: '/boarding-officer/dashboard'
+      path: '/boarding-officer/dashboard'
+      fullPath: '/boarding-officer/dashboard'
+      preLoaderRoute: typeof BoardingOfficerDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/boarding-officer/attendance': {
+      id: '/boarding-officer/attendance'
+      path: '/boarding-officer/attendance'
+      fullPath: '/boarding-officer/attendance'
+      preLoaderRoute: typeof BoardingOfficerAttendanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/super-admin/schools/': {
       id: '/super-admin/schools/'
       path: '/'
@@ -1190,12 +1556,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SuperAdminSchoolsIndexRouteImport
       parentRoute: typeof SuperAdminSchoolsRoute
     }
+    '/gate-keeper/attendance/': {
+      id: '/gate-keeper/attendance/'
+      path: '/'
+      fullPath: '/gate-keeper/attendance/'
+      preLoaderRoute: typeof GateKeeperAttendanceIndexRouteImport
+      parentRoute: typeof GateKeeperAttendanceRoute
+    }
     '/super-admin/schools/$id': {
       id: '/super-admin/schools/$id'
       path: '/$id'
       fullPath: '/super-admin/schools/$id'
       preLoaderRoute: typeof SuperAdminSchoolsIdRouteImport
       parentRoute: typeof SuperAdminSchoolsRoute
+    }
+    '/gate-keeper/attendance/make-attendance': {
+      id: '/gate-keeper/attendance/make-attendance'
+      path: '/make-attendance'
+      fullPath: '/gate-keeper/attendance/make-attendance'
+      preLoaderRoute: typeof GateKeeperAttendanceMakeAttendanceRouteImport
+      parentRoute: typeof GateKeeperAttendanceRoute
+    }
+    '/gate-keeper/attendance/history': {
+      id: '/gate-keeper/attendance/history'
+      path: '/history'
+      fullPath: '/gate-keeper/attendance/history'
+      preLoaderRoute: typeof GateKeeperAttendanceHistoryRouteImport
+      parentRoute: typeof GateKeeperAttendanceRoute
+    }
+    '/gate-keeper/attendance/device-attendance': {
+      id: '/gate-keeper/attendance/device-attendance'
+      path: '/device-attendance'
+      fullPath: '/gate-keeper/attendance/device-attendance'
+      preLoaderRoute: typeof GateKeeperAttendanceDeviceAttendanceRouteImport
+      parentRoute: typeof GateKeeperAttendanceRoute
     }
   }
 }
@@ -1217,6 +1611,24 @@ const BoardingRouteChildren: BoardingRouteChildren = {
 const BoardingRouteWithChildren = BoardingRoute._addFileChildren(
   BoardingRouteChildren,
 )
+
+interface ExamsRouteChildren {
+  ExamsAnalyticsRoute: typeof ExamsAnalyticsRoute
+  ExamsPublishedRoute: typeof ExamsPublishedRoute
+  ExamsReviewRoute: typeof ExamsReviewRoute
+  ExamsScheduleRoute: typeof ExamsScheduleRoute
+  ExamsIndexRoute: typeof ExamsIndexRoute
+}
+
+const ExamsRouteChildren: ExamsRouteChildren = {
+  ExamsAnalyticsRoute: ExamsAnalyticsRoute,
+  ExamsPublishedRoute: ExamsPublishedRoute,
+  ExamsReviewRoute: ExamsReviewRoute,
+  ExamsScheduleRoute: ExamsScheduleRoute,
+  ExamsIndexRoute: ExamsIndexRoute,
+}
+
+const ExamsRouteWithChildren = ExamsRoute._addFileChildren(ExamsRouteChildren)
 
 interface StaffRouteChildren {
   StaffAlertsRoute: typeof StaffAlertsRoute
@@ -1291,6 +1703,25 @@ const SuperAdminRouteWithChildren = SuperAdminRoute._addFileChildren(
   SuperAdminRouteChildren,
 )
 
+interface GateKeeperAttendanceRouteChildren {
+  GateKeeperAttendanceDeviceAttendanceRoute: typeof GateKeeperAttendanceDeviceAttendanceRoute
+  GateKeeperAttendanceHistoryRoute: typeof GateKeeperAttendanceHistoryRoute
+  GateKeeperAttendanceMakeAttendanceRoute: typeof GateKeeperAttendanceMakeAttendanceRoute
+  GateKeeperAttendanceIndexRoute: typeof GateKeeperAttendanceIndexRoute
+}
+
+const GateKeeperAttendanceRouteChildren: GateKeeperAttendanceRouteChildren = {
+  GateKeeperAttendanceDeviceAttendanceRoute:
+    GateKeeperAttendanceDeviceAttendanceRoute,
+  GateKeeperAttendanceHistoryRoute: GateKeeperAttendanceHistoryRoute,
+  GateKeeperAttendanceMakeAttendanceRoute:
+    GateKeeperAttendanceMakeAttendanceRoute,
+  GateKeeperAttendanceIndexRoute: GateKeeperAttendanceIndexRoute,
+}
+
+const GateKeeperAttendanceRouteWithChildren =
+  GateKeeperAttendanceRoute._addFileChildren(GateKeeperAttendanceRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
@@ -1299,6 +1730,7 @@ const rootRouteChildren: RootRouteChildren = {
   ClassesRoute: ClassesRoute,
   ContactRoute: ContactRoute,
   DashboardRoute: DashboardRoute,
+  ExamsRoute: ExamsRouteWithChildren,
   FeaturesRoute: FeaturesRoute,
   FeesRoute: FeesRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
@@ -1316,6 +1748,16 @@ const rootRouteChildren: RootRouteChildren = {
   StudentsRoute: StudentsRoute,
   SuperAdminRoute: SuperAdminRouteWithChildren,
   VisitorsRoute: VisitorsRoute,
+  BoardingOfficerAttendanceRoute: BoardingOfficerAttendanceRoute,
+  BoardingOfficerDashboardRoute: BoardingOfficerDashboardRoute,
+  BoardingOfficerDormitoryRoute: BoardingOfficerDormitoryRoute,
+  BoardingOfficerLeavesRoute: BoardingOfficerLeavesRoute,
+  BoardingOfficerReportsRoute: BoardingOfficerReportsRoute,
+  GateKeeperAttendanceRoute: GateKeeperAttendanceRouteWithChildren,
+  GateKeeperBoardingLeaveRoute: GateKeeperBoardingLeaveRoute,
+  GateKeeperDashboardRoute: GateKeeperDashboardRoute,
+  GateKeeperDeviceStatusRoute: GateKeeperDeviceStatusRoute,
+  GateKeeperVisitorsRoute: GateKeeperVisitorsRoute,
   TeacherAttendanceRoute: TeacherAttendanceRoute,
   TeacherClassesRoute: TeacherClassesRoute,
   TeacherDashboardRoute: TeacherDashboardRoute,

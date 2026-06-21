@@ -76,6 +76,10 @@ function LoginPage() {
         ? "/super-admin"
         : role === "teacher"
         ? "/teacher/dashboard"
+        : role === "gate_keeper"
+        ? "/gate-keeper/dashboard"
+        : role === "boarding_officer"
+        ? "/boarding-officer/dashboard"
         : role === "staff"
         ? "/staff/dashboard"
         : "/dashboard";

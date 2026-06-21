@@ -395,7 +395,7 @@ export const schoolConfig: SchoolConfig = {
   hasBoarding: true,
   hasBiometrics: true,
   hasGateManagement: true,
-  enabledModules: ["dashboard","attendance","students","classes","visitors","fees","staff","boarding","gate","leaves","parents","notifications","reports","settings"],
+  enabledModules: ["dashboard","attendance","students","classes","exams","visitors","fees","staff","boarding","gate","leaves","parents","notifications","reports","settings"],
   smsProvider: "pindo",
   planTier: "premium",
   currency: "RWF",

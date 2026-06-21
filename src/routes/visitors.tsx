@@ -249,7 +249,7 @@ const durationToMinutes = (label: string) => {
   }
 };
 
-function VisitorsPage() {
+export function VisitorsManagement() {
   const [tab, setTab] = useState<Tab>("Active Visitors");
   const [visitors, setVisitors] = useState<ApiVisitor[]>([]);
   const [appointments, setAppointments] = useState<ApiAppointment[]>([]);
@@ -530,7 +530,7 @@ function VisitorsPage() {
   };
 
   return (
-    <AppLayout title="Visitor Management" subtitle="Campus visitor check-in & check-out">
+    <>
       <div className="flex justify-end mb-4">
         <button onClick={() => setRegisterOpen(true)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow hover:opacity-90">
           <Plus className="h-4 w-4" /> Register Visitor
@@ -601,10 +601,21 @@ function VisitorsPage() {
         <CheckoutModal
           visitor={checkoutTarget}
           onClose={() => setCheckoutTarget(null)}
-          onConfirm={(notes) => void handleCheckout(checkoutTarget, notes)}
+          onConfirm={async (notes) => {
+            await handleCheckout(checkoutTarget, notes);
+            setCheckoutTarget(null);
+          }}
         />
       )}
       {viewing && <ViewModal visitor={viewing} onClose={() => setViewing(null)} />}
+    </>
+  );
+}
+
+function VisitorsPage() {
+  return (
+    <AppLayout title="Visitor Management" subtitle="Campus visitor check-in & check-out">
+      <VisitorsManagement />
     </AppLayout>
   );
 }
@@ -1158,10 +1169,21 @@ function CheckoutModal({
 }: {
   visitor: VisitRow;
   onClose: () => void;
-  onConfirm: (notes: string) => void;
+  onConfirm: (notes: string) => void | Promise<void>;
 }) {
   const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const now = formatTime(new Date().toISOString());
+
+  const confirm = async () => {
+    setSubmitting(true);
+    try {
+      await onConfirm(notes);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <ModalShell onClose={onClose} size="md">
       <div className="flex items-center justify-between border-b border-border px-6 py-4">
@@ -1179,7 +1201,8 @@ function CheckoutModal({
       </div>
       <div className="flex justify-end gap-2 border-t border-border px-6 py-4 bg-muted/20">
         <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
-        <button onClick={() => onConfirm(notes)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
+        <button disabled={submitting} onClick={() => void confirm()} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">
+          {submitting && <span className="h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin" />}
           <CheckCircle2 className="h-4 w-4" /> Complete Check-out
         </button>
       </div>

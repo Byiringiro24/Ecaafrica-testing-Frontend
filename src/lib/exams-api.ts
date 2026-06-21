@@ -36,6 +36,28 @@ export interface ExamResult {
   published_at?: string | null;
   created_at: string;
   updated_at: string;
+  student?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    student_id_number?: string | null;
+  } | null;
+}
+
+export interface ExamResultsResponse {
+  exam: {
+    id: string;
+    name: string;
+    max_marks: string;
+    pass_mark: string;
+  };
+  stats: {
+    class_average: string | null;
+    highest: string | null;
+    lowest: string | null;
+    count: number;
+  };
+  results: ExamResult[];
 }
 
 export interface Student {
@@ -50,6 +72,41 @@ export interface TeacherExam extends Exam {
   marked_count?: number;
   average_score?: string;
   pass_rate?: string;
+}
+
+export interface TeacherAssignmentPair {
+  section_id: string;
+  subject_id: string;
+  section: { id: string; name: string; full_name: string };
+  subject: { id: string; name: string; code?: string | null };
+}
+
+export interface TeacherAssignmentSubject {
+  id: string;
+  name: string;
+  code?: string;
+}
+
+export interface TeacherAssignmentsResponse {
+  sections: Array<{ id: string; name: string; full_name: string; class_id: string }>;
+  subjects: TeacherAssignmentSubject[];
+  assignments: TeacherAssignmentPair[];
+}
+
+export function computeGrade(score: number, maxMarks: number): string {
+  const percent = maxMarks > 0 ? (score / maxMarks) * 100 : 0;
+  if (percent >= 80) return "A";
+  if (percent >= 70) return "B";
+  if (percent >= 60) return "C";
+  if (percent >= 50) return "D";
+  return "F";
+}
+
+export function studentDisplayName(result: ExamResult): string {
+  if (result.student) {
+    return `${result.student.first_name} ${result.student.last_name}`.trim();
+  }
+  return result.student_id;
 }
 
 // List exams for current teacher
@@ -78,7 +135,7 @@ export async function createExam(data: {
   section_id: string;
   subject_id: string;
   type: string;
-  exam_date: string;
+  exam_date?: string;
   start_time?: string;
   duration_min?: number;
   max_marks: number;
@@ -143,18 +200,7 @@ export async function deleteExam(examId: string) {
   );
 }
 
-// Get students for an exam/section
-export async function getStudentsForExam(sectionId: string) {
-  return apiRequest<Student[]>(
-    `/sections/${sectionId}/students`,
-    {
-      method: "GET",
-      auth: "school",
-    }
-  );
-}
-
-// Get students in a section by exam
+// Get students in a section
 export async function getStudentsInSection(sectionId: string) {
   return apiRequest<Student[]>(
     `/sections/${sectionId}/students?limit=500`,
@@ -165,8 +211,20 @@ export async function getStudentsInSection(sectionId: string) {
   );
 }
 
-// Record exam results
-export async function recordExamResults(examId: string, results: any[]) {
+type ResultPayload = {
+  student_id: string;
+  score?: string;
+  remarks?: string;
+  is_absent?: boolean;
+  grade?: string;
+};
+
+// Record exam results (draft or publish)
+export async function recordExamResults(
+  examId: string,
+  results: ResultPayload[],
+  publish = false
+) {
   return apiRequest(
     "/exam-results/bulk",
     {
@@ -175,33 +233,15 @@ export async function recordExamResults(examId: string, results: any[]) {
       body: JSON.stringify({
         exam_id: examId,
         results,
+        publish,
       }),
     }
   );
 }
 
-// Record single result
-export async function recordExamResult(data: {
-  exam_id: string;
-  student_id: string;
-  score?: number;
-  grade?: string;
-  remarks?: string;
-  is_absent?: boolean;
-}) {
-  return apiRequest<ExamResult>(
-    "/exam-results",
-    {
-      method: "POST",
-      auth: "school",
-      body: JSON.stringify(data),
-    }
-  );
-}
-
 // Get results for an exam
-export async function getExamResults(examId: string) {
-  return apiRequest<ExamResult[]>(
+export async function getExamResults(examId: string): Promise<ExamResultsResponse> {
+  return apiRequest<ExamResultsResponse>(
     `/exam-results/by-exam/${examId}?limit=500`,
     {
       method: "GET",
@@ -234,17 +274,6 @@ export async function publishExamResults(examId: string) {
 }
 
 // Get teacher's assigned classes and subjects
-export interface TeacherAssignmentSubject {
-  id: string;
-  name: string;
-  code?: string;
-}
-
-export interface TeacherAssignmentsResponse {
-  sections: Array<{ id: string; name: string; full_name: string; class_id: string }>;
-  subjects: TeacherAssignmentSubject[];
-}
-
 export async function getTeacherAssignments() {
   return apiRequest<TeacherAssignmentsResponse>(
     "/exams/teacher/assignments",

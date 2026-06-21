@@ -11,6 +11,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { getTeacherAssignments, type TeacherAssignmentPair } from "@/lib/exams-api";
 
 export const Route = createFileRoute("/teacher/dashboard")({
   beforeLoad: ({ location }) => teacherRouteGuard(location),
@@ -43,12 +44,6 @@ type StudentCountResponse = {
   meta?: { total?: number };
 };
 
-type TeacherSectionSubject = {
-  id: string;
-  section_id: string;
-  subject_id?: string;
-};
-
 type SubjectRecord = {
   id: string;
   name: string;
@@ -64,6 +59,7 @@ function TeacherDashboard() {
   const [classes, setClasses] = useState<Record<string, ClassRecord>>({});
   const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
   const [subjects, setSubjects] = useState<SubjectRecord[]>([]);
+  const [teachingAssignments, setTeachingAssignments] = useState<TeacherAssignmentPair[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -78,20 +74,24 @@ function TeacherDashboard() {
           { auth: "school" }
         );
 
-        // Fetch teacher's section-subject assignments
-        const teacherAssignments = await apiRequest<TeacherSectionSubject[]>(
-          `/teacher-section-subjects?teacher_id=${teacherId}&limit=500`,
-          { auth: "school" }
-        );
+        // Admin-assigned teaching subjects live in teacher_section_subjects
+        const assignmentData = await getTeacherAssignments();
+        setSubjects(assignmentData.subjects ?? []);
+        setTeachingAssignments(assignmentData.assignments ?? []);
 
-        // Get section IDs from assignments
         const assignedSectionIds = new Set(
-          teacherAssignments.map((t) => t.section_id)
+          assignmentData.assignments.map((item) => item.section_id)
         );
 
-        // Filter sections: those assigned to teacher or where teacher is class teacher
+        // Include sections from subject assignments and class-teacher role
+        const assignmentSectionIds = new Set(
+          (assignmentData.sections ?? []).map((section) => section.id)
+        );
         const teacherSections = allSections.filter(
-          (s) => assignedSectionIds.has(s.id) || s.class_teacher_id === teacherId
+          (s) =>
+            assignedSectionIds.has(s.id) ||
+            assignmentSectionIds.has(s.id) ||
+            s.class_teacher_id === teacherId
         );
 
         setSections(teacherSections);
@@ -110,25 +110,6 @@ function TeacherDashboard() {
           }
         });
         setClasses(classMap);
-
-        // Build subject list from the teacher's actual section-subject assignments
-        const subjectIds = new Set(teacherAssignments.map((t) => t.subject_id).filter(Boolean));
-        const subjects: SubjectRecord[] = [];
-        if (subjectIds.size > 0) {
-          const subjectList = await apiRequest<SubjectRecord[]>(
-            `/subjects?limit=500`,
-            { auth: "school" }
-          );
-
-          const subjectMap: Record<string, SubjectRecord> = {};
-          subjectList.forEach((subject) => {
-            if (subjectIds.has(subject.id)) {
-              subjectMap[subject.id] = subject;
-            }
-          });
-          subjects.push(...Object.values(subjectMap));
-        }
-        setSubjects(subjects);
 
         // Fetch student counts for each section
         const counts: Record<string, number> = {};
@@ -159,8 +140,7 @@ function TeacherDashboard() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
-  const mergedSubjectNames = Array.from(new Set(subjects.map((subject) => subject.name)));
-  const subjectCount = mergedSubjectNames.length;
+  const subjectCount = subjects.length;
 
   const displayName = currentUser?.name
     ? currentUser.name.split(" ").slice(0, 2).join(" ")
@@ -221,20 +201,36 @@ function TeacherDashboard() {
                   <Skeleton key={i} className="h-8" />
                 ))}
               </div>
-            ) : mergedSubjectNames.length > 0 ? (
+            ) : teachingAssignments.length > 0 ? (
+              <div className="space-y-3">
+                <div className="text-sm text-muted-foreground">
+                  Assigned by your school admin ({subjectCount} subject{subjectCount === 1 ? "" : "s"})
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {teachingAssignments.map((item) => (
+                    <span
+                      key={`${item.section_id}-${item.subject_id}`}
+                      className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium"
+                    >
+                      {item.subject.name} — {item.section.full_name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : subjects.length > 0 ? (
               <div className="space-y-3">
                 <div className="text-sm text-muted-foreground">Assigned subjects</div>
                 <div className="flex flex-wrap gap-2">
-                  {mergedSubjectNames.map((subject) => (
-                    <span key={`merged-${subject}`} className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium">
-                      {subject}
+                  {subjects.map((subject) => (
+                    <span key={subject.id} className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium">
+                      {subject.name}
                     </span>
                   ))}
                 </div>
               </div>
             ) : (
               <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                No assigned subjects yet.
+                No assigned subjects yet. Ask your school admin to add class/subject teaching assignments.
               </div>
             )}
           </div>

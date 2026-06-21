@@ -53,6 +53,25 @@ type SectionRecord = {
   class_teacher_id?: string | null;
 };
 
+type SubjectRecord = {
+  id: string;
+  name: string;
+  code?: string | null;
+};
+
+type TeacherSectionSubjectRecord = {
+  id: string;
+  teacher_id: string;
+  section_id: string;
+  subject_id: string;
+};
+
+type TeachingAssignmentRow = {
+  section_id: string;
+  subject_id: string;
+  recordId?: string;
+};
+
 type SystemSetting = {
   id: string;
   key_name: string;
@@ -92,7 +111,7 @@ type StaffRow = {
 const TABS = ["All Staff", " ", "Departments"] as const;
 const DEFAULT_DEPARTMENTS = ["Teaching", "Administration", "Boarding"];
 const STAFF_DEPARTMENTS_KEY = "staff_departments";
-const STAFF_ROLES = ["teacher", "staff", "school_admin"] as const;
+const STAFF_ROLES = ["teacher", "staff", "gate_keeper", "boarding_officer", "school_admin"] as const;
 const EMPTY_VALUE = "--";
 const STAFF_TABLE_HEADERS = ["Name", "Staff ID", "Role", "Department", "Phone", "Join Date", "Status", ""] as const;
 
@@ -127,20 +146,34 @@ const buildStaffRows = (
   profiles: StaffProfileRecord[],
   users: UserRecord[],
   sections: SectionRecord[],
-  classes: ClassRecord[]
+  classes: ClassRecord[],
+  teachingAssignments: TeacherSectionSubjectRecord[],
+  subjectCatalog: SubjectRecord[]
 ): StaffRow[] => {
   const userMap = new Map(users.map((user) => [user.id, user]));
   const classMap = new Map(classes.map((cls) => [cls.id, cls]));
-  const teacherAssignments = new Map<string, { classNames: string[]; sectionIds: string[] }>();
+  const subjectMap = new Map(subjectCatalog.map((subject) => [subject.id, subject.name]));
+  const classTeacherAssignments = new Map<string, { classNames: string[]; sectionIds: string[] }>();
+  const teachingSubjectsByTeacher = new Map<string, string[]>();
+
+  teachingAssignments.forEach((assignment) => {
+    const subjectName = subjectMap.get(assignment.subject_id);
+    if (!subjectName) return;
+    const current = teachingSubjectsByTeacher.get(assignment.teacher_id) ?? [];
+    if (!current.includes(subjectName)) {
+      current.push(subjectName);
+      teachingSubjectsByTeacher.set(assignment.teacher_id, current);
+    }
+  });
 
   sections.forEach((section) => {
     if (!section.class_teacher_id) return;
     const cls = classMap.get(section.class_id);
     const displayName = section.full_name || cls?.name || `Section ${section.id}`;
-    const current = teacherAssignments.get(section.class_teacher_id) ?? { classNames: [], sectionIds: [] };
+    const current = classTeacherAssignments.get(section.class_teacher_id) ?? { classNames: [], sectionIds: [] };
     current.classNames.push(displayName);
     current.sectionIds.push(section.id);
-    teacherAssignments.set(section.class_teacher_id, current);
+    classTeacherAssignments.set(section.class_teacher_id, current);
   });
 
   return profiles.map((profile) => {
@@ -148,11 +181,12 @@ const buildStaffRows = (
     const fallbackUser = profile.user ?? null;
     const user = linkedUser ?? fallbackUser;
     const roleValue = user?.role ?? fallbackUser?.role ?? null;
-    const assignment = profile.user_id ? teacherAssignments.get(profile.user_id) : null;
+    const assignment = profile.user_id ? classTeacherAssignments.get(profile.user_id) : null;
+    const teacherId = profile.user_id ?? user?.id ?? null;
 
     return {
       id: profile.id,
-      userId: profile.user_id ?? user?.id ?? null,
+      userId: teacherId,
       staffId: profile.staff_id_number ?? `STF-${profile.id}`,
       name: user?.name ?? EMPTY_VALUE,
       role: roleLabel(roleValue),
@@ -165,7 +199,7 @@ const buildStaffRows = (
       statusValue: profile.employment_status ?? null,
       gender: genderLabel(profile.gender),
       contractType: contractLabel(profile.contract_type),
-      subjects: profile.subjects ?? [],
+      subjects: teacherId ? (teachingSubjectsByTeacher.get(teacherId) ?? []) : [],
       dateOfBirth: profile.date_of_birth ?? EMPTY_VALUE,
       nationalId: profile.national_id ?? EMPTY_VALUE,
       address: profile.address ?? EMPTY_VALUE,
@@ -193,6 +227,8 @@ function StaffPage() {
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [classes, setClasses] = useState<ClassRecord[]>([]);
   const [sections, setSections] = useState<SectionRecord[]>([]);
+  const [teacherSectionSubjects, setTeacherSectionSubjects] = useState<TeacherSectionSubjectRecord[]>([]);
+  const [subjectCatalog, setSubjectCatalog] = useState<SubjectRecord[]>([]);
   const [departments, setDepartments] = useState<string[]>(DEFAULT_DEPARTMENTS);
   const [departmentSetting, setDepartmentSetting] = useState<SystemSetting | null>(null);
   const [loading, setLoading] = useState(false);
@@ -200,8 +236,8 @@ function StaffPage() {
   const [accountBusyId, setAccountBusyId] = useState<string | null>(null);
 
   const staffRows = useMemo(
-    () => buildStaffRows(staffProfiles, users, sections, classes),
-    [staffProfiles, users, sections, classes]
+    () => buildStaffRows(staffProfiles, users, sections, classes, teacherSectionSubjects, subjectCatalog),
+    [staffProfiles, users, sections, classes, teacherSectionSubjects, subjectCatalog]
   );
   const teacherRows = useMemo(() => staffRows.filter((staff) => staff.roleValue === "teacher"), [staffRows]);
 
@@ -274,12 +310,16 @@ function StaffPage() {
 
   const loadClassAssignments = async () => {
     try {
-      const [classRecords, sectionRecords] = await Promise.all([
+      const [classRecords, sectionRecords, assignmentRecords, subjectRecords] = await Promise.all([
         apiRequest<ClassRecord[]>('/classes?limit=1000', { auth: 'school' }),
-        apiRequest<SectionRecord[]>('/sections?limit=1000', { auth: 'school' })
+        apiRequest<SectionRecord[]>('/sections?limit=1000', { auth: 'school' }),
+        apiRequest<TeacherSectionSubjectRecord[]>('/teacher-section-subjects?limit=1000', { auth: 'school' }),
+        apiRequest<SubjectRecord[]>('/subjects?limit=500', { auth: 'school' }),
       ]);
       setClasses(Array.isArray(classRecords) ? classRecords : []);
       setSections(Array.isArray(sectionRecords) ? sectionRecords : []);
+      setTeacherSectionSubjects(Array.isArray(assignmentRecords) ? assignmentRecords : []);
+      setSubjectCatalog(Array.isArray(subjectRecords) ? subjectRecords : []);
     } catch (error: any) {
       toast.error(error?.message ?? 'Failed to load class assignments');
     }
@@ -568,7 +608,7 @@ function StaffCard({
         <div className="flex items-center gap-2"><Calendar className="h-3 w-3" /> Joined {staff.joinDate}</div>
         {staff.subjects.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-600">
-            <span className="font-semibold">Subjects:</span>
+            <span className="font-semibold">Teaching Subjects:</span>
             {staff.subjects.map((subject) => (
               <span key={subject} className="rounded-full border border-border bg-muted px-2 py-0.5">
                 {subject}
@@ -705,7 +745,7 @@ function StaffProfileSlideOver({ staff, onClose }: { staff: StaffRow; onClose: (
             <Row k="Contract" v={staff.contractType} />
             <Row k="Status" v={staff.status} />
             <Row k="Timetable Access" v={staff.timetableAccess} />
-            {staff.subjects.length > 0 && <Row k="Subjects" v={staff.subjects.join(", ")} />}
+            {staff.subjects.length > 0 && <Row k="Teaching Subjects" v={staff.subjects.join(", ")} />}
             {staff.assignedClasses.length > 0 && <Row k="Assigned Classes" v={staff.assignedClasses.join(", ")} />}
           </Section>
         </div>
@@ -746,6 +786,8 @@ function RegisterStaffModal({
   const roleOptions = [
     { label: "Teacher", value: "teacher" },
     { label: "Staff", value: "staff" },
+    { label: "Gate Keeper", value: "gate_keeper" },
+    { label: "Boarding Officer", value: "boarding_officer" },
     { label: "School Admin", value: "school_admin" },
   ];
 
@@ -758,8 +800,6 @@ function RegisterStaffModal({
     address: "",
     role: roleOptions[0].value,
     department: departments[0] ?? "",
-    subjects: [] as string[],
-    subjectInput: "",
   });
 
   useEffect(() => {
@@ -775,22 +815,6 @@ function RegisterStaffModal({
   };
   const todayValue = new Date().toISOString().slice(0, 10);
   const valid1 = Boolean(data.name.trim() && (data.phone.trim() || data.email.trim()));
-
-  const addSubject = () => {
-    const subject = data.subjectInput.trim();
-    if (!subject) return;
-    if (data.subjects.some((item) => item.toLowerCase() === subject.toLowerCase())) {
-      update("subjectInput", "");
-      return;
-    }
-
-    update("subjects", [...data.subjects, subject]);
-    update("subjectInput", "");
-  };
-
-  const removeSubject = (subject: string) => {
-    update("subjects", data.subjects.filter((item) => item !== subject));
-  };
 
   const submit = async () => {
     if (!valid1) {
@@ -825,7 +849,6 @@ function RegisterStaffModal({
           department: data.department || undefined,
           join_date: data.joinDate || undefined,
           employment_status: "active",
-          subjects: data.subjects.length ? data.subjects : undefined
         })
       });
 
@@ -910,39 +933,6 @@ function RegisterStaffModal({
               <Field label="Address" value={data.address} onChange={(v: any) => update("address", v)} className="md:col-span-2" />
               <Field label="Role" type="select" value={data.role} onChange={(v: any) => update("role", v)} options={roleOptions.map((o) => o.value)} optionLabels={roleOptions.reduce((acc, o) => ({ ...acc, [o.value]: o.label }), {} as Record<string, string>)} />
               <Field label="Department" type="select" value={data.department} onChange={(v: any) => update("department", v)} options={departments} />
-              <div className="md:col-span-2 space-y-2">
-                <label className="block text-xs font-semibold text-muted-foreground">Subjects</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={data.subjectInput}
-                    onChange={(e) => update("subjectInput", e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addSubject();
-                      }
-                    }}
-                    placeholder="Add a subject"
-                    className="h-10 flex-1 rounded-lg border border-border bg-background px-3 text-sm"
-                  />
-                  <button type="button" onClick={addSubject} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted">Add</button>
-                </div>
-                {data.subjects.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {data.subjects.map((subject) => (
-                      <button
-                        key={subject}
-                        type="button"
-                        onClick={() => removeSubject(subject)}
-                        className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary hover:bg-primary/15"
-                      >
-                        {subject} ×
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
           )}
           {step === 2 && (
@@ -996,11 +986,50 @@ function EditStaffModal({
     email: staff.email === EMPTY_VALUE ? "" : staff.email,
     contractType: staff.contractType === EMPTY_VALUE ? "" : staff.contractType,
     timetableAccess: staff.timetableAccess === EMPTY_VALUE ? "" : staff.timetableAccess,
-    subjects: staff.subjects ?? [],
-    subjectInput: "",
   });
   const [selectedSectionIds, setSelectedSectionIds] = useState<string[]>(staff.assignedSectionIds ?? []);
+  const [subjects, setSubjects] = useState<SubjectRecord[]>([]);
+  const [newTeachingSubject, setNewTeachingSubject] = useState("");
+  const [creatingSubject, setCreatingSubject] = useState(false);
+  const [teachingAssignments, setTeachingAssignments] = useState<TeachingAssignmentRow[]>([]);
+  const [initialTeachingAssignments, setInitialTeachingAssignments] = useState<TeacherSectionSubjectRecord[]>([]);
+  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const timetableAccessOptions = ["Full Access", "Limited Access", "Read Only"];
+
+  useEffect(() => {
+    if (data.role !== "teacher") return;
+
+    (async () => {
+      setAssignmentsLoading(true);
+      try {
+        const subjectRecords = await apiRequest<SubjectRecord[]>("/subjects?limit=500", { auth: "school" });
+        setSubjects(Array.isArray(subjectRecords) ? subjectRecords : []);
+
+        if (staff.userId) {
+          const assignmentRecords = await apiRequest<TeacherSectionSubjectRecord[]>(
+            `/teacher-section-subjects?teacher_id=${staff.userId}&limit=500`,
+            { auth: "school" }
+          );
+          const existing = Array.isArray(assignmentRecords) ? assignmentRecords : [];
+          setInitialTeachingAssignments(existing);
+          setTeachingAssignments(
+            existing.map((item) => ({
+              recordId: item.id,
+              section_id: item.section_id,
+              subject_id: item.subject_id,
+            }))
+          );
+        } else {
+          setInitialTeachingAssignments([]);
+          setTeachingAssignments([]);
+        }
+      } catch (err: any) {
+        toast.error(err?.message ?? "Failed to load teaching assignments");
+      } finally {
+        setAssignmentsLoading(false);
+      }
+    })();
+  }, [data.role, staff.userId]);
 
   const submit = async () => {
     setSubmitting(true);
@@ -1013,7 +1042,6 @@ function EditStaffModal({
           gender: data.gender ? data.gender.toLowerCase() : null,
           department: data.department || null,
           timetable_access: data.timetableAccess || null,
-          subjects: data.subjects.length ? data.subjects : []
         })
       });
 
@@ -1051,6 +1079,46 @@ function EditStaffModal({
             })
           )
         ]);
+
+        if (data.role === "teacher") {
+          const validAssignments = teachingAssignments.filter(
+            (item) => item.section_id && item.subject_id
+          );
+          const assignmentKey = (sectionId: string, subjectId: string) => `${sectionId}:${subjectId}`;
+          const nextKeys = new Set(
+            validAssignments.map((item) => assignmentKey(item.section_id, item.subject_id))
+          );
+          const initialKeys = new Set(
+            initialTeachingAssignments.map((item) => assignmentKey(item.section_id, item.subject_id))
+          );
+
+          const toRemove = initialTeachingAssignments.filter(
+            (item) => !nextKeys.has(assignmentKey(item.section_id, item.subject_id))
+          );
+          const toAdd = validAssignments.filter(
+            (item) => !initialKeys.has(assignmentKey(item.section_id, item.subject_id))
+          );
+
+          await Promise.all([
+            ...toRemove.map((item) =>
+              apiRequest(`/teacher-section-subjects/${item.id}`, {
+                method: "DELETE",
+                auth: "school",
+              })
+            ),
+            ...toAdd.map((item) =>
+              apiRequest("/teacher-section-subjects", {
+                method: "POST",
+                auth: "school",
+                body: JSON.stringify({
+                  teacher_id: staff.userId,
+                  section_id: item.section_id,
+                  subject_id: item.subject_id,
+                }),
+              })
+            ),
+          ]);
+        }
       }
 
       toast.success("Staff profile updated.");
@@ -1065,18 +1133,53 @@ function EditStaffModal({
     }
   };
 
-  const addSubject = () => {
-    const subject = data.subjectInput.trim();
-    if (!subject) return;
-    if (data.subjects.some((item) => item.toLowerCase() === subject.toLowerCase())) {
-      setData((prev) => ({ ...prev, subjectInput: "" }));
-      return;
-    }
-    setData((prev) => ({ ...prev, subjects: [...prev.subjects, subject], subjectInput: "" }));
+  const removeTeachingAssignment = (index: number) => {
+    setTeachingAssignments((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const removeSubject = (subject: string) => {
-    setData((prev) => ({ ...prev, subjects: prev.subjects.filter((item) => item.toLowerCase() !== subject.toLowerCase()) }));
+  const updateTeachingAssignment = (
+    index: number,
+    field: "section_id" | "subject_id",
+    value: string
+  ) => {
+    setTeachingAssignments((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const addTeachingAssignment = () => {
+    setTeachingAssignments((prev) => [...prev, { section_id: "", subject_id: "" }]);
+  };
+
+  const handleCreateTeachingSubject = async () => {
+    const name = newTeachingSubject.trim();
+    if (name.length < 2) {
+      toast.error("Subject name must be at least 2 characters");
+      return;
+    }
+    if (subjects.some((item) => item.name.toLowerCase() === name.toLowerCase())) {
+      toast.error("Subject already exists");
+      setNewTeachingSubject("");
+      return;
+    }
+
+    setCreatingSubject(true);
+    try {
+      const created = await apiRequest<SubjectRecord>("/subjects", {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({ name }),
+      });
+      setSubjects((prev) =>
+        [...prev, created].sort((a, b) => a.name.localeCompare(b.name))
+      );
+      setNewTeachingSubject("");
+      toast.success(`Subject "${created.name}" created`);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to create subject");
+    } finally {
+      setCreatingSubject(false);
+    }
   };
 
   return (
@@ -1090,7 +1193,7 @@ function EditStaffModal({
           {error && <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</div>}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="Full Name" value={data.name} onChange={(v: any) => setData((prev) => ({ ...prev, name: v }))} />
-            <Field label="Role" type="select" value={data.role} onChange={(v: any) => setData((prev) => ({ ...prev, role: v }))} options={["teacher", "staff", "school_admin"]} />
+            <Field label="Role" type="select" value={data.role} onChange={(v: any) => setData((prev) => ({ ...prev, role: v }))} options={["teacher", "staff", "gate_keeper", "boarding_officer", "school_admin"]} />
             <Field label="Gender" type="select" value={data.gender} onChange={(v: any) => setData((prev) => ({ ...prev, gender: v }))} options={["Male", "Female", "Other"]} />
             <Field label="Department" type="select" value={data.department} onChange={(v: any) => setData((prev) => ({ ...prev, department: v }))} options={departments} />
             <SaPhoneInput label="Phone" value={data.phone} onChange={(v) => setData((prev) => ({ ...prev, phone: v }))} defaultCountryName={schoolCountry ?? undefined} className="md:col-span-2" />
@@ -1142,39 +1245,110 @@ function EditStaffModal({
                 )}
               </div>
             )}
-            <div className="md:col-span-2 space-y-2">
-              <label className="block text-xs font-semibold text-muted-foreground">Subjects</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={data.subjectInput}
-                  onChange={(e) => setData((prev) => ({ ...prev, subjectInput: e.target.value }))}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addSubject();
-                    }
-                  }}
-                  placeholder="Add a subject"
-                  className="h-10 flex-1 rounded-lg border border-border bg-background px-3 text-sm"
-                />
-                <button type="button" onClick={addSubject} className="h-10 rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted">Add</button>
-              </div>
-              {data.subjects.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {data.subjects.map((subject: string) => (
-                    <button
-                      key={subject}
-                      type="button"
-                      onClick={() => removeSubject(subject)}
-                      className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary hover:bg-primary/15"
-                    >
-                      {subject} ×
-                    </button>
-                  ))}
+            {data.role === "teacher" && (
+              <div className="md:col-span-2 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-muted-foreground">
+                    Teaching Assignments (Class + Subject)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addTeachingAssignment}
+                    className="text-xs font-semibold text-primary hover:underline"
+                  >
+                    + Add assignment
+                  </button>
                 </div>
-              )}
-            </div>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    type="text"
+                    value={newTeachingSubject}
+                    onChange={(e) => setNewTeachingSubject(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleCreateTeachingSubject();
+                      }
+                    }}
+                    placeholder="Create subject (e.g. Mathematics)"
+                    className="h-10 flex-1 min-w-48 rounded-lg border border-border bg-background px-3 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateTeachingSubject}
+                    disabled={creatingSubject || newTeachingSubject.trim().length < 2}
+                    className="h-10 rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted disabled:opacity-60"
+                  >
+                    {creatingSubject ? "Adding…" : "Add Subject"}
+                  </button>
+                </div>
+                {subjects.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {subjects.map((subject) => (
+                      <span
+                        key={subject.id}
+                        className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
+                      >
+                        {subject.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  !assignmentsLoading && (
+                    <div className="text-xs text-muted-foreground">
+                      No subjects yet. Create one above, then pick it in each assignment row.
+                    </div>
+                  )
+                )}
+                {assignmentsLoading ? (
+                  <div className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+                    Loading teaching assignments…
+                  </div>
+                ) : teachingAssignments.length === 0 ? (
+                  <div className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+                    No class/subject teaching assignments yet. Add one so the teacher can schedule exams and enter marks.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {teachingAssignments.map((assignment, index) => (
+                        <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                          <select
+                            value={assignment.section_id}
+                            onChange={(e) => updateTeachingAssignment(index, "section_id", e.target.value)}
+                            className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                          >
+                            <option value="">Select class</option>
+                            {sections.map((section) => {
+                              const sectionClass = classes.find((c) => c.id === section.class_id);
+                              const label = section.full_name || `${sectionClass?.name ?? "Class"} ${section.id}`;
+                              return (
+                                <option key={section.id} value={section.id}>{label}</option>
+                              );
+                            })}
+                          </select>
+                          <select
+                            value={assignment.subject_id}
+                            onChange={(e) => updateTeachingAssignment(index, "subject_id", e.target.value)}
+                            className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                          >
+                            <option value="">Select subject</option>
+                            {subjects.map((subject) => (
+                              <option key={subject.id} value={subject.id}>{subject.name}</option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => removeTeachingAssignment(index)}
+                            className="h-10 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-muted"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="px-6 py-4 border-t border-border flex justify-end gap-2">

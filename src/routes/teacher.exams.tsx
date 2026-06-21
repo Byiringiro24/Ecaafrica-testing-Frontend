@@ -5,7 +5,6 @@ import { Plus, X, Award, Loader2, Send } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { toast } from "sonner";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
-import { apiRequest } from "@/lib/api";
 import {
   getTeacherExams,
   createExam,
@@ -14,7 +13,9 @@ import {
   getExamResults,
   updateExam,
   getTeacherAssignments,
-  type TeacherAssignmentSubject,
+  computeGrade,
+  studentDisplayName,
+  type TeacherAssignmentPair,
   type TeacherExam,
   type Student,
   type ExamResult,
@@ -33,9 +34,10 @@ function TeacherExams() {
   const [loading, setLoading] = useState(true);
   const [assignments, setAssignments] = useState<{
     sections: Array<{ id: string; name: string; full_name: string; class_id: string }>;
-    subjects: TeacherAssignmentSubject[];
+    subjects: Array<{ id: string; name: string; code?: string }>;
+    assignments: TeacherAssignmentPair[];
   } | null>(null);
-  const [assignedSubjects, setAssignedSubjects] = useState<TeacherAssignmentSubject[]>([]);
+  const [assignedSubjects, setAssignedSubjects] = useState<Array<{ id: string; name: string; code?: string }>>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
   const [selectedSectionId, setSelectedSectionId] = useState("");
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
@@ -50,14 +52,9 @@ function TeacherExams() {
   );
 
   useEffect(() => {
+    if (tab === "enter" || tab === "performance") return;
     loadExams();
   }, [tab, selectedSectionId, selectedSubjectId]);
-
-  const loadExamPerformance = async () => {
-    // when performance tab is active, fetch completed exams only
-    if (tab !== 'performance') return;
-    await loadExams();
-  };
 
   const loadAssignments = async () => {
     try {
@@ -135,11 +132,17 @@ function TeacherExams() {
               <div className="mt-2 text-sm text-slate-600">{mergedAssignmentSubjects.join(", ") || "No subjects assigned"}</div>
             </div>
             <div>
-              <div className="text-xs uppercase text-muted-foreground">Class details</div>
-              <div className="mt-1 text-sm text-slate-600">
-                {assignments.sections.length > 0 ? assignments.sections.map((section) => (
-                  <div key={section.id} className="mt-1">{section.full_name}</div>
-                )) : "No class details available."}
+              <div className="text-xs uppercase text-muted-foreground">Teaching assignments</div>
+              <div className="mt-2 text-sm text-slate-600 space-y-1">
+                {assignments.assignments.length > 0 ? (
+                  assignments.assignments.map((item) => (
+                    <div key={`${item.section_id}-${item.subject_id}`}>
+                      {item.section.full_name} — {item.subject.name}
+                    </div>
+                  ))
+                ) : (
+                  "No class/subject assignments yet. Contact your administrator."
+                )}
               </div>
             </div>
           </div>
@@ -220,7 +223,13 @@ function TeacherExams() {
         </div>
       )}
 
-      {tab === 'enter' && <EnterResults />}
+      {tab === 'enter' && (
+        <EnterResults
+          sectionId={selectedSectionId}
+          subjectId={selectedSubjectId}
+          assignedSubjects={assignedSubjects}
+        />
+      )}
 
       {tab === 'published' && (
         <div>
@@ -264,7 +273,12 @@ function TeacherExams() {
         </div>
       )}
 
-      {tab === 'performance' && <StudentPerformance />}
+      {tab === 'performance' && (
+        <StudentPerformance
+          sectionId={selectedSectionId}
+          subjectId={selectedSubjectId}
+        />
+      )}
 
       {createOpen && <CreateExamModal onClose={() => { setCreateOpen(false); loadExams(); }} />}
       {viewExam && <ResultsModal exam={viewExam} onClose={() => setViewExam(null)} />}
@@ -277,12 +291,13 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
   const [sections, setSections] = useState<Array<{ id: string; name: string; full_name: string }>>([]);
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [assignmentPairs, setAssignmentPairs] = useState<TeacherAssignmentPair[]>([]);
   const [formData, setFormData] = useState({
     name: "",
     section_id: "",
     subject_id: "",
     type: "cat",
-    exam_date: "",
+    exam_date: new Date().toISOString().slice(0, 10),
     max_marks: 100,
     pass_mark: 50,
   });
@@ -291,12 +306,23 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
     loadTeacherAssignments();
   }, []);
 
+  const availableSubjects = useMemo(() => {
+    if (!formData.section_id) return subjects;
+    const ids = new Set(
+      assignmentPairs
+        .filter((item) => item.section_id === formData.section_id)
+        .map((item) => item.subject_id)
+    );
+    return subjects.filter((subject) => ids.has(subject.id));
+  }, [assignmentPairs, formData.section_id, subjects]);
+
   const loadTeacherAssignments = async () => {
     try {
       setAssignmentsLoading(true);
       const data = await getTeacherAssignments();
       setSections(data.sections || []);
       setSubjects(data.subjects || []);
+      setAssignmentPairs(data.assignments || []);
     } catch (error) {
       toast.error("Failed to load teacher assignments");
       console.error(error);
@@ -356,7 +382,7 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
                 <select
                   required
                   value={formData.section_id}
-                  onChange={(e) => setFormData({ ...formData, section_id: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, section_id: e.target.value, subject_id: "" })}
                   className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="">Select class</option>
@@ -379,15 +405,45 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
                   className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="">Select subject</option>
-                  {subjects.map((subject) => (
+                  {availableSubjects.map((subject) => (
                     <option key={subject.id} value={subject.id}>
                       {subject.name}
                     </option>
                   ))}
                 </select>
-                {subjects.length === 0 && (
+                {availableSubjects.length === 0 && formData.section_id && (
+                  <p className="mt-2 text-xs text-muted-foreground">No subjects assigned for this class.</p>
+                )}
+                {!formData.section_id && subjects.length === 0 && (
                   <p className="mt-2 text-xs text-muted-foreground">No assigned subjects found. Please contact your administrator.</p>
                 )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium">Exam Date</label>
+                <input
+                  type="date"
+                  required
+                  value={formData.exam_date}
+                  onChange={(e) => setFormData({ ...formData, exam_date: e.target.value })}
+                  className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Type</label>
+                <select
+                  value={formData.type}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="cat">CAT</option>
+                  <option value="main_exam">Main Exam</option>
+                  <option value="mock">Mock</option>
+                  <option value="quiz">Quiz</option>
+                  <option value="assignment">Assignment</option>
+                </select>
               </div>
             </div>
 
@@ -436,7 +492,15 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function EnterResults() {
+function EnterResults({
+  sectionId,
+  subjectId,
+  assignedSubjects,
+}: {
+  sectionId: string;
+  subjectId: string;
+  assignedSubjects: Array<{ id: string; name: string; code?: string }>;
+}) {
   const [exams, setExams] = useState<TeacherExam[]>([]);
   const [selectedExam, setSelectedExam] = useState<TeacherExam | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -448,14 +512,18 @@ function EnterResults() {
 
   useEffect(() => {
     loadExams();
-  }, []);
+  }, [sectionId, subjectId]);
 
   const loadExams = async () => {
     try {
       setLoadingExams(true);
-      const data = await getTeacherExams({ status: "scheduled" });
-      setExams(data);
-      setSelectedExam(data[0] || null);
+      const data = await getTeacherExams({
+        section_id: sectionId || undefined,
+        subject_id: subjectId || undefined,
+      });
+      const eligible = data.filter((exam) => exam.status === "scheduled" || exam.status === "ongoing");
+      setExams(eligible);
+      setSelectedExam(eligible[0] || null);
     } catch (error) {
       toast.error("Failed to load exams");
       console.error(error);
@@ -472,9 +540,21 @@ function EnterResults() {
 
     try {
       setLoading(true);
-      const studentData = await getStudentsInSection(selectedExam.section_id);
+      const [studentData, existingResults] = await Promise.all([
+        getStudentsInSection(selectedExam.section_id),
+        getExamResults(selectedExam.id).catch(() => ({ results: [] as ExamResult[] })),
+      ]);
       setStudents(studentData);
-      setResults({});
+
+      const prefilled: Record<string, { score: string; remarks: string; is_absent: boolean }> = {};
+      for (const result of existingResults.results ?? []) {
+        prefilled[result.student_id] = {
+          score: result.marks_obtained ?? "",
+          remarks: result.remarks ?? "",
+          is_absent: result.is_absent,
+        };
+      }
+      setResults(prefilled);
       setLoaded(true);
     } catch (error) {
       toast.error("Failed to load students");
@@ -484,15 +564,24 @@ function EnterResults() {
     }
   };
 
-  const buildPayload = () =>
-    Object.entries(results)
+  const buildPayload = () => {
+    const maxMarks = selectedExam ? parseFloat(selectedExam.max_marks) : 100;
+    return Object.entries(results)
       .filter(([, result]) => result.score || result.is_absent)
-      .map(([student_id, result]) => ({
-        student_id,
-        score: result.is_absent ? undefined : result.score,
-        remarks: result.remarks,
-        is_absent: result.is_absent,
-      }));
+      .map(([student_id, result]) => {
+        const score = result.is_absent ? undefined : result.score;
+        const numericScore = score ? parseFloat(score) : NaN;
+        return {
+          student_id,
+          score,
+          remarks: result.remarks,
+          is_absent: result.is_absent,
+          grade: !result.is_absent && !Number.isNaN(numericScore)
+            ? computeGrade(numericScore, maxMarks)
+            : undefined,
+        };
+      });
+  };
 
   const handleSaveDraft = async () => {
     if (!selectedExam) return;
@@ -525,8 +614,8 @@ function EnterResults() {
     try {
       setSubmitting(true);
       await recordExamResults(selectedExam.id, payload);
-      await updateExam(selectedExam.id, { status: "completed" });
-      toast.success("Results submitted successfully");
+      await updateExam(selectedExam.id, { status: "ongoing" });
+      toast.success("Results submitted for admin review");
       setLoaded(false);
       setResults({});
       loadExams();
@@ -538,19 +627,22 @@ function EnterResults() {
     }
   };
 
-  const gradeForScore = (score: number, maxMarks: number) => {
-    const percent = (score / maxMarks) * 100;
-    if (percent >= 80) return "A";
-    if (percent >= 70) return "B";
-    if (percent >= 60) return "C";
-    if (percent >= 50) return "D";
-    return "F";
-  };
+  const gradeForScore = (score: number, maxMarks: number) => computeGrade(score, maxMarks);
 
   return (
     <div>
       <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap items-end gap-3 mb-5">
-        <div className="flex-1">
+        {assignedSubjects.length > 0 && (
+          <div className="w-full sm:w-56">
+            <label className="text-xs font-semibold text-muted-foreground">Filter by subject</label>
+            <div className="mt-1 h-9 rounded-md border border-input bg-muted/40 px-3 text-sm flex items-center">
+              {subjectId
+                ? assignedSubjects.find((subject) => subject.id === subjectId)?.name ?? "Selected subject"
+                : "All assigned subjects"}
+            </div>
+          </div>
+        )}
+        <div className="flex-1 min-w-[220px]">
           <label className="text-xs font-semibold text-muted-foreground">Exam</label>
           <select
             value={selectedExam?.id || ""}
@@ -680,7 +772,7 @@ function EnterResults() {
               disabled={submitting}
               className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold"
             >
-              {submitting ? 'Submitting...' : 'Submit Results'}
+              {submitting ? 'Submitting...' : 'Submit for Review'}
             </button>
           </div>
         </div>
@@ -689,7 +781,13 @@ function EnterResults() {
   );
 }
 
-function StudentPerformance() {
+function StudentPerformance({
+  sectionId,
+  subjectId,
+}: {
+  sectionId: string;
+  subjectId: string;
+}) {
   const [exams, setExams] = useState<TeacherExam[]>([]);
   const [selectedExam, setSelectedExam] = useState<TeacherExam | null>(null);
   const [results, setResults] = useState<ExamResult[]>([]);
@@ -700,9 +798,16 @@ function StudentPerformance() {
     (async () => {
       try {
         setLoadingExams(true);
-        const data = await getTeacherExams({ status: "completed" });
+        const data = await getTeacherExams({
+          status: "completed",
+          section_id: sectionId || undefined,
+          subject_id: subjectId || undefined,
+        });
         setExams(data);
-        setSelectedExam(data[0] || null);
+        const first = data[0] || null;
+        setSelectedExam(first);
+        if (first) await loadResults(first.id);
+        else setResults([]);
       } catch (error) {
         toast.error("Failed to load performance exams");
         console.error(error);
@@ -710,13 +815,13 @@ function StudentPerformance() {
         setLoadingExams(false);
       }
     })();
-  }, []);
+  }, [sectionId, subjectId]);
 
   const loadResults = async (examId: string) => {
     try {
       setLoadingResults(true);
       const data = await getExamResults(examId);
-      setResults(data);
+      setResults(data.results ?? []);
     } catch (error) {
       toast.error("Failed to load exam performance");
       console.error(error);
@@ -741,7 +846,7 @@ function StudentPerformance() {
     ];
   };
 
-  const selectedExamResults = results.filter((result) => result.exam_id === selectedExam?.id);
+  const selectedExamResults = results;
   const passCount = selectedExamResults.filter((result) => {
     if (!selectedExam || !result.marks_obtained) return false;
     const score = parseFloat(result.marks_obtained);
@@ -832,7 +937,7 @@ function StudentPerformance() {
               <tbody>
                 {selectedExamResults.map((result, index) => (
                   <tr key={result.id} className={`${index % 2 ? 'bg-gray-50' : ''}`}>
-                    <td className="p-3">{result.student_id}</td>
+                    <td className="p-3">{studentDisplayName(result)}</td>
                     <td className="text-center p-3">{result.is_absent ? 'Absent' : `${result.marks_obtained ?? '0'}/${selectedExam.max_marks}`}</td>
                     <td className="text-center p-3">{result.grade || '—'}</td>
                     <td className="text-center p-3">{result.is_absent ? 'Absent' : 'Present'}</td>
@@ -861,7 +966,7 @@ function ResultsModal({ exam, onClose }: { exam: TeacherExam; onClose: () => voi
     try {
       setLoading(true);
       const data = await getExamResults(exam.id);
-      setResults(data);
+      setResults(data.results ?? []);
     } catch (error) {
       toast.error("Failed to load results");
       console.error(error);
@@ -971,7 +1076,7 @@ function ResultsModal({ exam, onClose }: { exam: TeacherExam; onClose: () => voi
                   <tbody>
                     {results.map((result, index) => (
                       <tr key={result.id} className={`border-t ${index % 2 ? 'bg-gray-50' : ''}`}>
-                        <td className="p-2">{result.student_id || `Student ${index + 1}`}</td>
+                        <td className="p-2">{studentDisplayName(result)}</td>
                         <td className="text-center p-2">{result.is_absent ? '—' : `${result.marks_obtained ?? '0'}/${exam.max_marks}`}</td>
                         <td className="text-center p-2">{result.grade || '—'}</td>
                         <td className="text-center p-2">{result.is_absent ? 'Absent' : 'Present'}</td>

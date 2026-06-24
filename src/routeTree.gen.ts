@@ -77,6 +77,7 @@ import { Route as ExamsPublishedRouteImport } from './routes/exams.published'
 import { Route as ExamsAnalyticsRouteImport } from './routes/exams.analytics'
 import { Route as BoardingDevicesRouteImport } from './routes/boarding.devices'
 import { Route as BoardingDeviceStudentsRouteImport } from './routes/boarding.device-students'
+import { Route as BoardingDeviceSessionsRouteImport } from './routes/boarding.device-sessions'
 import { Route as BoardingDeviceLogsRouteImport } from './routes/boarding.device-logs'
 import { Route as BoardingOfficerReportsRouteImport } from './routes/boarding-officer.reports'
 import { Route as BoardingOfficerLeavesRouteImport } from './routes/boarding-officer.leaves'
@@ -430,6 +431,11 @@ const BoardingDeviceStudentsRoute = BoardingDeviceStudentsRouteImport.update({
   path: '/device-students',
   getParentRoute: () => BoardingRoute,
 } as any)
+const BoardingDeviceSessionsRoute = BoardingDeviceSessionsRouteImport.update({
+  id: '/device-sessions',
+  path: '/device-sessions',
+  getParentRoute: () => BoardingRoute,
+} as any)
 const BoardingDeviceLogsRoute = BoardingDeviceLogsRouteImport.update({
   id: '/device-logs',
   path: '/device-logs',
@@ -530,6 +536,7 @@ export interface FileRoutesByFullPath {
   '/boarding-officer/leaves': typeof BoardingOfficerLeavesRoute
   '/boarding-officer/reports': typeof BoardingOfficerReportsRoute
   '/boarding/device-logs': typeof BoardingDeviceLogsRoute
+  '/boarding/device-sessions': typeof BoardingDeviceSessionsRoute
   '/boarding/device-students': typeof BoardingDeviceStudentsRoute
   '/boarding/devices': typeof BoardingDevicesRoute
   '/exams/analytics': typeof ExamsAnalyticsRoute
@@ -608,6 +615,7 @@ export interface FileRoutesByTo {
   '/boarding-officer/leaves': typeof BoardingOfficerLeavesRoute
   '/boarding-officer/reports': typeof BoardingOfficerReportsRoute
   '/boarding/device-logs': typeof BoardingDeviceLogsRoute
+  '/boarding/device-sessions': typeof BoardingDeviceSessionsRoute
   '/boarding/device-students': typeof BoardingDeviceStudentsRoute
   '/boarding/devices': typeof BoardingDevicesRoute
   '/exams/analytics': typeof ExamsAnalyticsRoute
@@ -689,6 +697,7 @@ export interface FileRoutesById {
   '/boarding-officer/leaves': typeof BoardingOfficerLeavesRoute
   '/boarding-officer/reports': typeof BoardingOfficerReportsRoute
   '/boarding/device-logs': typeof BoardingDeviceLogsRoute
+  '/boarding/device-sessions': typeof BoardingDeviceSessionsRoute
   '/boarding/device-students': typeof BoardingDeviceStudentsRoute
   '/boarding/devices': typeof BoardingDevicesRoute
   '/exams/analytics': typeof ExamsAnalyticsRoute
@@ -773,6 +782,7 @@ export interface FileRouteTypes {
     | '/boarding-officer/leaves'
     | '/boarding-officer/reports'
     | '/boarding/device-logs'
+    | '/boarding/device-sessions'
     | '/boarding/device-students'
     | '/boarding/devices'
     | '/exams/analytics'
@@ -851,6 +861,7 @@ export interface FileRouteTypes {
     | '/boarding-officer/leaves'
     | '/boarding-officer/reports'
     | '/boarding/device-logs'
+    | '/boarding/device-sessions'
     | '/boarding/device-students'
     | '/boarding/devices'
     | '/exams/analytics'
@@ -931,6 +942,7 @@ export interface FileRouteTypes {
     | '/boarding-officer/leaves'
     | '/boarding-officer/reports'
     | '/boarding/device-logs'
+    | '/boarding/device-sessions'
     | '/boarding/device-students'
     | '/boarding/devices'
     | '/exams/analytics'
@@ -1507,6 +1519,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BoardingDeviceStudentsRouteImport
       parentRoute: typeof BoardingRoute
     }
+    '/boarding/device-sessions': {
+      id: '/boarding/device-sessions'
+      path: '/device-sessions'
+      fullPath: '/boarding/device-sessions'
+      preLoaderRoute: typeof BoardingDeviceSessionsRouteImport
+      parentRoute: typeof BoardingRoute
+    }
     '/boarding/device-logs': {
       id: '/boarding/device-logs'
       path: '/device-logs'
@@ -1596,6 +1615,7 @@ declare module '@tanstack/react-router' {
 
 interface BoardingRouteChildren {
   BoardingDeviceLogsRoute: typeof BoardingDeviceLogsRoute
+  BoardingDeviceSessionsRoute: typeof BoardingDeviceSessionsRoute
   BoardingDeviceStudentsRoute: typeof BoardingDeviceStudentsRoute
   BoardingDevicesRoute: typeof BoardingDevicesRoute
   BoardingIndexRoute: typeof BoardingIndexRoute
@@ -1603,6 +1623,7 @@ interface BoardingRouteChildren {
 
 const BoardingRouteChildren: BoardingRouteChildren = {
   BoardingDeviceLogsRoute: BoardingDeviceLogsRoute,
+  BoardingDeviceSessionsRoute: BoardingDeviceSessionsRoute,
   BoardingDeviceStudentsRoute: BoardingDeviceStudentsRoute,
   BoardingDevicesRoute: BoardingDevicesRoute,
   BoardingIndexRoute: BoardingIndexRoute,

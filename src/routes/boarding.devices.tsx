@@ -1,10 +1,11 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Cpu, Plus, Wifi, WifiOff, Eye, Settings2, PencilLine, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { cn } from "@/lib/utils";
+import { apiRequest } from "@/lib/api";
 
 export const Route = createFileRoute("/boarding/devices")({ component: BoardingDevicesPage });
 
@@ -22,67 +23,21 @@ type Device = {
   students: number;
   battery: number;
   alerts: number;
+  is_active?: boolean;
+  device_uid?: string;
+  api_url?: string;
+  tablet_ip?: string;
+  tablet_port?: number | null;
+  last_seen_at?: string | null;
+  last_sync_at?: string | null;
 };
 
 const DEVICE_MODELS = ["FK-Access X2", "FK-Access X1", "FK-Edge 2"];
 
-const DEVICES: Device[] = [
-  {
-    id: "BD-DEV-01",
-    name: "Dormitory A Entrance",
-    location: "Dorm A",
-    ip: "10.60.11.15",
-    model: "FK-Access X2",
-    firmware: "v3.4.1",
-    status: "online",
-    lastSync: "2 min ago",
-    students: 128,
-    battery: 92,
-    alerts: 0,
-  },
-  {
-    id: "BD-DEV-02",
-    name: "Dormitory B Entrance",
-    location: "Dorm B",
-    ip: "10.60.11.18",
-    model: "FK-Access X2",
-    firmware: "v3.4.1",
-    status: "online",
-    lastSync: "6 min ago",
-    students: 117,
-    battery: 88,
-    alerts: 1,
-  },
-  {
-    id: "BD-DEV-03",
-    name: "Dining Hall",
-    location: "Dining Hall",
-    ip: "10.60.11.21",
-    model: "FK-Access X1",
-    firmware: "v3.3.7",
-    status: "maintenance",
-    lastSync: "25 min ago",
-    students: 0,
-    battery: 76,
-    alerts: 2,
-  },
-  {
-    id: "BD-DEV-04",
-    name: "Dormitory C Rear Gate",
-    location: "Dorm C",
-    ip: "10.60.11.29",
-    model: "FK-Access X2",
-    firmware: "v3.4.1",
-    status: "offline",
-    lastSync: "2 hrs ago",
-    students: 93,
-    battery: 0,
-    alerts: 4,
-  },
-];
-
 function BoardingDevicesPage() {
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
     name: "",
     deviceId: "",
@@ -93,27 +48,72 @@ function BoardingDevicesPage() {
   });
 
   const stats = useMemo(() => {
-    const total = DEVICES.length;
-    const online = DEVICES.filter((d) => d.status === "online").length;
-    const offline = DEVICES.filter((d) => d.status === "offline").length;
-    const maintenance = DEVICES.filter((d) => d.status === "maintenance").length;
-    const lastSync = DEVICES.find((d) => d.status === "online")?.lastSync || "No syncs yet";
+    const total = devices.length;
+    const online = devices.filter((d) => d.status === "online").length;
+    const offline = devices.filter((d) => d.status === "offline").length;
+    const maintenance = devices.filter((d) => d.status === "maintenance").length;
+    const lastSync = devices.find((d) => d.status === "online")?.lastSync || "No syncs yet";
     return { total, online, offline, maintenance, lastSync };
+  }, [devices]);
+
+  const loadDevices = async () => {
+    try {
+      const data = await apiRequest<any[]>("/devices?limit=500&sort=created_at&order=desc", { auth: "school" });
+      const mapped = (Array.isArray(data) ? data : []).map((device) => ({
+        id: device.id,
+        name: device.name,
+        location: device.location ?? "—",
+        ip: device.tablet_ip ?? device.api_url ?? "—",
+        model: device.type ?? "tablet",
+        firmware: device.firmware_version ?? "—",
+        status: device.is_active === false ? "offline" : device.status === "online" ? "online" : "offline",
+        lastSync: device.last_sync_at ? new Date(device.last_sync_at).toLocaleString() : "No sync yet",
+        students: 0,
+        battery: 100,
+        alerts: device.last_sync_status === "queued" ? 1 : 0,
+        ...device,
+      }));
+      setDevices(mapped);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load devices");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadDevices();
   }, []);
 
-  const registerDevice = (event: FormEvent) => {
+  const registerDevice = async (event: FormEvent) => {
     event.preventDefault();
-    const name = form.name || form.deviceId || "New device";
-    toast.success(`Device registered: ${name}`);
-    setRegisterOpen(false);
-    setForm({
-      name: "",
-      deviceId: "",
-      ip: "",
-      location: "",
-      model: DEVICE_MODELS[0],
-      firmware: "v3.4.1",
-    });
+    try {
+      const payload = {
+        device_uid: form.deviceId || `DEV-${Date.now()}`,
+        name: form.name || form.deviceId || "New device",
+        type: "tablet",
+        location: form.location || "Main Campus",
+        mode: "boarding",
+        api_url: `http://${form.ip || "127.0.0.1"}:5000`,
+        tablet_ip: form.ip || "127.0.0.1",
+        tablet_port: 5000,
+        firmware_version: form.firmware,
+      };
+      await apiRequest("/devices", { method: "POST", body: JSON.stringify(payload), auth: "school" });
+      toast.success(`Device registered: ${payload.name}`);
+      setRegisterOpen(false);
+      setForm({
+        name: "",
+        deviceId: "",
+        ip: "",
+        location: "",
+        model: DEVICE_MODELS[0],
+        firmware: "v3.4.1",
+      });
+      await loadDevices();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to register device");
+    }
   };
 
   return (
@@ -146,7 +146,15 @@ function BoardingDevicesPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-        {DEVICES.map((device) => (
+        {loading ? (
+          <div className="col-span-full rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            Loading device inventory…
+          </div>
+        ) : devices.length === 0 ? (
+          <div className="col-span-full rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            No devices registered yet.
+          </div>
+        ) : devices.map((device) => (
           <DeviceCard
             key={device.id}
             device={device}

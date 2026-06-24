@@ -4,7 +4,7 @@ import {
   LayoutDashboard, ScanLine, Users, BookOpen, BarChart3,
   Heart, MessageSquare, Settings, LogOut, X,
   Home, DoorOpen, FileText, Wallet, Briefcase, ChevronDown, UserCheck,
-  Cpu, UserPlus, ListChecks, GraduationCap,
+  Cpu, UserPlus, ListChecks, GraduationCap, Clock3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { schoolConfig } from "@/lib/mockData";
@@ -36,6 +36,7 @@ const SECTIONS: Section[] = [
   ]},
   { id: "devices", label: "Device Management", items: [
     { to: "/boarding/devices", label: "Device Management", icon: Cpu, module: "boarding" },
+    { to: "/boarding/device-sessions", label: "Sessions", icon: Clock3, module: "boarding" },
     { to: "/boarding/device-students", label: "Device Students", icon: UserPlus, module: "boarding" },
     { to: "/boarding/device-logs", label: "Device Logs", icon: ListChecks, module: "boarding" },
   ]},

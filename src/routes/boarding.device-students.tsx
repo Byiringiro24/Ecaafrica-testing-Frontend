@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Search, UserPlus, ArrowUpRight, X } from "lucide-react";
 import { toast } from "sonner";
@@ -6,7 +6,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { cn } from "@/lib/utils";
-import { STUDENTS, CLASSES, type Student } from "@/lib/mockData";
+import { apiRequest } from "@/lib/api";
 
 export const Route = createFileRoute("/boarding/device-students")({ component: DeviceStudentsPage });
 
@@ -18,45 +18,78 @@ type Device = {
   lastSync: string;
 };
 
-const DEVICES: Device[] = [
-  { id: "BD-DEV-01", name: "Dormitory A Entrance", location: "Dorm A", maxUsers: 200, lastSync: "2 min ago" },
-  { id: "BD-DEV-02", name: "Dormitory B Entrance", location: "Dorm B", maxUsers: 200, lastSync: "6 min ago" },
-  { id: "BD-DEV-03", name: "Dining Hall", location: "Dining Hall", maxUsers: 150, lastSync: "25 min ago" },
-];
-
-const INITIAL_ASSIGNMENTS: Record<string, string[]> = {
-  "BD-DEV-01": STUDENTS.slice(0, 18).map((s) => s.id),
-  "BD-DEV-02": STUDENTS.slice(18, 35).map((s) => s.id),
-  "BD-DEV-03": STUDENTS.slice(35, 46).map((s) => s.id),
+type Student = {
+  id: string;
+  name: string;
+  class: string;
+  residency: "Boarding" | "Day";
 };
 
+const CLASSES = ["S1", "S2", "S3", "S4", "S5", "S6"];
+
 function DeviceStudentsPage() {
-  const [deviceId, setDeviceId] = useState(DEVICES[0].id);
-  const [assignments, setAssignments] = useState<Record<string, string[]>>(INITIAL_ASSIGNMENTS);
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [deviceId, setDeviceId] = useState("");
+  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [classFilter, setClassFilter] = useState("All");
   const [residencyFilter, setResidencyFilter] = useState<"All" | "Boarding" | "Day">("All");
   const [search, setSearch] = useState("");
   const [showAssignedOnly, setShowAssignedOnly] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [deviceData, studentsData] = await Promise.all([
+          apiRequest<any[]>("/devices?limit=500&sort=created_at&order=desc", { auth: "school" }),
+          apiRequest<any[]>("/students?limit=5000", { auth: "school" }),
+        ]);
+        const mappedDevices = (Array.isArray(deviceData) ? deviceData : []).map((device) => ({
+          id: device.id,
+          name: device.name,
+          location: device.location ?? "—",
+          maxUsers: 200,
+          lastSync: device.last_sync_at ? new Date(device.last_sync_at).toLocaleString() : "No sync yet",
+        }));
+        const mappedStudents = (Array.isArray(studentsData) ? studentsData : []).map((student) => ({
+          id: student.id,
+          name: `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim(),
+          class: student.current_section?.name ?? student.class ?? "—",
+          residency: student.student_type === "boarding" ? "Boarding" : "Day",
+        }));
+        setDevices(mappedDevices);
+        setStudents(mappedStudents);
+        if (!deviceId && mappedDevices[0]) setDeviceId(mappedDevices[0].id);
+      } catch (error: any) {
+        toast.error(error?.message ?? "Failed to load device student data");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadData();
+  }, []);
 
   const assignedIds = useMemo(() => new Set(assignments[deviceId] ?? []), [assignments, deviceId]);
-  const device = DEVICES.find((d) => d.id === deviceId) ?? DEVICES[0];
+  const device = devices.find((d) => d.id === deviceId) ?? devices[0];
 
   const filteredStudents = useMemo(() => {
     const assignedSet = new Set(assignments[deviceId] ?? []);
-    return STUDENTS.filter((student) => {
+    return students.filter((student) => {
       const matchesClass = classFilter === "All" || student.class === classFilter;
       const matchesResidency = residencyFilter === "All" || student.residency === residencyFilter;
       const matchesSearch = search === "" || student.name.toLowerCase().includes(search.toLowerCase());
       const matchesAssigned = !showAssignedOnly || assignedSet.has(student.id);
       return matchesClass && matchesResidency && matchesSearch && matchesAssigned;
     });
-  }, [assignments, classFilter, residencyFilter, search, showAssignedOnly, deviceId]);
+  }, [assignments, classFilter, residencyFilter, search, showAssignedOnly, deviceId, students]);
 
-  const assignedList = useMemo(() => STUDENTS.filter((s) => assignedIds.has(s.id)), [assignedIds]);
+  const assignedList = useMemo(() => students.filter((s) => assignedIds.has(s.id)), [assignedIds, students]);
   const boardersAssigned = assignedList.filter((s) => s.residency === "Boarding").length;
   const dayAssigned = assignedList.filter((s) => s.residency === "Day").length;
-  const unassigned = STUDENTS.length - assignedIds.size;
+  const unassigned = students.length - assignedIds.size;
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -91,17 +124,35 @@ function DeviceStudentsPage() {
     setSelectedIds(new Set());
   };
 
-  const pushSelected = () => {
+  const pushSelected = async () => {
     if (selectedIds.size === 0) {
       toast.error("Select students to push");
       return;
     }
-    toast.success(`Pushed ${selectedIds.size} students to ${deviceId}`);
-    setSelectedIds(new Set());
+    try {
+      await apiRequest(`/devices/${deviceId}/push-students`, {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({ mode: "selected", student_ids: Array.from(selectedIds) }),
+      });
+      toast.success(`Pushed ${selectedIds.size} students to ${device?.name ?? deviceId}`);
+      setSelectedIds(new Set());
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to push selected students");
+    }
   };
 
-  const pushAllAssigned = () => {
-    toast.success(`Pushed ${assignedIds.size} students to ${deviceId}`);
+  const pushAllAssigned = async () => {
+    try {
+      await apiRequest(`/devices/${deviceId}/push-students`, {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({ mode: "selected", student_ids: Array.from(assignedIds) }),
+      });
+      toast.success(`Pushed ${assignedIds.size} students to ${device?.name ?? deviceId}`);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to push assigned students");
+    }
   };
 
   const removeStudent = (id: string) => {
@@ -128,7 +179,7 @@ function DeviceStudentsPage() {
           onChange={(event) => setDeviceId(event.target.value)}
           className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
         >
-          {DEVICES.map((d) => (
+          {devices.map((d) => (
             <option key={d.id} value={d.id}>{d.name}</option>
           ))}
         </select>
@@ -157,7 +208,7 @@ function DeviceStudentsPage() {
           />
           Show assigned only
         </label>
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-[12.5rem]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={search}
@@ -187,7 +238,7 @@ function DeviceStudentsPage() {
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
             <div>
               <h3 className="font-display font-bold">Student Assignment</h3>
-              <p className="text-xs text-muted-foreground">Select students and assign them to {device.name}.</p>
+              <p className="text-xs text-muted-foreground">Select students and assign them to {device?.name ?? "the selected device"}.</p>
             </div>
             <div className="text-xs text-muted-foreground">
               Selected: <span className="font-semibold text-foreground">{selectedIds.size}</span>
@@ -272,8 +323,8 @@ function DeviceStudentsPage() {
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-xs uppercase tracking-wider text-muted-foreground">Selected device</div>
-                <div className="font-display font-bold text-lg mt-1">{device.name}</div>
-                <div className="text-xs text-muted-foreground">{device.location} - Last sync {device.lastSync}</div>
+                <div className="font-display font-bold text-lg mt-1">{device?.name ?? "No device"}</div>
+                <div className="text-xs text-muted-foreground">{device?.location ?? "—"} - Last sync {device?.lastSync ?? "—"}</div>
               </div>
               <button
                 type="button"
@@ -285,7 +336,7 @@ function DeviceStudentsPage() {
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <InfoItem label="Assigned" value={String(assignedIds.size)} />
-              <InfoItem label="Capacity" value={`${assignedIds.size}/${device.maxUsers}`} />
+              <InfoItem label="Capacity" value={`${assignedIds.size}/${device?.maxUsers ?? 0}`} />
               <InfoItem label="Boarding" value={String(boardersAssigned)} />
               <InfoItem label="Day" value={String(dayAssigned)} />
             </div>

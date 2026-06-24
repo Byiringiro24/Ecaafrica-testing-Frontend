@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import Layout from "./Layout";
 import { Shield, Lightbulb, Cpu, Layers, Smartphone, Database, CheckCircle2, TrendingUp, Key, Heart } from "lucide-react";
 import aboutBg from "@/assets/about.jpg";
-
+ 
 const successPillars = [
   { icon: Lightbulb, title: "Innovation", desc: "Leading the digital transformation of educational systems across Africa with cutting-edge tools." },
   { icon: Layers, title: "Scalability", desc: "Engineered to support schools of any size, growing effortlessly as your student body expands." },

@@ -27,6 +27,7 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as FeesRouteImport } from './routes/fees'
 import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as ExamsRouteImport } from './routes/exams'
+import { Route as DevicesRouteImport } from './routes/devices'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as ClassesRouteImport } from './routes/classes'
@@ -179,6 +180,11 @@ const FeaturesRoute = FeaturesRouteImport.update({
 const ExamsRoute = ExamsRouteImport.update({
   id: '/exams',
   path: '/exams',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevicesRoute = DevicesRouteImport.update({
+  id: '/devices',
+  path: '/devices',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -512,6 +518,7 @@ export interface FileRoutesByFullPath {
   '/classes': typeof ClassesRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
+  '/devices': typeof DevicesRoute
   '/exams': typeof ExamsRouteWithChildren
   '/features': typeof FeaturesRoute
   '/fees': typeof FeesRoute
@@ -594,6 +601,7 @@ export interface FileRoutesByTo {
   '/classes': typeof ClassesRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
+  '/devices': typeof DevicesRoute
   '/features': typeof FeaturesRoute
   '/fees': typeof FeesRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -673,6 +681,7 @@ export interface FileRoutesById {
   '/classes': typeof ClassesRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
+  '/devices': typeof DevicesRoute
   '/exams': typeof ExamsRouteWithChildren
   '/features': typeof FeaturesRoute
   '/fees': typeof FeesRoute
@@ -758,6 +767,7 @@ export interface FileRouteTypes {
     | '/classes'
     | '/contact'
     | '/dashboard'
+    | '/devices'
     | '/exams'
     | '/features'
     | '/fees'
@@ -840,6 +850,7 @@ export interface FileRouteTypes {
     | '/classes'
     | '/contact'
     | '/dashboard'
+    | '/devices'
     | '/features'
     | '/fees'
     | '/forgot-password'
@@ -918,6 +929,7 @@ export interface FileRouteTypes {
     | '/classes'
     | '/contact'
     | '/dashboard'
+    | '/devices'
     | '/exams'
     | '/features'
     | '/fees'
@@ -1002,6 +1014,7 @@ export interface RootRouteChildren {
   ClassesRoute: typeof ClassesRoute
   ContactRoute: typeof ContactRoute
   DashboardRoute: typeof DashboardRoute
+  DevicesRoute: typeof DevicesRoute
   ExamsRoute: typeof ExamsRouteWithChildren
   FeaturesRoute: typeof FeaturesRoute
   FeesRoute: typeof FeesRoute
@@ -1167,6 +1180,13 @@ declare module '@tanstack/react-router' {
       path: '/exams'
       fullPath: '/exams'
       preLoaderRoute: typeof ExamsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/devices': {
+      id: '/devices'
+      path: '/devices'
+      fullPath: '/devices'
+      preLoaderRoute: typeof DevicesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -1751,6 +1771,7 @@ const rootRouteChildren: RootRouteChildren = {
   ClassesRoute: ClassesRoute,
   ContactRoute: ContactRoute,
   DashboardRoute: DashboardRoute,
+  DevicesRoute: DevicesRoute,
   ExamsRoute: ExamsRouteWithChildren,
   FeaturesRoute: FeaturesRoute,
   FeesRoute: FeesRoute,

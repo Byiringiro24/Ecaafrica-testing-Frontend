@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Clock3, Plus, Save, Sparkles, Trash2 } from "lucide-react";
+import { Clock3, Plus, Save, Sparkles, Trash2, Edit2, X } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest } from "@/lib/api";
@@ -10,33 +10,39 @@ export const Route = createFileRoute("/boarding/device-sessions")({
 });
 
 type Device = { id: string; name: string; location?: string | null };
-type Rule = { label?: string; start: string; end: string };
-type Session = { name: string; rules: Rule[] };
+type AttendanceWindow = { id?: string; label: string; start_time: string; end_time: string };
+type Session = { 
+  id: string; 
+  name: string; 
+  windows: AttendanceWindow[];
+  created_at?: string;
+  updated_at?: string;
+};
 
 type SessionFormState = {
   name: string;
-  rules: Rule[];
+  windows: AttendanceWindow[];
 };
 
 const createEmptySession = (name = ""): SessionFormState => ({
   name,
-  rules: [{ label: "Present", start: "07:00", end: "08:00" }],
+  windows: [{ label: "Present", start_time: "07:00", end_time: "08:00" }],
 });
 
 const createMorningSession = (): SessionFormState => ({
   name: "Morning",
-  rules: [
-    { label: "Arrived on time", start: "07:00", end: "07:30" },
-    { label: "Late arrival", start: "07:30", end: "08:30" },
+  windows: [
+    { label: "Arrived on time", start_time: "07:00", end_time: "07:30" },
+    { label: "Late arrival", start_time: "07:30", end_time: "08:30" },
   ],
 });
 
 const createEveningSession = (): SessionFormState => ({
   name: "Evening",
-  rules: [
-    { label: "Leave on time", start: "17:00", end: "17:15" },
-    { label: "Leave late", start: "18:00", end: "18:30" },
-    { label: "Stay at school", start: "19:00", end: "20:30" },
+  windows: [
+    { label: "Leave on time", start_time: "17:00", end_time: "17:15" },
+    { label: "Leave late", start_time: "18:00", end_time: "18:30" },
+    { label: "Stay at school", start_time: "19:00", end_time: "20:30" },
   ],
 });
 
@@ -44,9 +50,12 @@ function DeviceSessionsPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [selectedSessionIndex, setSelectedSessionIndex] = useState(-1);
+  const [editingSession, setEditingSession] = useState<Session | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [formData, setFormData] = useState<SessionFormState>(createEmptySession());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -72,105 +81,150 @@ function DeviceSessionsPage() {
   }, []);
 
   useEffect(() => {
-    const loadConfig = async () => {
+    const loadSessions = async () => {
       if (!selectedDeviceId) return;
       try {
-        const payload = await apiRequest<{ sessions?: Session[] }>(`/devices/${selectedDeviceId}/attendance-config`, {
+        const payload = await apiRequest<{ sessions?: Session[] }>(`/devices/${selectedDeviceId}/sessions`, {
           auth: "school",
         });
         const nextSessions = Array.isArray(payload?.sessions) ? payload.sessions : [];
         setSessions(nextSessions);
-        setSelectedSessionIndex(nextSessions.length ? 0 : -1);
       } catch (error: any) {
-        toast.error(error?.message ?? "Failed to load session config");
+        toast.error(error?.message ?? "Failed to load sessions");
       }
     };
 
-    void loadConfig();
+    void loadSessions();
   }, [selectedDeviceId]);
 
   const selectedDeviceName = useMemo(() => devices.find((device) => device.id === selectedDeviceId)?.name ?? "selected device", [devices, selectedDeviceId]);
-  const selectedSession = sessions[selectedSessionIndex] ?? null;
 
-  const updateSessionName = (name: string) => {
-    setSessions((prev) => prev.map((session, index) => (index === selectedSessionIndex ? { ...session, name } : session)));
+  const openCreateModal = (template?: SessionFormState) => {
+    setFormData(template ?? createEmptySession());
+    setEditingSession(null);
+    setIsCreating(true);
+    setShowModal(true);
   };
 
-  const updateRule = (index: number, field: keyof Rule, value: string) => {
-    setSessions((prev) =>
-      prev.map((session, sessionIndex) =>
-        sessionIndex === selectedSessionIndex
-          ? {
-              ...session,
-              rules: session.rules.map((rule, ruleIndex) => (ruleIndex === index ? { ...rule, [field]: value } : rule)),
-            }
-          : session
-      )
-    );
+  const openEditModal = (session: Session) => {
+    setFormData({
+      name: session.name,
+      windows: session.windows.map(w => ({ ...w }))
+    });
+    setEditingSession(session);
+    setIsCreating(false);
+    setShowModal(true);
   };
 
-  const addRule = () => {
-    setSessions((prev) =>
-      prev.map((session, sessionIndex) =>
-        sessionIndex === selectedSessionIndex
-          ? { ...session, rules: [...session.rules, { label: "Present", start: "08:00", end: "08:30" }] }
-          : session
-      )
-    );
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingSession(null);
+    setIsCreating(false);
+    setFormData(createEmptySession());
   };
 
-  const addSession = (template?: SessionFormState) => {
-    const nextSession = template ?? createEmptySession();
-    const nextSessions = [...sessions, { name: nextSession.name, rules: nextSession.rules }];
-    setSessions(nextSessions);
-    setSelectedSessionIndex(nextSessions.length - 1);
+  const updateFormName = (name: string) => {
+    setFormData((prev) => ({ ...prev, name }));
   };
 
-  const addMorningSession = () => addSession(createMorningSession());
-  const addEveningSession = () => addSession(createEveningSession());
-
-  const removeRule = (index: number) => {
-    setSessions((prev) =>
-      prev.map((session, sessionIndex) =>
-        sessionIndex === selectedSessionIndex
-          ? { ...session, rules: session.rules.filter((_, ruleIndex) => ruleIndex !== index) }
-          : session
-      )
-    );
+  const updateWindow = (index: number, field: keyof AttendanceWindow, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      windows: prev.windows.map((window, windowIndex) =>
+        windowIndex === index ? { ...window, [field]: value } : window
+      ),
+    }));
   };
 
-  const saveConfig = async () => {
+  const addWindow = () => {
+    setFormData((prev) => ({
+      ...prev,
+      windows: [...prev.windows, { label: "Present", start_time: "08:00", end_time: "08:30" }],
+    }));
+  };
+
+  const removeWindow = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      windows: prev.windows.filter((_, windowIndex) => windowIndex !== index),
+    }));
+  };
+
+  const saveSession = async () => {
     if (!selectedDeviceId) return;
 
-    const normalizedSessions = sessions
-      .map((session) => ({
-        name: session.name.trim(),
-        rules: session.rules
-          .filter((rule) => rule.start && rule.end)
-          .map((rule) => ({ label: rule.label?.trim() || undefined, start: rule.start, end: rule.end })),
-      }))
-      .filter((session) => session.name && session.rules.length > 0);
+    const normalizedWindows = formData.windows
+      .filter((window) => window.start_time && window.end_time)
+      .map((window) => ({ 
+        label: window.label?.trim() || "Window", 
+        start_time: window.start_time, 
+        end_time: window.end_time 
+      }));
 
-    if (!normalizedSessions.length) {
-      toast.error("Add at least one session with at least one time window");
+    if (!formData.name.trim()) {
+      toast.error("Session name is required");
+      return;
+    }
+
+    if (!normalizedWindows.length) {
+      toast.error("Add at least one time window");
       return;
     }
 
     setSaving(true);
     try {
-      const response = await apiRequest<{ sessions?: Session[] }>(`/devices/${selectedDeviceId}/attendance-config`, {
-        method: "POST",
+      if (editingSession) {
+        // Update existing session
+        await apiRequest<Session>(`/devices/${selectedDeviceId}/sessions/${editingSession.id}`, {
+          method: "PUT",
+          auth: "school",
+          body: JSON.stringify({ name: formData.name.trim(), windows: normalizedWindows }),
+        });
+        toast.success(`Updated session "${formData.name}"`);
+      } else {
+        // Create new session
+        await apiRequest<Session>(`/devices/${selectedDeviceId}/sessions`, {
+          method: "POST",
+          auth: "school",
+          body: JSON.stringify({ name: formData.name.trim(), windows: normalizedWindows }),
+        });
+        toast.success(`Created session "${formData.name}"`);
+      }
+
+      // Reload sessions
+      const payload = await apiRequest<{ sessions?: Session[] }>(`/devices/${selectedDeviceId}/sessions`, {
         auth: "school",
-        body: JSON.stringify({ sessions: normalizedSessions }),
       });
-      const nextSessions = Array.isArray(response?.sessions) ? response.sessions : normalizedSessions;
-      setSessions(nextSessions);
-      setSelectedSessionIndex(nextSessions.length ? 0 : -1);
-      toast.success(`Saved ${nextSessions.length} session${nextSessions.length > 1 ? "s" : ""} for ${selectedDeviceName}`);
+      setSessions(Array.isArray(payload?.sessions) ? payload.sessions : []);
+      closeModal();
     } catch (error: any) {
-      toast.error(error?.message ?? "Failed to save session config");
+      toast.error(error?.message ?? "Failed to save session");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const deleteSession = async (session: Session) => {
+    if (!selectedDeviceId) return;
+    
+    if (!confirm(`Are you sure you want to delete "${session.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await apiRequest(`/devices/${selectedDeviceId}/sessions/${session.id}`, {
+        method: "DELETE",
+        auth: "school",
+      });
+      toast.success(`Deleted session "${session.name}"`);
+
+      // Reload sessions
+      const payload = await apiRequest<{ sessions?: Session[] }>(`/devices/${selectedDeviceId}/sessions`, {
+        auth: "school",
+      });
+      setSessions(Array.isArray(payload?.sessions) ? payload.sessions : []);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to delete session");
     }
   };
 
@@ -205,90 +259,19 @@ function DeviceSessionsPage() {
               </select>
             </label>
 
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={addMorningSession} className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold hover:bg-muted">
-                Add Morning Session
-              </button>
-              <button type="button" onClick={addEveningSession} className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold hover:bg-muted">
-                Add Evening Session
-              </button>
-            </div>
-
-            {selectedSession ? (
-              <>
-                <label className="block text-sm">
-                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Session name</span>
-                  <input
-                    value={selectedSession.name}
-                    onChange={(event) => updateSessionName(event.target.value)}
-                    placeholder="Morning Boarding"
-                    className="h-10 w-full rounded-lg border border-border bg-background px-3"
-                  />
-                </label>
-
-                <div className="rounded-lg border border-dashed border-border p-3">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold">Attendance windows</p>
-                      <p className="text-xs text-muted-foreground">Create or edit status windows for this session.</p>
-                    </div>
-                    <button type="button" onClick={addRule} className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold">
-                      <Plus className="h-3.5 w-3.5" /> Add Window
-                    </button>
-                  </div>
-
-                  <div className="space-y-3">
-                    {selectedSession.rules.map((rule, index) => (
-                      <div key={`${selectedSession.name}-${rule.start}-${rule.end}-${index}`} className="rounded-lg border border-border bg-background p-3">
-                        <div className="mb-2 flex items-center justify-between">
-                          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Window {index + 1}</span>
-                          <button type="button" onClick={() => removeRule(index)} className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                        <div className="grid gap-2 md:grid-cols-[1.2fr_0.9fr_0.9fr]">
-                          <label className="text-sm">
-                            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Status label</span>
-                            <input
-                              value={rule.label ?? ""}
-                              onChange={(event) => updateRule(index, "label", event.target.value)}
-                              placeholder="Present"
-                              className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                            />
-                          </label>
-                          <label className="text-sm">
-                            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Start time</span>
-                            <input
-                              type="time"
-                              value={rule.start}
-                              onChange={(event) => updateRule(index, "start", event.target.value)}
-                              className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                            />
-                          </label>
-                          <label className="text-sm">
-                            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">End time</span>
-                            <input
-                              type="time"
-                              value={rule.end}
-                              onChange={(event) => updateRule(index, "end", event.target.value)}
-                              className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                            />
-                          </label>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-                Add a morning or evening session to start customizing rules.
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => openCreateModal()} className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold hover:bg-muted inline-flex items-center gap-2">
+                  <Plus className="h-3.5 w-3.5" /> New Session
+                </button>
+                <button type="button" onClick={() => openCreateModal(createMorningSession())} className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold hover:bg-muted">
+                  Add Morning Session
+                </button>
+                <button type="button" onClick={() => openCreateModal(createEveningSession())} className="rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold hover:bg-muted">
+                  Add Evening Session
+                </button>
               </div>
-            )}
-
-            <button type="button" onClick={saveConfig} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90" disabled={saving}>
-              <Save className="h-4 w-4" /> {saving ? "Saving..." : "Save Session"}
-            </button>
+            </div>
           </div>
         </div>
 
@@ -304,31 +287,162 @@ function DeviceSessionsPage() {
               <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">Loading sessions…</div>
             ) : sessions.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">No attendance sessions saved yet for {selectedDeviceName}.</div>
-            ) : sessions.map((session, index) => (
-              <button
-                key={`${session.name}-${index}`}
-                type="button"
-                onClick={() => setSelectedSessionIndex(index)}
-                className={`w-full rounded-lg border p-4 text-left transition ${selectedSessionIndex === index ? "border-primary bg-primary/5" : "border-border bg-background hover:bg-muted"}`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold">{session.name || `Session ${index + 1}`}</p>
-                    <p className="text-xs text-muted-foreground">{session.rules.length} time window{session.rules.length > 1 ? "s" : ""}</p>
+            ) : (
+              sessions.map((session, index) => (
+                <div
+                  key={session.id}
+                  className="w-full rounded-lg border border-border bg-background p-4"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex-1">
+                      <p className="font-semibold">{session.name || `Session ${index + 1}`}</p>
+                      <p className="text-xs text-muted-foreground">{session.windows.length} time window{session.windows.length > 1 ? "s" : ""}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(session)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                        title="Edit session"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => deleteSession(session)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+                        title="Delete session"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {session.windows.map((window, windowIndex) => (
+                      <span key={window.id ?? `window-${windowIndex}`} className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs">
+                        {window.label || "Window"}: {window.start_time}–{window.end_time}
+                      </span>
+                    ))}
                   </div>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {session.rules.map((rule, ruleIndex) => (
-                    <span key={`${session.name}-${rule.start}-${rule.end}-${ruleIndex}`} className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs">
-                      {rule.label || "Window"}: {rule.start}–{rule.end}
-                    </span>
-                  ))}
-                </div>
-              </button>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
+
+      {/* Modal for Create/Edit Session */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-card shadow-lg">
+            <div className="sticky top-0 flex items-center justify-between border-b border-border bg-card p-4">
+              <h2 className="text-lg font-semibold">
+                {isCreating ? "Create Session" : `Edit "${editingSession?.name}"`}
+              </h2>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Session name</span>
+                <input
+                  value={formData.name}
+                  onChange={(event) => updateFormName(event.target.value)}
+                  placeholder="Morning Boarding"
+                  className="h-10 w-full rounded-lg border border-border bg-background px-3"
+                />
+              </label>
+
+              <div className="rounded-lg border border-dashed border-border p-3">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold">Attendance windows</p>
+                    <p className="text-xs text-muted-foreground">Create or edit status windows for this session.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addWindow}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold hover:bg-muted"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add Window
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {formData.windows.map((window, index) => (
+                    <div key={`window-${index}`} className="rounded-lg border border-border bg-background p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Window {index + 1}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeWindow(index)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-[1.2fr_0.9fr_0.9fr]">
+                        <label className="text-sm">
+                          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Status label</span>
+                          <input
+                            value={window.label ?? ""}
+                            onChange={(event) => updateWindow(index, "label", event.target.value)}
+                            placeholder="Present"
+                            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                          />
+                        </label>
+                        <label className="text-sm">
+                          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Start time</span>
+                          <input
+                            type="time"
+                            value={window.start_time}
+                            onChange={(event) => updateWindow(index, "start_time", event.target.value)}
+                            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                          />
+                        </label>
+                        <label className="text-sm">
+                          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">End time</span>
+                          <input
+                            type="time"
+                            value={window.end_time}
+                            onChange={(event) => updateWindow(index, "end_time", event.target.value)}
+                            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-card p-4">
+              <button
+                type="button"
+                onClick={closeModal}
+                className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveSession}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                disabled={saving}
+              >
+                <Save className="h-4 w-4" /> {saving ? "Saving..." : isCreating ? "Create Session" : "Update Session"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

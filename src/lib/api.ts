@@ -2,7 +2,7 @@ import { getPlatformToken, getPlatformAuth, setPlatformAuth, clearPlatformAuth }
 import { getSchoolToken, getSchoolAuth, setSchoolAuth, clearSchoolAuth } from "./schoolAuth";
 
 const defaultApiBaseUrl = import.meta.env.DEV
-  ? "http://localhost:5000/api/v1"
+  ? "http://localhost:5500/api/v1"
   : "https://backend.ecareafrica.net/api/v1";
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL?.trim() || defaultApiBaseUrl).replace(/\/$/, "");

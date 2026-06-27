@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as VisitorsRouteImport } from './routes/visitors'
+import { Route as TabletsRouteImport } from './routes/tablets'
 import { Route as SuperAdminRouteImport } from './routes/super-admin'
 import { Route as StudentsRouteImport } from './routes/students'
 import { Route as StaffRouteImport } from './routes/staff'
@@ -27,6 +28,7 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as FeesRouteImport } from './routes/fees'
 import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as ExamsRouteImport } from './routes/exams'
+import { Route as DevicesNewRouteImport } from './routes/devices-new'
 import { Route as DevicesRouteImport } from './routes/devices'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ContactRouteImport } from './routes/contact'
@@ -95,6 +97,11 @@ import { Route as GateKeeperAttendanceDeviceAttendanceRouteImport } from './rout
 const VisitorsRoute = VisitorsRouteImport.update({
   id: '/visitors',
   path: '/visitors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TabletsRoute = TabletsRouteImport.update({
+  id: '/tablets',
+  path: '/tablets',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SuperAdminRoute = SuperAdminRouteImport.update({
@@ -180,6 +187,11 @@ const FeaturesRoute = FeaturesRouteImport.update({
 const ExamsRoute = ExamsRouteImport.update({
   id: '/exams',
   path: '/exams',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevicesNewRoute = DevicesNewRouteImport.update({
+  id: '/devices-new',
+  path: '/devices-new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DevicesRoute = DevicesRouteImport.update({
@@ -519,6 +531,7 @@ export interface FileRoutesByFullPath {
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
   '/devices': typeof DevicesRoute
+  '/devices-new': typeof DevicesNewRoute
   '/exams': typeof ExamsRouteWithChildren
   '/features': typeof FeaturesRoute
   '/fees': typeof FeesRoute
@@ -536,6 +549,7 @@ export interface FileRoutesByFullPath {
   '/staff': typeof StaffRouteWithChildren
   '/students': typeof StudentsRoute
   '/super-admin': typeof SuperAdminRouteWithChildren
+  '/tablets': typeof TabletsRoute
   '/visitors': typeof VisitorsRoute
   '/boarding-officer/attendance': typeof BoardingOfficerAttendanceRoute
   '/boarding-officer/dashboard': typeof BoardingOfficerDashboardRoute
@@ -602,6 +616,7 @@ export interface FileRoutesByTo {
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
   '/devices': typeof DevicesRoute
+  '/devices-new': typeof DevicesNewRoute
   '/features': typeof FeaturesRoute
   '/fees': typeof FeesRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -616,6 +631,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRoute
   '/students': typeof StudentsRoute
+  '/tablets': typeof TabletsRoute
   '/visitors': typeof VisitorsRoute
   '/boarding-officer/attendance': typeof BoardingOfficerAttendanceRoute
   '/boarding-officer/dashboard': typeof BoardingOfficerDashboardRoute
@@ -682,6 +698,7 @@ export interface FileRoutesById {
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
   '/devices': typeof DevicesRoute
+  '/devices-new': typeof DevicesNewRoute
   '/exams': typeof ExamsRouteWithChildren
   '/features': typeof FeaturesRoute
   '/fees': typeof FeesRoute
@@ -699,6 +716,7 @@ export interface FileRoutesById {
   '/staff': typeof StaffRouteWithChildren
   '/students': typeof StudentsRoute
   '/super-admin': typeof SuperAdminRouteWithChildren
+  '/tablets': typeof TabletsRoute
   '/visitors': typeof VisitorsRoute
   '/boarding-officer/attendance': typeof BoardingOfficerAttendanceRoute
   '/boarding-officer/dashboard': typeof BoardingOfficerDashboardRoute
@@ -768,6 +786,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/dashboard'
     | '/devices'
+    | '/devices-new'
     | '/exams'
     | '/features'
     | '/fees'
@@ -785,6 +804,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/students'
     | '/super-admin'
+    | '/tablets'
     | '/visitors'
     | '/boarding-officer/attendance'
     | '/boarding-officer/dashboard'
@@ -851,6 +871,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/dashboard'
     | '/devices'
+    | '/devices-new'
     | '/features'
     | '/fees'
     | '/forgot-password'
@@ -865,6 +886,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/settings'
     | '/students'
+    | '/tablets'
     | '/visitors'
     | '/boarding-officer/attendance'
     | '/boarding-officer/dashboard'
@@ -930,6 +952,7 @@ export interface FileRouteTypes {
     | '/contact'
     | '/dashboard'
     | '/devices'
+    | '/devices-new'
     | '/exams'
     | '/features'
     | '/fees'
@@ -947,6 +970,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/students'
     | '/super-admin'
+    | '/tablets'
     | '/visitors'
     | '/boarding-officer/attendance'
     | '/boarding-officer/dashboard'
@@ -1015,6 +1039,7 @@ export interface RootRouteChildren {
   ContactRoute: typeof ContactRoute
   DashboardRoute: typeof DashboardRoute
   DevicesRoute: typeof DevicesRoute
+  DevicesNewRoute: typeof DevicesNewRoute
   ExamsRoute: typeof ExamsRouteWithChildren
   FeaturesRoute: typeof FeaturesRoute
   FeesRoute: typeof FeesRoute
@@ -1032,6 +1057,7 @@ export interface RootRouteChildren {
   StaffRoute: typeof StaffRouteWithChildren
   StudentsRoute: typeof StudentsRoute
   SuperAdminRoute: typeof SuperAdminRouteWithChildren
+  TabletsRoute: typeof TabletsRoute
   VisitorsRoute: typeof VisitorsRoute
   BoardingOfficerAttendanceRoute: typeof BoardingOfficerAttendanceRoute
   BoardingOfficerDashboardRoute: typeof BoardingOfficerDashboardRoute
@@ -1061,6 +1087,13 @@ declare module '@tanstack/react-router' {
       path: '/visitors'
       fullPath: '/visitors'
       preLoaderRoute: typeof VisitorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tablets': {
+      id: '/tablets'
+      path: '/tablets'
+      fullPath: '/tablets'
+      preLoaderRoute: typeof TabletsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/super-admin': {
@@ -1180,6 +1213,13 @@ declare module '@tanstack/react-router' {
       path: '/exams'
       fullPath: '/exams'
       preLoaderRoute: typeof ExamsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/devices-new': {
+      id: '/devices-new'
+      path: '/devices-new'
+      fullPath: '/devices-new'
+      preLoaderRoute: typeof DevicesNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/devices': {
@@ -1772,6 +1812,7 @@ const rootRouteChildren: RootRouteChildren = {
   ContactRoute: ContactRoute,
   DashboardRoute: DashboardRoute,
   DevicesRoute: DevicesRoute,
+  DevicesNewRoute: DevicesNewRoute,
   ExamsRoute: ExamsRouteWithChildren,
   FeaturesRoute: FeaturesRoute,
   FeesRoute: FeesRoute,
@@ -1789,6 +1830,7 @@ const rootRouteChildren: RootRouteChildren = {
   StaffRoute: StaffRouteWithChildren,
   StudentsRoute: StudentsRoute,
   SuperAdminRoute: SuperAdminRouteWithChildren,
+  TabletsRoute: TabletsRoute,
   VisitorsRoute: VisitorsRoute,
   BoardingOfficerAttendanceRoute: BoardingOfficerAttendanceRoute,
   BoardingOfficerDashboardRoute: BoardingOfficerDashboardRoute,

@@ -1,7 +1,9 @@
 import { apiRequest } from "./api";
+import type { Tablet, Device } from "./deviceApi";
 
 // Re-export from deviceApi for backwards compatibility
-export { tabletApi, deviceApi, type Tablet, type Device } from "./deviceApi";
+export { deviceApi } from "./deviceApi";
+export type { Tablet, Device } from "./deviceApi";
 
 // Legacy types for backwards compatibility
 export type LegacyTablet = {

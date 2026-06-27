@@ -1,8 +1,26 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, Smartphone, Activity } from "lucide-react";
+import { RefreshCw, Smartphone, Activity, Plus, Edit, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import { deviceApi, tabletApi, Device, Tablet } from "@/lib/deviceApi";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -12,9 +30,23 @@ export default function DeviceManagementNew() {
   const [tablets, setTablets] = useState<Tablet[]>([]);
   const [loading, setLoading] = useState(false);
   const [healthChecking, setHealthChecking] = useState<Record<string, boolean>>({});
+  const [showDialog, setShowDialog] = useState(false);
+  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const currentUser = useCurrentUser();
   const isSystemAdmin = currentUser?.role === "system_admin";
   const isSchoolAdmin = currentUser?.role === "school_admin";
+
+  const [formData, setFormData] = useState({
+    device_uid: "",
+    name: "",
+    type: "tablet" as "tablet" | "kiosk" | "web",
+    location: "",
+    mode: "gate" as "gate" | "boarding" | "classroom",
+    pin: "",
+    firmware_version: "",
+    tablet_ip: "",
+    tablet_port: "",
+  });
 
   useEffect(() => {
     loadDevices();
@@ -100,6 +132,100 @@ export default function DeviceManagementNew() {
     }
   };
 
+  const handleCreate = () => {
+    setEditingDevice(null);
+    setFormData({
+      device_uid: "",
+      name: "",
+      type: "tablet",
+      location: "",
+      mode: "gate",
+      pin: "",
+      firmware_version: "",
+      tablet_ip: "",
+      tablet_port: "",
+    });
+    setShowDialog(true);
+  };
+
+  const handleEdit = (device: Device) => {
+    setEditingDevice(device);
+    setFormData({
+      device_uid: device.device_uid,
+      name: device.name,
+      type: device.type,
+      location: device.location || "",
+      mode: device.mode,
+      pin: "",
+      firmware_version: device.firmware_version || "",
+      tablet_ip: device.tablet_ip || "",
+      tablet_port: device.tablet_port?.toString() || "",
+    });
+    setShowDialog(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    try {
+      if (editingDevice) {
+        // Update existing device
+        const updateData: any = {
+          name: formData.name,
+          type: formData.type,
+          location: formData.location || null,
+          mode: formData.mode,
+          firmware_version: formData.firmware_version || null,
+        };
+
+        // Only include pin if provided
+        if (formData.pin) {
+          updateData.pin = formData.pin;
+        }
+
+        await deviceApi.update(editingDevice.id, updateData);
+        toast.success("Device updated successfully");
+      } else {
+        // Create new device
+        const createData: any = {
+          device_uid: formData.device_uid,
+          name: formData.name,
+          type: formData.type,
+          location: formData.location || undefined,
+          mode: formData.mode,
+          firmware_version: formData.firmware_version || undefined,
+        };
+
+        // Add optional fields
+        if (formData.pin) createData.pin = formData.pin;
+        if (formData.tablet_ip) createData.tablet_ip = formData.tablet_ip;
+        if (formData.tablet_port) createData.tablet_port = parseInt(formData.tablet_port);
+
+        await deviceApi.create(createData);
+        toast.success("Device created successfully");
+      }
+
+      setShowDialog(false);
+      loadDevices();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to save device");
+    }
+  };
+
+  const handleDelete = async (device: Device) => {
+    if (!confirm(`Are you sure you want to delete "${device.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await deviceApi.delete(device.id);
+      toast.success("Device deleted successfully");
+      loadDevices();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to delete device");
+    }
+  };
+
   const getTabletForDevice = (device: Device): Tablet | undefined => {
     return tablets.find((t) => t.ip === device.tablet_ip && t.port === device.tablet_port);
   };
@@ -139,6 +265,12 @@ export default function DeviceManagementNew() {
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
+          {isSystemAdmin && (
+            <Button onClick={handleCreate}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Device
+            </Button>
+          )}
         </div>
       </div>
 
@@ -195,6 +327,12 @@ export default function DeviceManagementNew() {
                 ? "Add your first biometric device to start tracking attendance"
                 : "No biometric devices have been registered yet. Contact platform administrator to register devices."}
             </p>
+            {isSystemAdmin && (
+              <Button onClick={handleCreate}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add First Device
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -277,6 +415,36 @@ export default function DeviceManagementNew() {
                       {isChecking ? "Checking..." : "Check Health"}
                     </Button>
                     
+                    {/* System Admin Operations */}
+                    {isSystemAdmin && (
+                      <div className="grid grid-cols-3 gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEdit(device)}
+                          className="w-full"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDelete(device)}
+                          className="w-full"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {/* TODO: Open config dialog */}}
+                          className="w-full text-xs"
+                        >
+                          Settings
+                        </Button>
+                      </div>
+                    )}
+                    
                     {/* School Admin Operations */}
                     {isSchoolAdmin && (
                       <div className="grid grid-cols-2 gap-2">
@@ -352,6 +520,183 @@ export default function DeviceManagementNew() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Add/Edit Device Dialog - Only for system-admin */}
+      {isSystemAdmin && (
+        <Dialog open={showDialog} onOpenChange={setShowDialog}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                {editingDevice ? "Edit Device" : "Add New Device"}
+              </DialogTitle>
+              <DialogDescription>
+                {editingDevice
+                  ? "Update device information and configuration"
+                  : "Register a new biometric attendance device for a school"}
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleSubmit}>
+              <div className="space-y-4 py-4">
+                {/* Device UID - Only for creation */}
+                {!editingDevice && (
+                  <div className="space-y-2">
+                    <Label htmlFor="device_uid">Device UID *</Label>
+                    <Input
+                      id="device_uid"
+                      value={formData.device_uid}
+                      onChange={(e) => setFormData({ ...formData, device_uid: e.target.value })}
+                      placeholder="DEV-GATE-001"
+                      required
+                    />
+                    <p className="text-xs text-gray-500">Unique identifier for this device</p>
+                  </div>
+                )}
+
+                {/* Device Name */}
+                <div className="space-y-2">
+                  <Label htmlFor="name">Device Name *</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="Main Gate Scanner"
+                    required
+                  />
+                </div>
+
+                {/* Type and Mode */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="type">Device Type *</Label>
+                    <Select
+                      value={formData.type}
+                      onValueChange={(value: "tablet" | "kiosk" | "web") =>
+                        setFormData({ ...formData, type: value })
+                      }
+                    >
+                      <SelectTrigger id="type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="tablet">Tablet</SelectItem>
+                        <SelectItem value="kiosk">Kiosk</SelectItem>
+                        <SelectItem value="web">Web</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="mode">Operating Mode *</Label>
+                    <Select
+                      value={formData.mode}
+                      onValueChange={(value: "gate" | "boarding" | "classroom") =>
+                        setFormData({ ...formData, mode: value })
+                      }
+                    >
+                      <SelectTrigger id="mode">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="gate">Gate</SelectItem>
+                        <SelectItem value="boarding">Boarding</SelectItem>
+                        <SelectItem value="classroom">Classroom</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Location */}
+                <div className="space-y-2">
+                  <Label htmlFor="location">Location</Label>
+                  <Input
+                    id="location"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    placeholder="Main Entrance"
+                  />
+                </div>
+
+                {/* Tablet Connection - Only for creation */}
+                {!editingDevice && (
+                  <>
+                    <div className="border-t pt-4">
+                      <h3 className="font-semibold mb-3">Tablet Connection (Optional)</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="tablet_ip">Tablet IP Address</Label>
+                          <Input
+                            id="tablet_ip"
+                            value={formData.tablet_ip}
+                            onChange={(e) => setFormData({ ...formData, tablet_ip: e.target.value })}
+                            placeholder="10.0.0.2"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="tablet_port">Tablet Port</Label>
+                          <Input
+                            id="tablet_port"
+                            type="number"
+                            value={formData.tablet_port}
+                            onChange={(e) => setFormData({ ...formData, tablet_port: e.target.value })}
+                            placeholder="5000"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Link this device to a tablet backend for biometric operations
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                {/* Security */}
+                <div className="border-t pt-4">
+                  <h3 className="font-semibold mb-3">Security</h3>
+                  <div className="space-y-2">
+                    <Label htmlFor="pin">Device PIN {editingDevice ? "(Leave empty to keep current)" : ""}</Label>
+                    <Input
+                      id="pin"
+                      type="password"
+                      value={formData.pin}
+                      onChange={(e) => setFormData({ ...formData, pin: e.target.value })}
+                      placeholder="Enter PIN for device access"
+                      required={!editingDevice}
+                    />
+                    <p className="text-xs text-gray-500">
+                      PIN code used to authenticate device operations
+                    </p>
+                  </div>
+                </div>
+
+                {/* Additional Information */}
+                <div className="border-t pt-4">
+                  <h3 className="font-semibold mb-3">Additional Information</h3>
+                  <div className="space-y-2">
+                    <Label htmlFor="firmware_version">Firmware Version</Label>
+                    <Input
+                      id="firmware_version"
+                      value={formData.firmware_version}
+                      onChange={(e) => setFormData({ ...formData, firmware_version: e.target.value })}
+                      placeholder="1.0.0"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setShowDialog(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  {editingDevice ? "Update Device" : "Create Device"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

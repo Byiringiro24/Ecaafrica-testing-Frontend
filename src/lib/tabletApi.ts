@@ -72,7 +72,13 @@ export type PushUserRequest = {
 // API client
 export const tabletApi = {
   // Tablet management
-  getAll: () => apiRequest<{ tablets: Tablet[] }>("/tablets", { auth: "school" }),
+  getAll: async () => {
+    const response = await apiRequest<{ data?: Tablet[]; tablets?: Tablet[] }>("/tablets", {
+      auth: "school",
+    });
+
+    return { tablets: response.tablets ?? response.data ?? [] };
+  },
   
   create: (data: { name: string; ip: string; port: number; deviceId?: string; location?: string }) =>
     apiRequest<{ tablet: Tablet }>("/tablets", {

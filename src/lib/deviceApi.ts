@@ -43,9 +43,11 @@ export type Tablet = {
   name: string;
   ip: string;
   port: number;
+  deviceId?: string;
   url: string;
   status: "online" | "offline" | "error" | "maintenance";
   last_health_check?: string | null;
+  lastSync?: string | null;
   health_check_interval: number;
   firmware_version?: string | null;
   os_info?: string | null;

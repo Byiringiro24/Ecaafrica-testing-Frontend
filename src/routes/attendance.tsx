@@ -8,6 +8,7 @@ import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { syncLiveAttendanceFromTablets, type SyncSummary } from "@/lib/liveAttendanceSync";
 
 export const Route = createFileRoute("/attendance")({
   component: AttendancePage,
@@ -188,6 +189,7 @@ function AttendancePage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [recordsLoading, setRecordsLoading] = useState(false);
+  const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
 
   const [manualSectionId, setManualSectionId] = useState("");
   const [manualDate, setManualDate] = useState(todayValue);
@@ -272,6 +274,11 @@ function AttendancePage() {
   const loadAttendanceData = async (targetDate: string) => {
     setRecordsLoading(true);
     try {
+      if (targetDate === todayValue) {
+        const sync = await syncLiveAttendanceFromTablets();
+        setSyncSummary(sync);
+      }
+
       const [sessionList, recordList] = await Promise.all([
         apiRequest<ApiSession[]>(`/attendance/sessions?date=${targetDate}&limit=500`, {
           auth: "school"
@@ -680,6 +687,11 @@ function AttendancePage() {
       {tab === "live" && (
         <>
           <div className="mt-6 rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap gap-3 items-center">
+            {syncSummary && dateFilter === todayValue && (
+              <div className="basis-full text-xs text-muted-foreground">
+                Live device sync: {syncSummary.pulled} tablet(s), {syncSummary.attendanceRecords} attendance record(s), {syncSummary.duplicates} duplicate(s)
+              </div>
+            )}
             <input
               type="date"
               value={dateFilter}

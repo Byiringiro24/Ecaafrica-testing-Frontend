@@ -19,7 +19,7 @@ export type Device = {
   last_status_message?: string | null;
   api_url?: string | null;
   tablet_ip?: string | null;
-  tablet_port?: number | null;
+  tablet_port?: number | string | null;
   last_sync_at?: string | null;
   attendance_config?: any;
   connection_error?: string | null;
@@ -104,6 +104,9 @@ export type UpdateDeviceRequest = {
   pin?: string;
   is_active?: boolean;
   firmware_version?: string | null;
+  api_url?: string | null;
+  tablet_ip?: string | null;
+  tablet_port?: number | null;
 };
 
 export type UpdateTabletRequest = {
@@ -130,7 +133,7 @@ export const deviceApi = {
   getAll: (params?: { page?: number; limit?: number; mode?: string; type?: string; is_active?: boolean }) =>
     apiRequest<{ data: Device[]; meta: { page: number; limit: number; total: number } }>(
       `/devices?${new URLSearchParams(params as any).toString()}`,
-      { auth: "school" }
+      { auth: "school", returnMeta: true }
     ),
 
   // Get single device
@@ -204,7 +207,7 @@ export const deviceApi = {
   getLogs: (id: string, params?: { page?: number; limit?: number }) =>
     apiRequest<{ data: any[]; meta: any }>(
       `/devices/${id}/logs?${new URLSearchParams(params as any).toString()}`,
-      { auth: "school" }
+      { auth: "school", returnMeta: true }
     ),
 };
 
@@ -255,4 +258,58 @@ export const tabletApi = {
   // Check tablet health
   checkHealth: (id: string) =>
     apiRequest<any>(`/tablets/${id}/health`, { auth: "school" }),
+};
+
+export const platformHardwareApi = {
+  getTablets: (params?: { school_id?: string | number; page?: number; limit?: number }) =>
+    apiRequest<{ data: Tablet[]; meta: { page: number; limit: number; total: number } }>(
+      `/platform/hardware/tablets?${new URLSearchParams(params as any).toString()}`,
+      { auth: "platform", returnMeta: true }
+    ),
+
+  createTablet: (data: CreateTabletRequest & { school_id: string | number }) =>
+    apiRequest<{ tablet: Tablet }>("/platform/hardware/tablets", {
+      method: "POST",
+      body: JSON.stringify(data),
+      auth: "platform",
+    }),
+
+  updateTablet: (id: string, data: UpdateTabletRequest) =>
+    apiRequest<{ tablet: Tablet }>(`/platform/hardware/tablets/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+      auth: "platform",
+    }),
+
+  deleteTablet: (id: string) =>
+    apiRequest<void>(`/platform/hardware/tablets/${id}`, {
+      method: "DELETE",
+      auth: "platform",
+    }),
+
+  getDevices: (params?: { school_id?: string | number; page?: number; limit?: number }) =>
+    apiRequest<{ data: Device[]; meta: { page: number; limit: number; total: number } }>(
+      `/platform/hardware/devices?${new URLSearchParams(params as any).toString()}`,
+      { auth: "platform", returnMeta: true }
+    ),
+
+  createDevice: (data: CreateDeviceRequest & { school_id: string | number; tablet_id?: string | number }) =>
+    apiRequest<Device>("/platform/hardware/devices", {
+      method: "POST",
+      body: JSON.stringify(data),
+      auth: "platform",
+    }),
+
+  updateDevice: (id: string, data: UpdateDeviceRequest & { tablet_id?: string | number | null }) =>
+    apiRequest<Device>(`/platform/hardware/devices/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+      auth: "platform",
+    }),
+
+  deleteDevice: (id: string) =>
+    apiRequest<void>(`/platform/hardware/devices/${id}`, {
+      method: "DELETE",
+      auth: "platform",
+    }),
 };

@@ -24,6 +24,7 @@ import {
 import { toast } from "sonner";
 import { deviceApi, tabletApi, Device, Tablet } from "@/lib/deviceApi";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { AttendanceConfigDialog } from "@/components/device-management/AttendanceConfigDialog";
 
 export default function DeviceManagementNew() {
   const [devices, setDevices] = useState<Device[]>([]);
@@ -31,6 +32,7 @@ export default function DeviceManagementNew() {
   const [loading, setLoading] = useState(false);
   const [healthChecking, setHealthChecking] = useState<Record<string, boolean>>({});
   const [showDialog, setShowDialog] = useState(false);
+  const [configDevice, setConfigDevice] = useState<Device | null>(null);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const currentUser = useCurrentUser();
   const isSystemAdmin = currentUser?.role === "system_admin";
@@ -83,52 +85,32 @@ export default function DeviceManagementNew() {
   };
 
   const checkDeviceHealth = async (device: Device) => {
-    if (!device.tablet_ip || !device.tablet_port) {
-      toast.error("Device not linked to a tablet");
-      return;
-    }
-
     const deviceKey = device.id;
     setHealthChecking((prev) => ({ ...prev, [deviceKey]: true }));
 
     try {
-      // Try to reach the tablet backend
-      const tabletUrl = `http://${device.tablet_ip}:${device.tablet_port}/api/health`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-
-      const response = await fetch(tabletUrl, {
-        method: "GET",
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        toast.success(`Device ${device.name} is online and reachable`);
-        // Update local state to show online
-        setDevices((prev) =>
-          prev.map((d) =>
-            d.id === device.id ? { ...d, is_connected: true, status: "online" } : d
-          )
-        );
-      } else {
-        toast.warning(`Device ${device.name} responded but may have issues`);
-      }
-    } catch (error: any) {
-      if (error.name === "AbortError") {
-        toast.error(`Device ${device.name} connection timeout`);
-      } else {
-        toast.error(`Device ${device.name} is offline or unreachable`);
-      }
-      // Update local state to show offline
-      setDevices((prev) =>
-        prev.map((d) =>
-          d.id === device.id ? { ...d, is_connected: false, status: "offline" } : d
-        )
+      const status = await deviceApi.getStatus(device.id);
+      const online = Boolean(status.is_connected ?? status.is_online);
+      toast[online ? "success" : "warning"](
+        `${device.name} is ${online ? "online and reachable" : "offline or unreachable"}`
       );
+      setDevices((prev) =>
+        prev.map((d) => (d.id === device.id ? { ...d, ...status } : d))
+      );
+    } catch (error: any) {
+      toast.error(error.message || `Failed to check ${device.name}`);
     } finally {
       setHealthChecking((prev) => ({ ...prev, [deviceKey]: false }));
+    }
+  };
+
+  const handlePushStudents = async (device: Device) => {
+    try {
+      const result = await deviceApi.pushStudents(device.id, { mode: "all" });
+      toast.success(`Queued ${result.pushed_count} students for ${device.name}`);
+      loadDevices();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to push students");
     }
   };
 
@@ -437,7 +419,7 @@ export default function DeviceManagementNew() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => {/* TODO: Open config dialog */}}
+                          onClick={() => setConfigDevice(device)}
                           className="w-full text-xs"
                         >
                           Settings
@@ -451,7 +433,7 @@ export default function DeviceManagementNew() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => {/* TODO: Open config dialog */}}
+                          onClick={() => setConfigDevice(device)}
                           className="w-full"
                         >
                           Configure
@@ -459,7 +441,7 @@ export default function DeviceManagementNew() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => {/* TODO: Push students */}}
+                          onClick={() => handlePushStudents(device)}
                           className="w-full"
                         >
                           Push Students
@@ -697,6 +679,18 @@ export default function DeviceManagementNew() {
             </form>
           </DialogContent>
         </Dialog>
+      )}
+
+      {configDevice && (
+        <AttendanceConfigDialog
+          open={Boolean(configDevice)}
+          onClose={() => setConfigDevice(null)}
+          device={configDevice}
+          onSave={() => {
+            toast.success("Attendance configuration saved");
+            loadDevices();
+          }}
+        />
       )}
     </div>
   );

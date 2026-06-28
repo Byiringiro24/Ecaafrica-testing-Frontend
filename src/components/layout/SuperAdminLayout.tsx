@@ -3,15 +3,15 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   Globe, School as SchoolIcon, UsersRound,
   BarChart3, Megaphone, Headphones, Settings, ClipboardList,
-  LogOut, X, Menu,
+  LogOut, X, Menu, Receipt, TrendingUp, Repeat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
 import { SUPER_ADMIN_USER } from "@/lib/superAdminMockData";
 import { clearPlatformAuth, getPlatformAuth } from "@/lib/platformAuth";
 
-type NavItem = { to: string; label: string; icon: typeof Globe; exact?: boolean; hidden?: boolean };
-type NavSection = { label: string; items: NavItem[]; hidden?: boolean };
+type NavItem = { to: string; label: string; icon: typeof Globe; exact?: boolean };
+type NavSection = { label: string; items: NavItem[] };
 
 const NAV: NavSection[] = [
   {
@@ -19,7 +19,7 @@ const NAV: NavSection[] = [
     items: [
       { to: "/super-admin", label: "Platform Overview", icon: Globe, exact: true },
       { to: "/super-admin/schools", label: "Schools", icon: SchoolIcon },
-      { to: "/super-admin/users", label: "Platform Users", icon: UsersRound, hidden: true },
+      { to: "/super-admin/users", label: "Platform Users", icon: UsersRound },
     ],
   },
   {
@@ -27,7 +27,15 @@ const NAV: NavSection[] = [
     items: [
       { to: "/super-admin/analytics", label: "Platform Analytics", icon: BarChart3 },
       { to: "/super-admin/announcements", label: "Announcements", icon: Megaphone },
-      { to: "/super-admin/support", label: "Support Tickets", icon: Headphones, hidden: true },
+      { to: "/super-admin/support", label: "Support Tickets", icon: Headphones },
+    ],
+  },
+  {
+    label: "Finance",
+    items: [
+      { to: "/super-admin/billing", label: "Billing", icon: Receipt },
+      { to: "/super-admin/revenue", label: "Revenue", icon: TrendingUp },
+      { to: "/super-admin/subscriptions", label: "Subscriptions", icon: Repeat },
     ],
   },
   {
@@ -81,17 +89,14 @@ export function SuperAdminLayout({ title, subtitle, headerExtra, breadcrumbs, ch
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
-          {NAV.filter(section => !section.hidden).map(section => {
-            const visibleItems = section.items.filter(item => !item.hidden);
-            if (visibleItems.length === 0) return null;
-
+          {NAV.map(section => {
             return (
             <div key={section.label}>
               <div className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-200/60">
                 {section.label}
               </div>
               <div className="space-y-0.5">
-                {visibleItems.map(item => {
+                {section.items.map(item => {
                   const Icon = item.icon;
                   const active = item.exact
                     ? pathname === "/super-admin" || pathname === "/super-admin/"

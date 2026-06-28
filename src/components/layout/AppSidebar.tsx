@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { schoolConfig } from "@/lib/mockData";
 import logo from "@/assets/logo.png";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
-import { clearSchoolAuth, isSchoolAdminRole } from "@/lib/schoolAuth";
+import { clearSchoolAuth } from "@/lib/schoolAuth";
 
 function handleLogout() {
   clearSchoolAuth();
@@ -35,6 +35,8 @@ const SECTIONS: Section[] = [
     { to: "/leaves", label: "Leaves", icon: FileText, module: "leaves" },
   ]},
   { id: "devices", label: "Device Management", items: [
+    { to: "/tablets", label: "Tablets", icon: Cpu, module: "boarding" },
+    { to: "/devices-new", label: "Hardware Devices", icon: Cpu, module: "boarding" },
     { to: "/boarding/devices", label: "Device Management", icon: Cpu, module: "boarding" },
     { to: "/boarding/device-sessions", label: "Sessions", icon: Clock3, module: "boarding" },
     { to: "/boarding/device-students", label: "Device Students", icon: UserPlus, module: "boarding" },
@@ -64,7 +66,6 @@ export function AppSidebar({ open, onClose }: Props) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const currentUser = useCurrentUser();
-  const isSchoolAdmin = isSchoolAdminRole(currentUser?.role);
 
   const toggle = (id: string) => setCollapsed(p => ({ ...p, [id]: !p[id] }));
 
@@ -100,7 +101,6 @@ export function AppSidebar({ open, onClose }: Props) {
               if (!schoolConfig.enabledModules.includes(it.module)) return false;
               if (!schoolConfig.hasBoarding && (it.module === "boarding" || it.module === "leaves")) return false;
               if (!schoolConfig.hasGateManagement && it.module === "gate") return false;
-              if (isSchoolAdmin && (it.module === "fees" || it.module === "reports")) return false;
               return true;
             });
             if (items.length === 0) return null;

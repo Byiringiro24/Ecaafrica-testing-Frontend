@@ -21,6 +21,8 @@ export type LegacyTablet = {
 
 export type DeviceStatus = {
   connected: boolean;
+  success?: boolean;
+  message?: string;
   handle?: number;
   deviceId?: string;
   ipAddress?: string;
@@ -69,6 +71,10 @@ export type PushUserRequest = {
   enabled?: boolean;
 };
 
+const unwrapDeviceStatus = (response: any): { data: DeviceStatus } => ({
+  data: response?.data?.data ?? response?.data ?? response,
+});
+
 // API client
 export const tabletApi = {
   // Tablet management
@@ -101,15 +107,19 @@ export const tabletApi = {
     }),
 
   // FK623 Device operations
-  getStatus: (tabletId: string) =>
-    apiRequest<{ data: DeviceStatus }>(`/tablets/${tabletId}/device/status`, { auth: "school" }),
+  getStatus: async (tabletId: string) => {
+    const response = await apiRequest<any>(`/tablets/${tabletId}/device/status`, { auth: "school" });
+    return unwrapDeviceStatus(response);
+  },
   
-  connect: (data: ConnectDeviceRequest) =>
-    apiRequest<{ data: DeviceStatus }>(`/tablets/${data.tabletId}/device/connect`, {
+  connect: async (data: ConnectDeviceRequest) => {
+    const response = await apiRequest<any>(`/tablets/${data.tabletId}/device/connect`, {
       method: "POST",
       body: JSON.stringify(data),
       auth: "school",
-    }),
+    });
+    return unwrapDeviceStatus(response);
+  },
   
   disconnect: (tabletId: string) =>
     apiRequest<{ success: boolean }>(`/tablets/${tabletId}/device/disconnect`, {

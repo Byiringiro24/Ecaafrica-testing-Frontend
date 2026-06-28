@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
-import { Plus, RefreshCw, Download, Upload, Clock } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Plus, RefreshCw, Download, Clock } from "lucide-react";
 import { Button } from "../../components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { DeviceCard } from "../../components/device-management/DeviceCard";
 import { DeviceStatusPanel } from "../../components/device-management/DeviceStatusPanel";
 import { AddTabletModal } from "../../components/device-management/AddTabletModal";
@@ -17,6 +16,8 @@ export default function DeviceManagement() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [deviceUsers, setDeviceUsers] = useState<any[]>([]);
   const [readMark, setReadMark] = useState(0);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const statusRequestInFlight = useRef(false);
 
   // Load tablets on mount
   useEffect(() => {
@@ -37,39 +38,59 @@ export default function DeviceManagement() {
     }
   }, [selectedTablet]);
 
-  // Poll device status every 5 seconds
+  // Poll live status. The backend attempts reconnect when the FK623 is disconnected.
   useEffect(() => {
     if (!selectedTablet) return;
     
     const interval = setInterval(() => {
       loadDeviceStatus(selectedTablet.id, true); // silent reload
-    }, 5000);
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [selectedTablet]);
 
-  const loadTablets = async () => {
+  const loadTablets = async (silent = false) => {
     setLoading(true);
     try {
       const response = await tabletApi.getAll();
       setTablets(response.tablets || []);
     } catch (error: any) {
-      toast.error(error.message || "Failed to load tablets");
+      if (!silent) toast.error(error.message || "Failed to load tablets");
     } finally {
       setLoading(false);
     }
   };
 
   const loadDeviceStatus = async (tabletId: string, silent = false) => {
+    if (statusRequestInFlight.current) return;
+    statusRequestInFlight.current = true;
     if (!silent) setStatusLoading(true);
     try {
       const response = await tabletApi.getStatus(tabletId);
       setDeviceStatus(response.data);
+      setStatusMessage(response.data?.message || null);
+      setTablets((current) =>
+        current.map((tablet) =>
+          tablet.id === tabletId
+            ? { ...tablet, status: response.data?.connected ? "online" : "offline" }
+            : tablet
+        )
+      );
     } catch (error: any) {
+      setDeviceStatus({ connected: false, message: error.message || "Device status unavailable" });
+      setStatusMessage(error.message || "Device status unavailable");
       if (!silent) toast.error(error.message || "Failed to load device status");
     } finally {
+      statusRequestInFlight.current = false;
       if (!silent) setStatusLoading(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    if (selectedTablet) {
+      await loadDeviceStatus(selectedTablet.id);
+    }
+    await loadTablets(true);
   };
 
   const handleAddTablet = async (data: any) => {
@@ -88,6 +109,7 @@ export default function DeviceManagement() {
         license: 1261,
       });
       setDeviceStatus(response.data);
+      setStatusMessage(response.data?.message || null);
       toast.success("Connected to device successfully");
       await loadTablets();
     } catch (error: any) {
@@ -186,7 +208,7 @@ export default function DeviceManagement() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => loadTablets()} disabled={loading} variant="outline">
+          <Button onClick={handleRefresh} disabled={loading || statusLoading} variant="outline">
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
@@ -234,6 +256,9 @@ export default function DeviceManagement() {
                 <h2 className="text-2xl font-bold">
                   Device Status: {selectedTablet.name}
                 </h2>
+                {statusMessage && (
+                  <span className="text-sm text-gray-500">{statusMessage}</span>
+                )}
                 <div className="flex gap-2">
                   <Button onClick={handleSyncTime} disabled={!deviceStatus?.connected} variant="outline" size="sm">
                     <Clock className="mr-2 h-4 w-4" />

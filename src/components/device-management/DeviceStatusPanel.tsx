@@ -28,7 +28,9 @@ export function DeviceStatusPanel({ status, loading }: DeviceStatusPanelProps) {
         <div className="text-center py-8 text-gray-500">
           <Activity className="h-12 w-12 mx-auto mb-3 opacity-50" />
           <p>Device not connected</p>
-          <p className="text-sm mt-1">Connect a device to view live status</p>
+          <p className="text-sm mt-1">
+            {status?.message || "The server will keep trying to reconnect during live status checks"}
+          </p>
         </div>
       </div>
     );

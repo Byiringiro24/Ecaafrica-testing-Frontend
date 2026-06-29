@@ -23,6 +23,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  Trash2,
   UploadCloud,
   Users,
   Wifi,
@@ -100,6 +101,20 @@ type ClassRecord = {
   level_label?: string | null;
 };
 
+type SectionRecord = {
+  id: string;
+  name: string;
+  full_name: string;
+  class_id: string;
+};
+
+type AcademicYearRecord = {
+  id: string;
+  name: string;
+  is_current?: boolean;
+  isCurrent?: boolean;
+};
+
 type Student = {
   id: string;
   first_name?: string;
@@ -138,6 +153,16 @@ type DeviceSession = {
   windows: { id?: string; label: string; start_time: string; end_time: string }[];
 };
 
+type DeviceUser = {
+  userId?: string;
+  id?: string;
+  name?: string;
+  privilege?: number;
+  enabled?: boolean;
+  biometricMethods?: string[];
+  backupNumbers?: number[];
+};
+
 type PushMode = "selected" | "class" | "all";
 
 const emptyStats: Stats = {
@@ -171,6 +196,10 @@ const unwrapList = <T,>(payload: unknown): T[] => {
   if (Array.isArray(anyPayload?.tablets)) return anyPayload.tablets;
   if (Array.isArray(anyPayload?.devices)) return anyPayload.devices;
   if (Array.isArray(anyPayload?.students)) return anyPayload.students;
+  if (Array.isArray(anyPayload?.users)) return anyPayload.users;
+  if (Array.isArray(anyPayload?.logs)) return anyPayload.logs;
+  if (Array.isArray(anyPayload?.data?.users)) return anyPayload.data.users;
+  if (Array.isArray(anyPayload?.data?.logs)) return anyPayload.data.logs;
   return [];
 };
 
@@ -190,9 +219,12 @@ function ServerCommandCenter() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [tablets, setTablets] = useState<Tablet[]>([]);
   const [classes, setClasses] = useState<ClassRecord[]>([]);
+  const [sections, setSections] = useState<SectionRecord[]>([]);
+  const [academicYears, setAcademicYears] = useState<AcademicYearRecord[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [sessions, setSessions] = useState<DeviceSession[]>([]);
+  const [deviceUsers, setDeviceUsers] = useState<DeviceUser[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [selectedTabletId, setSelectedTabletId] = useState("");
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
@@ -200,9 +232,17 @@ function ServerCommandCenter() {
   const [pushMode, setPushMode] = useState<PushMode>("selected");
   const [stats, setStats] = useState<Stats>(emptyStats);
   const [readMark, setReadMark] = useState(0);
+  const [autoReconnect, setAutoReconnect] = useState(true);
 
   const [tabletForm, setTabletForm] = useState({ name: "Main Gate Tablet", ip: "", port: 5000, location: "" });
   const [deviceForm, setDeviceForm] = useState({ deviceId: "FK623-MAIN", ipAddress: "", port: 5005, license: 1261 });
+  const [studentForm, setStudentForm] = useState({
+    first_name: "",
+    last_name: "",
+    student_id_number: "",
+    section_id: "",
+    student_type: "boarding",
+  });
   const [sessionForm, setSessionForm] = useState({
     name: "Morning",
     label: "Arrived on time",
@@ -212,6 +252,8 @@ function ServerCommandCenter() {
 
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? devices[0];
   const selectedTablet = tablets.find((tablet) => tablet.id === selectedTabletId) ?? tablets[0];
+  const selectedAcademicYear = academicYears.find((year) => year.is_current || year.isCurrent) ?? academicYears[0];
+  const classSections = sections.filter((section) => !classId || section.class_id === classId);
 
   const filteredStudents = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -244,55 +286,75 @@ function ServerCommandCenter() {
   async function refreshAll() {
     setBusy(true);
     try {
-      const [deviceData, tabletData, classData, studentData] = await Promise.all([
+      const [deviceData, tabletData, classData, sectionData, yearData, studentData] = await Promise.all([
         apiRequest<Device[]>("/devices?limit=500&sort=created_at&order=desc", { auth: "school" }),
         apiRequest<{ data?: Tablet[] } | Tablet[]>("/tablets?limit=500", { auth: "school" }),
         apiRequest<ClassRecord[]>("/classes?limit=500", { auth: "school" }),
+        apiRequest<SectionRecord[]>("/sections?limit=1000&sort=full_name&order=asc", { auth: "school" }),
+        apiRequest<AcademicYearRecord[]>("/academic-years?limit=50", { auth: "school" }),
         apiRequest<Student[]>("/students?limit=5000&status=active", { auth: "school" }),
       ]);
 
       const nextDevices = unwrapList<Device>(deviceData);
       const nextTablets = unwrapList<Tablet>(tabletData);
       const nextClasses = unwrapList<ClassRecord>(classData);
+      const nextSections = unwrapList<SectionRecord>(sectionData);
+      const nextAcademicYears = unwrapList<AcademicYearRecord>(yearData);
       const nextStudents = unwrapList<Student>(studentData);
       setDevices(nextDevices);
       setTablets(nextTablets);
       setClasses(nextClasses);
+      setSections(nextSections);
+      setAcademicYears(nextAcademicYears);
       setStudents(nextStudents);
       setSelectedDeviceId((current) => current || nextDevices[0]?.id || "");
       setSelectedTabletId((current) => current || nextTablets[0]?.id || "");
 
       const currentDevice = nextDevices.find((device) => device.id === selectedDeviceId) ?? nextDevices[0];
+      const currentTablet = nextTablets.find((tablet) => tablet.id === selectedTabletId) ?? nextTablets[0];
+      const today = new Date().toISOString().slice(0, 10);
       if (currentDevice) {
-        const [statusResult, logsResult, sessionsResult] = await Promise.allSettled([
+        const [statusResult, logsResult, sessionsResult, usersResult] = await Promise.allSettled([
           apiRequest(`/devices/${currentDevice.id}/status`, { auth: "school" }),
           apiRequest<AttendanceLog[]>(`/devices/${currentDevice.id}/logs?limit=500`, { auth: "school" }),
           apiRequest<{ sessions?: DeviceSession[] }>(`/devices/${currentDevice.id}/sessions`, { auth: "school" }),
+          currentTablet?.id
+            ? apiRequest(`/tablets/${currentTablet.id}/device/users`, { auth: "school" })
+            : Promise.reject(new Error("No tablet selected")),
         ]);
         if (statusResult.status === "fulfilled") {
           setDevices((items) =>
             items.map((device) => (device.id === currentDevice.id ? { ...device, ...(statusResult.value as Device) } : device))
           );
         }
-        if (logsResult.status === "fulfilled") setLogs(unwrapList<AttendanceLog>(logsResult.value));
+        if (logsResult.status === "fulfilled") {
+          const nextLogs = unwrapList<AttendanceLog>(logsResult.value);
+          setLogs(nextLogs);
+          setStats({
+            totalStudents: nextStudents.length,
+            attendanceToday: nextLogs.filter((log) => log.scanned_at?.startsWith(today)).length,
+            totalLogs: nextLogs.length,
+            checkInCount: nextLogs.filter((log) => log.event_type === "entry").length,
+            checkOutCount: nextLogs.filter((log) => log.event_type === "exit").length,
+            fingerprintCount: nextLogs.filter((log) => log.scan_method === "fingerprint").length,
+            faceCount: nextLogs.filter((log) => log.scan_method === "face").length,
+            cardCount: nextLogs.filter((log) => log.scan_method === "nfc").length,
+            passwordCount: nextLogs.filter((log) => log.scan_method === "manual").length,
+            totalDevices: nextDevices.length,
+            onlineDevices: nextDevices.filter((device) => device.status === "online" || device.is_connected).length,
+          });
+        }
         if (sessionsResult.status === "fulfilled") setSessions(sessionsResult.value.sessions ?? []);
+        if (usersResult.status === "fulfilled") setDeviceUsers(unwrapList<DeviceUser>((usersResult.value as any)?.data ?? usersResult.value));
       }
 
-      const today = new Date().toISOString().slice(0, 10);
-      const allLogs = logs.length ? logs : [];
-      setStats({
+      setStats((current) => ({
+        ...current,
         totalStudents: nextStudents.length,
-        attendanceToday: allLogs.filter((log) => log.scanned_at?.startsWith(today)).length,
-        totalLogs: allLogs.length,
-        checkInCount: allLogs.filter((log) => log.event_type === "entry").length,
-        checkOutCount: allLogs.filter((log) => log.event_type === "exit").length,
-        fingerprintCount: allLogs.filter((log) => log.scan_method === "fingerprint").length,
-        faceCount: allLogs.filter((log) => log.scan_method === "face").length,
-        cardCount: allLogs.filter((log) => log.scan_method === "nfc").length,
-        passwordCount: allLogs.filter((log) => log.scan_method === "manual").length,
         totalDevices: nextDevices.length,
         onlineDevices: nextDevices.filter((device) => device.status === "online" || device.is_connected).length,
-      });
+        attendanceToday: current.totalLogs ? current.attendanceToday : logs.filter((log) => log.scanned_at?.startsWith(today)).length,
+      }));
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to load attendance devices");
     } finally {
@@ -307,6 +369,20 @@ function ServerCommandCenter() {
   useEffect(() => {
     if (selectedDeviceId) void loadDeviceDetails(selectedDeviceId);
   }, [selectedDeviceId]);
+
+  useEffect(() => {
+    if (!autoReconnect || !selectedTabletId) return;
+    const timer = window.setInterval(() => {
+      void refreshDeviceConnection();
+    }, 10000);
+    return () => window.clearInterval(timer);
+  }, [autoReconnect, selectedTabletId]);
+
+  useEffect(() => {
+    if (!studentForm.section_id && classSections[0]?.id) {
+      setStudentForm((current) => ({ ...current, section_id: classSections[0].id }));
+    }
+  }, [classId, sections]);
 
   async function loadDeviceDetails(deviceId: string) {
     try {
@@ -417,6 +493,70 @@ function ServerCommandCenter() {
     }
   }
 
+  async function refreshDeviceConnection() {
+    if (!selectedTablet?.id) return;
+    try {
+      await apiRequest(`/tablets/${selectedTablet.id}/device/status`, { auth: "school" });
+      await refreshAll();
+    } catch {
+      // Polling keeps trying; visible manual actions still show toasts.
+    }
+  }
+
+  async function pullDeviceUsers() {
+    if (!selectedTablet?.id) {
+      toast.error("Select a tablet first");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await apiRequest<any>(`/tablets/${selectedTablet.id}/device/users`, { auth: "school" });
+      setDeviceUsers(unwrapList<DeviceUser>(result?.data ?? result));
+      toast.success("Device users refreshed");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load device users");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteDeviceUser(userId?: string) {
+    if (!selectedTablet?.id || !userId) return;
+    if (!window.confirm(`Delete device user ${userId}?`)) return;
+    setBusy(true);
+    try {
+      await apiRequest(`/tablets/${selectedTablet.id}/device/users/${encodeURIComponent(userId)}`, {
+        method: "DELETE",
+        auth: "school",
+      });
+      toast.success("Device user deleted");
+      await pullDeviceUsers();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearDeviceData(kind: "logs" | "all") {
+    if (!selectedTablet?.id) return;
+    const label = kind === "all" ? "all users and logs" : "device logs";
+    if (!window.confirm(`Clear ${label} from the device?`)) return;
+    setBusy(true);
+    try {
+      await apiRequest(`/tablets/${selectedTablet.id}/device/${kind === "all" ? "clear-all" : "clear-logs"}`, {
+        method: "POST",
+        auth: "school",
+      });
+      toast.success(kind === "all" ? "Device reset completed" : "Device logs cleared");
+      await refreshAll();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Device command failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function pushStudents() {
     if (!selectedDevice?.id) {
       toast.error("Select a device first");
@@ -469,6 +609,56 @@ function ServerCommandCenter() {
       toast.success(`${studentName(student)} pushed to device`);
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to push student");
+    }
+  }
+
+  async function createStudentInClass(event: FormEvent) {
+    event.preventDefault();
+    if (!studentForm.first_name.trim() || !studentForm.last_name.trim()) {
+      toast.error("Enter the student's first and last name");
+      return;
+    }
+    if (!studentForm.section_id) {
+      toast.error("Choose a class section for this student");
+      return;
+    }
+    if (!selectedAcademicYear?.id) {
+      toast.error("Create an academic year before enrolling students");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const created = await apiRequest<Student>("/students", {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({
+          first_name: studentForm.first_name.trim(),
+          last_name: studentForm.last_name.trim(),
+          student_id_number: studentForm.student_id_number.trim() || undefined,
+          student_type: studentForm.student_type,
+          status: "active",
+        }),
+      });
+
+      await apiRequest(`/students/${created.id}/enrollments`, {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({
+          section_id: studentForm.section_id,
+          academic_year_id: selectedAcademicYear.id,
+          status: "active",
+        }),
+      });
+
+      toast.success("Student added to class. Push the class again to update the device.");
+      setSelectedStudentIds((current) => new Set(current).add(created.id));
+      setStudentForm((current) => ({ ...current, first_name: "", last_name: "", student_id_number: "" }));
+      await refreshAll();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to add student to class");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -581,33 +771,76 @@ function ServerCommandCenter() {
 
         {activeTab === "students" && (
           <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="grid gap-4 xl:grid-cols-[0.9fr_1.4fr]">
-            <Panel title="Push Target" icon={UploadCloud}>
-              <div className="grid gap-3">
-                <label className="grid gap-1 text-sm font-medium text-slate-600">
-                  Push mode
-                  <select value={pushMode} onChange={(event) => setPushMode(event.target.value as PushMode)} className="form-field">
-                    <option value="selected">Selected students</option>
-                    <option value="class">Whole class</option>
-                    <option value="all">All active students</option>
-                  </select>
-                </label>
-                <label className="grid gap-1 text-sm font-medium text-slate-600">
-                  Class
-                  <select value={classId} onChange={(event) => setClassId(event.target.value)} className="form-field">
-                    <option value="">All classes</option>
-                    {classes.map((klass) => (
-                      <option key={klass.id} value={klass.id}>{klass.level_label || klass.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <button type="button" onClick={pushStudents} disabled={busy} className="primary-action">
-                  <UploadCloud size={16} /> Push to selected device
-                </button>
-                <p className="text-xs text-slate-500">
-                  Selected: {selectedStudentIds.size}. Filtered by class: {filteredStudents.length}.
-                </p>
-              </div>
-            </Panel>
+            <div className="space-y-4">
+              <Panel title="Push Target" icon={UploadCloud}>
+                <div className="grid gap-3">
+                  <label className="grid gap-1 text-sm font-medium text-slate-600">
+                    Class
+                    <select value={classId} onChange={(event) => setClassId(event.target.value)} className="form-field">
+                      <option value="">All classes</option>
+                      {classes.map((klass) => (
+                        <option key={klass.id} value={klass.id}>{klass.level_label || klass.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-slate-600">
+                    Push mode
+                    <select value={pushMode} onChange={(event) => setPushMode(event.target.value as PushMode)} className="form-field">
+                      <option value="selected">Selected students</option>
+                      <option value="class">Whole class</option>
+                      <option value="all">All active students</option>
+                    </select>
+                  </label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button type="button" onClick={() => setPushMode("class")} disabled={!classId} className="secondary-action">
+                      <Users size={16} /> Use class
+                    </button>
+                    <button type="button" onClick={pushStudents} disabled={busy} className="primary-action">
+                      <UploadCloud size={16} /> Push now
+                    </button>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                    {pushMode === "class"
+                      ? `${filteredStudents.length} active student(s) from this class will be sent to the device.`
+                      : pushMode === "all"
+                        ? `${students.length} active student(s) from the PostgreSQL student database will be sent.`
+                        : `${selectedStudentIds.size} selected student(s) will be sent.`}
+                  </div>
+                </div>
+              </Panel>
+
+              <Panel title="Add Student To Class" icon={Plus}>
+                <form onSubmit={createStudentInClass} className="grid gap-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="First Name" value={studentForm.first_name} onChange={(value) => setStudentForm({ ...studentForm, first_name: value })} required />
+                    <Field label="Last Name" value={studentForm.last_name} onChange={(value) => setStudentForm({ ...studentForm, last_name: value })} required />
+                  </div>
+                  <Field label="Student Number" value={studentForm.student_id_number} onChange={(value) => setStudentForm({ ...studentForm, student_id_number: value })} />
+                  <label className="grid gap-1 text-sm font-medium text-slate-600">
+                    Section
+                    <select value={studentForm.section_id} onChange={(event) => setStudentForm({ ...studentForm, section_id: event.target.value })} className="form-field" required>
+                      <option value="">Choose section</option>
+                      {classSections.map((section) => (
+                        <option key={section.id} value={section.id}>{section.full_name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-slate-600">
+                    Student Type
+                    <select value={studentForm.student_type} onChange={(event) => setStudentForm({ ...studentForm, student_type: event.target.value })} className="form-field">
+                      <option value="boarding">Boarding</option>
+                      <option value="day">Day</option>
+                    </select>
+                  </label>
+                  <button className="primary-action" disabled={busy || !selectedAcademicYear}>
+                    <Plus size={16} /> Add to class
+                  </button>
+                  <p className="text-xs text-slate-500">
+                    Enrolls in {selectedAcademicYear?.name ?? "the current academic year"}; push the class afterward to update the device.
+                  </p>
+                </form>
+              </Panel>
+            </div>
             <Panel
               title="Students"
               icon={Users}
@@ -708,35 +941,97 @@ function ServerCommandCenter() {
                     <button type="button" onClick={syncTime} className="secondary-action"><Clock size={16} /> Sync</button>
                     <button type="button" onClick={disconnectDevice} className="secondary-action text-rose-600"><Power size={16} /> Disconnect</button>
                   </div>
+                  <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={autoReconnect}
+                      onChange={(event) => setAutoReconnect(event.target.checked)}
+                    />
+                    Auto reconnect and status poll
+                  </label>
                 </form>
               </Panel>
             </div>
-            <Panel title="Device Fleet" icon={HardDrive}>
-              <div className="space-y-3">
-                {devices.map((device) => (
-                  <button
-                    key={device.id}
-                    type="button"
-                    onClick={() => setSelectedDeviceId(device.id)}
-                    className={cn("w-full rounded-xl border p-4 text-left transition hover:bg-slate-50", selectedDeviceId === device.id ? "border-blue-500 bg-blue-50/50" : "border-slate-200")}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-semibold text-slate-950">{device.name}</div>
-                        <div className="text-xs text-slate-500">{device.device_uid ?? device.id} - {device.location ?? "No location"}</div>
+            <div className="space-y-4">
+              <Panel title="Device Fleet" icon={HardDrive}>
+                <div className="space-y-3">
+                  {devices.map((device) => (
+                    <button
+                      key={device.id}
+                      type="button"
+                      onClick={() => setSelectedDeviceId(device.id)}
+                      className={cn("w-full rounded-xl border p-4 text-left transition hover:bg-slate-50", selectedDeviceId === device.id ? "border-blue-500 bg-blue-50/50" : "border-slate-200")}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-slate-950">{device.name}</div>
+                          <div className="text-xs text-slate-500">{device.device_uid ?? device.id} - {device.location ?? "No location"}</div>
+                        </div>
+                        <StatusPill value={device.is_connected || device.status === "online" ? "online" : "offline"} />
                       </div>
-                      <StatusPill value={device.is_connected || device.status === "online" ? "online" : "offline"} />
-                    </div>
-                    <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-3">
-                      <span>Users: {device.device_users_count ?? 0}</span>
-                      <span>Logs: {device.device_logs_count ?? 0}</span>
-                      <span>Sync: {device.last_sync_status ?? "none"}</span>
-                    </div>
+                      <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-3">
+                        <span>Users: {device.device_users_count ?? 0}</span>
+                        <span>Logs: {device.device_logs_count ?? 0}</span>
+                        <span>Sync: {device.last_sync_status ?? "none"}</span>
+                      </div>
+                    </button>
+                  ))}
+                  {!devices.length && <EmptyState text="No devices yet. Register a tablet and connect a biometric device." />}
+                </div>
+              </Panel>
+              <Panel
+                title="Live Device Users"
+                icon={Users}
+                action={
+                  <button type="button" onClick={pullDeviceUsers} disabled={busy} className="secondary-action">
+                    <RefreshCw size={16} /> Refresh Users
                   </button>
-                ))}
-                {!devices.length && <EmptyState text="No devices yet. Register a tablet and connect a biometric device." />}
-              </div>
-            </Panel>
+                }
+              >
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => clearDeviceData("logs")} disabled={busy} className="secondary-action">
+                    <Trash2 size={16} /> Clear Logs
+                  </button>
+                  <button type="button" onClick={() => clearDeviceData("all")} disabled={busy} className="secondary-action text-rose-600">
+                    <Trash2 size={16} /> Reset Device
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>User ID</th>
+                        <th>Name</th>
+                        <th>Privilege</th>
+                        <th>Status</th>
+                        <th>Methods</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deviceUsers.map((user) => {
+                        const userId = user.userId ?? user.id ?? "";
+                        return (
+                          <tr key={userId || user.name}>
+                            <td className="font-mono">{userId || "-"}</td>
+                            <td>{user.name || "-"}</td>
+                            <td>{user.privilege === 1 ? "Admin" : "User"}</td>
+                            <td><StatusPill value={user.enabled === false ? "disabled" : "enabled"} /></td>
+                            <td>{user.biometricMethods?.length ? user.biometricMethods.join(", ") : "-"}</td>
+                            <td>
+                              <button type="button" onClick={() => deleteDeviceUser(userId)} disabled={busy || !userId} className="secondary-action px-3 py-2 text-rose-600">
+                                <Trash2 size={14} /> Delete
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {!deviceUsers.length && <EmptyState text="No live device users loaded." />}
+                </div>
+              </Panel>
+            </div>
           </motion.section>
         )}
 

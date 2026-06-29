@@ -36,7 +36,7 @@ export function DeviceCard({
           <div className={`h-3 w-3 rounded-full ${statusColor} ${isOnline ? "animate-pulse" : ""}`} />
           <div>
             <h3 className="font-semibold text-lg">{tablet.name}</h3>
-            <p className="text-sm text-gray-500">{tablet.deviceId || "Not configured"}</p>
+            <p className="text-sm text-gray-500">{tablet.location || "No location set"}</p>
           </div>
         </div>
         
@@ -61,7 +61,7 @@ export function DeviceCard({
 
       <div className="mt-4 space-y-2">
         <div className="flex justify-between text-sm">
-          <span className="text-gray-600">IP Address:</span>
+          <span className="text-gray-600">Bridge IP:</span>
           <span className="font-medium">{tablet.ip}</span>
         </div>
         <div className="flex justify-between text-sm">

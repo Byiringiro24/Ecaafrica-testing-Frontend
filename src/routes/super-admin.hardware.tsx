@@ -9,6 +9,7 @@ import { EmptyState, PageTabs, SaInput, SaSelect } from "@/components/super-admi
 import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/api";
 import { platformHardwareApi, type Device, type Tablet } from "@/lib/deviceApi";
+import { DEFAULT_FK623_CONFIG } from "@/lib/tabletApi";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/super-admin/hardware")({ component: HardwarePage });
@@ -33,7 +34,7 @@ const TABS = ["Create Tablet", "Create Device"];
 
 const emptyTabletForm = {
   name: "",
-  ip: "",
+  ip: "10.0.0.2",
   port: "5000",
   location: "",
   notes: "",
@@ -46,9 +47,9 @@ const emptyDeviceForm = {
   mode: "gate" as "gate" | "boarding" | "classroom",
   location: "",
   tablet_id: "",
-  device_ip: "",
-  device_port: "5005",
-  license_number: "1261",
+  device_ip: DEFAULT_FK623_CONFIG.ipAddress,
+  device_port: String(DEFAULT_FK623_CONFIG.port),
+  license_number: String(DEFAULT_FK623_CONFIG.license),
   device_serial: "",
   product_code: "",
   product_name: "",
@@ -152,8 +153,7 @@ function HardwarePage() {
       return;
     }
 
-    const fallbackIp = selectedTablet?.ip ?? "";
-    const deviceIp = deviceForm.device_ip || fallbackIp;
+    const deviceIp = deviceForm.device_ip || DEFAULT_FK623_CONFIG.ipAddress;
     const selectedTabletUrl = selectedTablet ? `http://${selectedTablet.ip}:${selectedTablet.port}` : undefined;
 
     setSaving(true);
@@ -264,7 +264,7 @@ function HardwarePage() {
             <form onSubmit={createTablet} className="grid gap-4">
               <SaInput label="Tablet Name" value={tabletForm.name} onChange={(e) => setTabletForm({ ...tabletForm, name: e.target.value })} placeholder="Main Gate Tablet" required />
               <div className="grid gap-4 md:grid-cols-2">
-                <SaInput label="Tablet Bridge IP" value={tabletForm.ip} onChange={(e) => setTabletForm({ ...tabletForm, ip: e.target.value })} placeholder="10.212.124.16" required />
+                <SaInput label="Tablet Bridge IP" value={tabletForm.ip} onChange={(e) => setTabletForm({ ...tabletForm, ip: e.target.value })} placeholder="10.0.0.2" required />
                 <SaInput label="Tablet API Port" type="number" value={tabletForm.port} onChange={(e) => setTabletForm({ ...tabletForm, port: e.target.value })} required />
               </div>
               <SaInput label="Location" value={tabletForm.location} onChange={(e) => setTabletForm({ ...tabletForm, location: e.target.value })} placeholder="Main Gate" />
@@ -346,7 +346,7 @@ function HardwarePage() {
                 ))}
               </SaSelect>
               <div className="grid gap-4 md:grid-cols-3">
-                <SaInput label="FK623 Device IP" value={deviceForm.device_ip} onChange={(e) => setDeviceForm({ ...deviceForm, device_ip: e.target.value })} placeholder={selectedTablet?.ip ?? "10.212.124.16"} />
+                <SaInput label="FK623 Device IP" value={deviceForm.device_ip} onChange={(e) => setDeviceForm({ ...deviceForm, device_ip: e.target.value })} placeholder={DEFAULT_FK623_CONFIG.ipAddress} />
                 <SaInput label="FK623 Port" type="number" value={deviceForm.device_port} onChange={(e) => setDeviceForm({ ...deviceForm, device_port: e.target.value })} />
                 <SaInput label="License" type="number" value={deviceForm.license_number} onChange={(e) => setDeviceForm({ ...deviceForm, license_number: e.target.value })} />
               </div>

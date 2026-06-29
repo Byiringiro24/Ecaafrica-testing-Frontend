@@ -53,6 +53,15 @@ const EMPTY: FormData = {
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const STEPS = ["Student Info", "Parent Info", "Review"];
 
+const splitName = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+
+  return {
+    firstName: parts[0] ?? "",
+    lastName: parts.slice(1).join(" ") || parts[0] || "",
+  };
+};
+
 export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
   const [step, setStep] = useState(0);
   const [data, setData] = useState<FormData>(EMPTY);

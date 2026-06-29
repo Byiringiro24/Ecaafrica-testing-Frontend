@@ -123,34 +123,24 @@ export default function TabletManagement() {
     setHealthChecking((prev) => ({ ...prev, [tabletKey]: true }));
 
     try {
-      const tabletUrl = `http://${tablet.ip}:${tablet.port}/api/health`;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-      const response = await fetch(tabletUrl, {
-        method: "GET",
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
+      const health = await tabletApi.checkHealth(tablet.id);
+      if (health.healthy) {
         toast.success(`Tablet ${tablet.name} is online and responding`);
-        // Update local state
         setTablets((prev) =>
           prev.map((t) =>
             t.id === tablet.id ? { ...t, status: "online" as const } : t
           )
         );
       } else {
-        toast.warning(`Tablet ${tablet.name} responded but may have issues`);
+        toast.warning(health.error || `Tablet ${tablet.name} is offline or unreachable`);
+        setTablets((prev) =>
+          prev.map((t) =>
+            t.id === tablet.id ? { ...t, status: "offline" as const } : t
+          )
+        );
       }
     } catch (error: any) {
-      if (error.name === "AbortError") {
-        toast.error(`Tablet ${tablet.name} connection timeout`);
-      } else {
-        toast.error(`Tablet ${tablet.name} is offline or unreachable`);
-      }
+      toast.error(error.message || `Tablet ${tablet.name} is offline or unreachable`);
       setTablets((prev) =>
         prev.map((t) =>
           t.id === tablet.id ? { ...t, status: "offline" as const } : t

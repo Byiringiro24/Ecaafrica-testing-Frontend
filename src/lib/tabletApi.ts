@@ -75,6 +75,15 @@ const unwrapDeviceStatus = (response: any): { data: DeviceStatus } => ({
   data: response?.data?.data ?? response?.data ?? response,
 });
 
+const unwrapDeviceResult = <T>(response: any): T => response?.data?.data ?? response?.data ?? response;
+
+export const DEFAULT_FK623_CONFIG = {
+  deviceId: import.meta.env.VITE_FK623_DEVICE_ID?.trim() || "DV-KGL-01",
+  ipAddress: import.meta.env.VITE_FK623_DEVICE_IP?.trim() || "10.91.33.16",
+  port: Number(import.meta.env.VITE_FK623_DEVICE_PORT || 5005),
+  license: Number(import.meta.env.VITE_FK623_LICENSE || 1261),
+};
+
 // API client
 export const tabletApi = {
   // Tablet management
@@ -142,9 +151,9 @@ export const tabletApi = {
 
   // User synchronization
   getUsers: (tabletId: string) =>
-    apiRequest<{ data: { users: DeviceUser[]; count: number } }>(`/tablets/${tabletId}/device/users`, {
+    apiRequest<any>(`/tablets/${tabletId}/device/users`, {
       auth: "school",
-    }),
+    }).then((response) => ({ data: unwrapDeviceResult<{ users: DeviceUser[]; count: number }>(response) })),
   
   pushUser: (data: PushUserRequest) =>
     apiRequest<{ success: boolean }>(`/tablets/${data.tabletId}/device/users`, {
@@ -161,12 +170,14 @@ export const tabletApi = {
 
   // Attendance log synchronization
   pullLogs: (data: PullLogsRequest) =>
-    apiRequest<{ data: { savedCount: number; duplicateCount: number; count: number } }>(
+    apiRequest<any>(
       `/tablets/${data.tabletId}/device/pull-logs`,
       {
         method: "POST",
         body: JSON.stringify({ readMark: data.readMark || 0 }),
         auth: "school",
       }
-    ),
+    ).then((response) => ({
+      data: unwrapDeviceResult<{ savedCount: number; duplicateCount: number; count: number }>(response),
+    })),
 };

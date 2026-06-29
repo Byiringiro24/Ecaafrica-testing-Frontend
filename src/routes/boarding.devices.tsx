@@ -44,6 +44,7 @@ import {
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest } from "@/lib/api";
+import { DEFAULT_FK623_CONFIG } from "@/lib/tabletApi";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/boarding/devices")({
@@ -235,7 +236,7 @@ function ServerCommandCenter() {
   const [autoReconnect, setAutoReconnect] = useState(true);
 
   const [tabletForm, setTabletForm] = useState({ name: "Main Gate Tablet", ip: "", port: 5000, location: "" });
-  const [deviceForm, setDeviceForm] = useState({ deviceId: "FK623-MAIN", ipAddress: "", port: 5005, license: 1261 });
+  const [deviceForm, setDeviceForm] = useState({ ...DEFAULT_FK623_CONFIG });
   const [studentForm, setStudentForm] = useState({
     first_name: "",
     last_name: "",

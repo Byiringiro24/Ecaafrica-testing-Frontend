@@ -4,7 +4,7 @@ import { Button } from "../../components/ui/button";
 import { DeviceCard } from "../../components/device-management/DeviceCard";
 import { DeviceStatusPanel } from "../../components/device-management/DeviceStatusPanel";
 import { AddTabletModal } from "../../components/device-management/AddTabletModal";
-import { tabletApi, Tablet, DeviceStatus } from "../../lib/tabletApi";
+import { DEFAULT_FK623_CONFIG, tabletApi, Tablet, DeviceStatus } from "../../lib/tabletApi";
 import { toast } from "sonner";
 
 export default function DeviceManagement() {
@@ -103,10 +103,7 @@ export default function DeviceManagement() {
     try {
       const response = await tabletApi.connect({
         tabletId: tablet.id,
-        deviceId: tablet.deviceId || "DV-KGL-01",
-        ipAddress: tablet.ip,
-        port: tablet.port,
-        license: 1261,
+        ...DEFAULT_FK623_CONFIG,
       });
       setDeviceStatus(response.data);
       setStatusMessage(response.data?.message || null);
@@ -292,7 +289,7 @@ export default function DeviceManagement() {
                         <div className="font-semibold">{user.name}</div>
                         <div className="text-sm text-gray-600">ID: {user.userId}</div>
                         <div className="mt-2 flex flex-wrap gap-1">
-                          {user.biometricMethods.map((method: string) => (
+                          {(user.biometricMethods || []).map((method: string) => (
                             <span
                               key={method}
                               className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full"

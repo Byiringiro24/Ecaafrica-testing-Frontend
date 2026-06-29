@@ -27,9 +27,9 @@ type AddTabletModalProps = {
 export function AddTabletModal({ open, onClose, onSubmit }: AddTabletModalProps) {
   const [formData, setFormData] = useState({
     name: "",
-    ip: "",
+    ip: "10.0.0.2",
     port: "5000",
-    deviceId: "",
+    deviceId: "DV-KGL-01",
     location: "",
   });
   const [loading, setLoading] = useState(false);
@@ -48,7 +48,7 @@ export function AddTabletModal({ open, onClose, onSubmit }: AddTabletModalProps)
         deviceId: formData.deviceId || undefined,
         location: formData.location || undefined,
       });
-      setFormData({ name: "", ip: "", port: "5000", deviceId: "", location: "" });
+      setFormData({ name: "", ip: "10.0.0.2", port: "5000", deviceId: "DV-KGL-01", location: "" });
       onClose();
     } catch (err: any) {
       setError(err.message || "Failed to add tablet");
@@ -86,7 +86,7 @@ export function AddTabletModal({ open, onClose, onSubmit }: AddTabletModalProps)
                 id="ip"
                 value={formData.ip}
                 onChange={(e) => setFormData({ ...formData, ip: e.target.value })}
-                placeholder="192.168.1.100"
+                placeholder="10.0.0.2"
                 required
               />
             </div>

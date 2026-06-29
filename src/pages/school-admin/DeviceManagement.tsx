@@ -14,6 +14,7 @@ export default function DeviceManagement() {
   const [loading, setLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingTablet, setEditingTablet] = useState<Tablet | null>(null);
   const [deviceUsers, setDeviceUsers] = useState<any[]>([]);
   const [readMark, setReadMark] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -93,9 +94,15 @@ export default function DeviceManagement() {
     await loadTablets(true);
   };
 
-  const handleAddTablet = async (data: any) => {
-    await tabletApi.create(data);
-    toast.success("Tablet added successfully");
+  const handleSaveTablet = async (data: any) => {
+    if (editingTablet) {
+      await tabletApi.update(editingTablet.id, data);
+      toast.success("Tablet updated successfully");
+    } else {
+      await tabletApi.create(data);
+      toast.success("Tablet added successfully");
+    }
+    setEditingTablet(null);
     await loadTablets();
   };
 
@@ -135,7 +142,8 @@ export default function DeviceManagement() {
   };
 
   const handleEdit = (tablet: Tablet) => {
-    toast.info("Edit functionality coming soon");
+    setEditingTablet(tablet);
+    setShowAddModal(true);
   };
 
   const handleDelete = async (tablet: Tablet) => {
@@ -310,8 +318,13 @@ export default function DeviceManagement() {
 
       <AddTabletModal
         open={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onSubmit={handleAddTablet}
+        onClose={() => {
+          setShowAddModal(false);
+          setEditingTablet(null);
+        }}
+        mode={editingTablet ? "edit" : "create"}
+        initialData={editingTablet}
+        onSubmit={handleSaveTablet}
       />
     </div>
   );

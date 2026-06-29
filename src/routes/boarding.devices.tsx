@@ -234,6 +234,20 @@ function ServerCommandCenter() {
   const [stats, setStats] = useState<Stats>(emptyStats);
   const [readMark, setReadMark] = useState(0);
   const [autoReconnect, setAutoReconnect] = useState(true);
+  const [manualDeviceTime, setManualDeviceTime] = useState("");
+  const [manualLogForm, setManualLogForm] = useState({
+    student_id: "",
+    event_type: "entry",
+    scan_method: "fingerprint",
+    scanned_at: "",
+  });
+  const [manualEventForm, setManualEventForm] = useState({
+    student_id: "",
+    session_name: "",
+    scan_method: "fingerprint",
+    scanned_at: "",
+  });
+  const [absentDate, setAbsentDate] = useState(new Date().toISOString().slice(0, 10));
 
   const [tabletForm, setTabletForm] = useState({ name: "Main Gate Tablet", ip: "", port: 5000, location: "" });
   const [deviceForm, setDeviceForm] = useState({ ...DEFAULT_FK623_CONFIG });
@@ -494,6 +508,90 @@ function ServerCommandCenter() {
     }
   }
 
+  async function setDeviceTime() {
+    if (!selectedTablet?.id) {
+      toast.error("Select a tablet first");
+      return;
+    }
+    if (!manualDeviceTime) {
+      toast.error("Choose the date and time to set");
+      return;
+    }
+    try {
+      await apiRequest(`/tablets/${selectedTablet.id}/device/set-time`, {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({ datetime: new Date(manualDeviceTime).toISOString() }),
+      });
+      toast.success("Device time updated");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to set device time");
+    }
+  }
+
+  async function checkTabletHealth() {
+    if (!selectedTablet?.id) {
+      toast.error("Select a tablet first");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await apiRequest<any>(`/tablets/${selectedTablet.id}/health`, { auth: "school" });
+      const healthy = Boolean(result?.healthy ?? result?.data?.healthy);
+      toast[healthy ? "success" : "warning"](
+        healthy ? `${selectedTablet.name} bridge is reachable` : result?.error || "Tablet bridge is offline"
+      );
+      await refreshAll();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Tablet health check failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function checkLiveDeviceStatus() {
+    if (!selectedTablet?.id) {
+      toast.error("Select a tablet first");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await apiRequest<any>(`/tablets/${selectedTablet.id}/device/status`, { auth: "school" });
+      const status = result?.data ?? result;
+      toast[status?.connected ? "success" : "warning"](
+        status?.connected
+          ? `FK623 connected: ${status.users ?? 0} users, ${status.logs ?? 0} logs`
+          : status?.message || "FK623 is not connected"
+      );
+      await refreshAll();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Device status check failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function powerOffDevice() {
+    if (!selectedTablet?.id) {
+      toast.error("Select a tablet first");
+      return;
+    }
+    if (!window.confirm("Power off the physical FK623 device?")) return;
+    setBusy(true);
+    try {
+      await apiRequest(`/tablets/${selectedTablet.id}/device/poweroff`, {
+        method: "POST",
+        auth: "school",
+      });
+      toast.success("Power off command sent");
+      await refreshAll();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Power off failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function refreshDeviceConnection() {
     if (!selectedTablet?.id) return;
     try {
@@ -680,6 +778,97 @@ function ServerCommandCenter() {
       await loadDeviceDetails(selectedDevice.id);
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to save session");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteSession(sessionId: string) {
+    if (!selectedDevice?.id) return;
+    if (!window.confirm("Delete this attendance session?")) return;
+    setBusy(true);
+    try {
+      await apiRequest(`/devices/${selectedDevice.id}/sessions/${sessionId}`, {
+        method: "DELETE",
+        auth: "school",
+      });
+      toast.success("Session deleted");
+      await loadDeviceDetails(selectedDevice.id);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to delete session");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function markAbsent(session: DeviceSession) {
+    if (!selectedDevice?.id) return;
+    if (!window.confirm(`Mark missing students absent for ${session.name} on ${absentDate}?`)) return;
+    setBusy(true);
+    try {
+      const result = await apiRequest<any>(`/devices/${selectedDevice.id}/sessions/${session.id}/mark-absent`, {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({ date: absentDate }),
+      });
+      toast.success(`Marked ${result?.absent_count ?? 0} student(s) absent`);
+      await loadDeviceDetails(selectedDevice.id);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to mark absent students");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createManualLog(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedDevice?.id) {
+      toast.error("Select a device first");
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiRequest(`/devices/${selectedDevice.id}/logs`, {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({
+          student_id: manualLogForm.student_id || undefined,
+          event_type: manualLogForm.event_type,
+          scan_method: manualLogForm.scan_method,
+          scanned_at: manualLogForm.scanned_at ? new Date(manualLogForm.scanned_at).toISOString() : undefined,
+        }),
+      });
+      toast.success("Manual device log saved");
+      await loadDeviceDetails(selectedDevice.id);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to save manual log");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function recordManualAttendanceEvent(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedDevice?.id) {
+      toast.error("Select a device first");
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiRequest(`/devices/${selectedDevice.id}/attendance-events`, {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({
+          student_id: manualEventForm.student_id || undefined,
+          session_name: manualEventForm.session_name || undefined,
+          scan_method: manualEventForm.scan_method,
+          scanned_at: manualEventForm.scanned_at ? new Date(manualEventForm.scanned_at).toISOString() : undefined,
+        }),
+      });
+      toast.success("Manual attendance event recorded");
+      await loadDeviceDetails(selectedDevice.id);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to record attendance event");
     } finally {
       setBusy(false);
     }
@@ -942,6 +1131,28 @@ function ServerCommandCenter() {
                     <button type="button" onClick={syncTime} className="secondary-action"><Clock size={16} /> Sync</button>
                     <button type="button" onClick={disconnectDevice} className="secondary-action text-rose-600"><Power size={16} /> Disconnect</button>
                   </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button type="button" onClick={checkTabletHealth} disabled={busy} className="secondary-action">
+                      <Network size={16} /> Bridge Health
+                    </button>
+                    <button type="button" onClick={checkLiveDeviceStatus} disabled={busy} className="secondary-action">
+                      <Activity size={16} /> Live Status
+                    </button>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                    <Field
+                      label="Manual Device Time"
+                      type="datetime-local"
+                      value={manualDeviceTime}
+                      onChange={setManualDeviceTime}
+                    />
+                    <button type="button" onClick={setDeviceTime} disabled={busy || !manualDeviceTime} className="secondary-action self-end">
+                      <Clock size={16} /> Set Time
+                    </button>
+                    <button type="button" onClick={powerOffDevice} disabled={busy} className="secondary-action self-end text-rose-600">
+                      <Power size={16} /> Power Off
+                    </button>
+                  </div>
                   <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-600">
                     <input
                       type="checkbox"
@@ -1050,10 +1261,23 @@ function ServerCommandCenter() {
               </form>
             </Panel>
             <Panel title="Saved Sessions" icon={Clock}>
+              <div className="mb-4 max-w-xs">
+                <Field label="Absent Date" type="date" value={absentDate} onChange={setAbsentDate} />
+              </div>
               <div className="space-y-3">
                 {sessions.map((session) => (
                   <div key={session.id} className="rounded-xl border border-slate-200 p-4">
-                    <div className="font-semibold text-slate-950">{session.name}</div>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="font-semibold text-slate-950">{session.name}</div>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => markAbsent(session)} disabled={busy} className="secondary-action px-3 py-2">
+                          <CheckCircle2 size={14} /> Mark Absent
+                        </button>
+                        <button type="button" onClick={() => deleteSession(session.id)} disabled={busy} className="secondary-action px-3 py-2 text-rose-600">
+                          <Trash2 size={14} /> Delete
+                        </button>
+                      </div>
+                    </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {session.windows.map((window) => (
                         <span key={window.id ?? `${window.start_time}-${window.end_time}`} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -1070,13 +1294,103 @@ function ServerCommandCenter() {
         )}
 
         {activeTab === "monitor" && (
-          <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
             <Panel title="Live Attendance Logs" icon={Activity} action={<button type="button" onClick={pullLogs} disabled={busy} className="primary-action"><DownloadCloud size={16} /> Pull Logs</button>}>
               <div className="mb-4 flex max-w-xs items-center gap-2">
                 <Field label="Read Mark" type="number" value={readMark} onChange={(value) => setReadMark(Number(value))} />
               </div>
               <LogTable logs={logs} />
             </Panel>
+            <div className="space-y-4">
+              <Panel title="Manual Attendance Event" icon={CheckCircle2}>
+                <form onSubmit={recordManualAttendanceEvent} className="grid gap-3">
+                  <SelectField
+                    label="Student"
+                    value={manualEventForm.student_id}
+                    onChange={(value) => setManualEventForm({ ...manualEventForm, student_id: value })}
+                  >
+                    <option value="">No student selected</option>
+                    {students.map((student) => (
+                      <option key={student.id} value={student.id}>
+                        {studentName(student)}
+                      </option>
+                    ))}
+                  </SelectField>
+                  <SelectField
+                    label="Session"
+                    value={manualEventForm.session_name}
+                    onChange={(value) => setManualEventForm({ ...manualEventForm, session_name: value })}
+                  >
+                    <option value="">Default session</option>
+                    {sessions.map((session) => (
+                      <option key={session.id} value={session.name}>{session.name}</option>
+                    ))}
+                  </SelectField>
+                  <SelectField
+                    label="Scan Method"
+                    value={manualEventForm.scan_method}
+                    onChange={(value) => setManualEventForm({ ...manualEventForm, scan_method: value })}
+                  >
+                    <option value="fingerprint">Fingerprint</option>
+                    <option value="face">Face</option>
+                    <option value="nfc">Card</option>
+                    <option value="manual">Manual/PIN</option>
+                  </SelectField>
+                  <Field
+                    label="Scanned At"
+                    type="datetime-local"
+                    value={manualEventForm.scanned_at}
+                    onChange={(value) => setManualEventForm({ ...manualEventForm, scanned_at: value })}
+                  />
+                  <button className="primary-action" disabled={busy}>
+                    <CheckCircle2 size={16} /> Record Event
+                  </button>
+                </form>
+              </Panel>
+              <Panel title="Manual Raw Device Log" icon={Database}>
+                <form onSubmit={createManualLog} className="grid gap-3">
+                  <SelectField
+                    label="Student"
+                    value={manualLogForm.student_id}
+                    onChange={(value) => setManualLogForm({ ...manualLogForm, student_id: value })}
+                  >
+                    <option value="">No student selected</option>
+                    {students.map((student) => (
+                      <option key={student.id} value={student.id}>
+                        {studentName(student)}
+                      </option>
+                    ))}
+                  </SelectField>
+                  <SelectField
+                    label="Direction"
+                    value={manualLogForm.event_type}
+                    onChange={(value) => setManualLogForm({ ...manualLogForm, event_type: value })}
+                  >
+                    <option value="entry">Entry</option>
+                    <option value="exit">Exit</option>
+                  </SelectField>
+                  <SelectField
+                    label="Scan Method"
+                    value={manualLogForm.scan_method}
+                    onChange={(value) => setManualLogForm({ ...manualLogForm, scan_method: value })}
+                  >
+                    <option value="fingerprint">Fingerprint</option>
+                    <option value="face">Face</option>
+                    <option value="nfc">Card</option>
+                    <option value="manual">Manual/PIN</option>
+                  </SelectField>
+                  <Field
+                    label="Scanned At"
+                    type="datetime-local"
+                    value={manualLogForm.scanned_at}
+                    onChange={(value) => setManualLogForm({ ...manualLogForm, scanned_at: value })}
+                  />
+                  <button className="secondary-action" disabled={busy}>
+                    <Database size={16} /> Save Raw Log
+                  </button>
+                </form>
+              </Panel>
+            </div>
           </motion.section>
         )}
 
@@ -1150,6 +1464,29 @@ function Field({ label, value, onChange, type = "text", required = false }: { la
     <label className="grid gap-1 text-sm font-medium text-slate-600">
       {label}
       <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} className="form-field" />
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  onChange,
+  children,
+  required = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+  required?: boolean;
+}) {
+  return (
+    <label className="grid gap-1 text-sm font-medium text-slate-600">
+      {label}
+      <select required={required} value={value} onChange={(event) => onChange(event.target.value)} className="form-field">
+        {children}
+      </select>
     </label>
   );
 }

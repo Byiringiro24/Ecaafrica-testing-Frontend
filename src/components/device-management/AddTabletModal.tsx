@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -14,6 +14,13 @@ import {
 type AddTabletModalProps = {
   open: boolean;
   onClose: () => void;
+  mode?: "create" | "edit";
+  initialData?: {
+    name?: string;
+    ip?: string;
+    port?: number | string;
+    location?: string | null;
+  } | null;
   onSubmit: (data: {
     name: string;
     ip: string;
@@ -22,7 +29,7 @@ type AddTabletModalProps = {
   }) => Promise<void>;
 };
 
-export function AddTabletModal({ open, onClose, onSubmit }: AddTabletModalProps) {
+export function AddTabletModal({ open, onClose, onSubmit, mode = "create", initialData }: AddTabletModalProps) {
   const [formData, setFormData] = useState({
     name: "",
     ip: "10.0.0.2",
@@ -31,6 +38,17 @@ export function AddTabletModal({ open, onClose, onSubmit }: AddTabletModalProps)
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setFormData({
+      name: initialData?.name ?? "",
+      ip: initialData?.ip ?? "10.0.0.2",
+      port: String(initialData?.port ?? "5000"),
+      location: initialData?.location ?? "",
+    });
+    setError("");
+  }, [initialData, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +62,7 @@ export function AddTabletModal({ open, onClose, onSubmit }: AddTabletModalProps)
         port: parseInt(formData.port),
         location: formData.location || undefined,
       });
-      setFormData({ name: "", ip: "10.0.0.2", port: "5000", location: "" });
+      if (mode === "create") setFormData({ name: "", ip: "10.0.0.2", port: "5000", location: "" });
       onClose();
     } catch (err: any) {
       setError(err.message || "Failed to add tablet");
@@ -57,9 +75,11 @@ export function AddTabletModal({ open, onClose, onSubmit }: AddTabletModalProps)
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle>Add New Tablet</DialogTitle>
+          <DialogTitle>{mode === "edit" ? "Edit Tablet" : "Add New Tablet"}</DialogTitle>
           <DialogDescription>
-            Register the Windows tablet bridge that the backend can reach over WireGuard.
+            {mode === "edit"
+              ? "Update the Windows tablet bridge settings used by the backend."
+              : "Register the Windows tablet bridge that the backend can reach over WireGuard."}
           </DialogDescription>
         </DialogHeader>
 
@@ -121,7 +141,7 @@ export function AddTabletModal({ open, onClose, onSubmit }: AddTabletModalProps)
               Cancel
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Adding..." : "Add Tablet"}
+              {loading ? "Saving..." : mode === "edit" ? "Save Tablet" : "Add Tablet"}
             </Button>
           </DialogFooter>
         </form>

@@ -18,6 +18,8 @@ import { toast } from "sonner";
 import { tabletApi, Tablet } from "@/lib/deviceApi";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
+const TABLET_LIST_REFRESH_MS = 20 * 60_000;
+
 export default function TabletManagement() {
   const [tablets, setTablets] = useState<Tablet[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,10 +42,10 @@ export default function TabletManagement() {
   useEffect(() => {
     loadTablets();
     
-    // Auto-refresh every 30 seconds
+    // Auto-refresh every 20 minutes
     const interval = setInterval(() => {
       loadTablets();
-    }, 30000);
+    }, TABLET_LIST_REFRESH_MS);
     
     return () => clearInterval(interval);
   }, []);

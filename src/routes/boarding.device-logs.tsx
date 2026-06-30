@@ -11,6 +11,8 @@ import { formatTimestamp } from "@/lib/device-logs-utils";
 
 export const Route = createFileRoute("/boarding/device-logs")({ component: DeviceLogsPage });
 
+const DEVICE_LOG_REFRESH_MS = 20 * 60_000;
+
 function DeviceLogsPage() {
   // State management
   const [logs, setLogs] = useState<DeviceLog[]>([]);
@@ -58,13 +60,13 @@ function DeviceLogsPage() {
     fetchAllData();
   }, []);
 
-  // Auto-refresh every 30 seconds
+  // Auto-refresh every 20 minutes
   useEffect(() => {
     const interval = setInterval(() => {
       if (!document.hidden) {
         fetchAllData();
       }
-    }, 30000);
+    }, DEVICE_LOG_REFRESH_MS);
 
     return () => clearInterval(interval);
   }, []);

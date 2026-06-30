@@ -166,6 +166,9 @@ type DeviceUser = {
 
 type PushMode = "selected" | "class" | "all";
 
+const STATUS_POLL_MS = 60_000;
+const SLOW_REFRESH_MS = 20 * 60_000;
+
 const emptyStats: Stats = {
   totalStudents: 0,
   attendanceToday: 0,
@@ -330,22 +333,12 @@ function ServerCommandCenter() {
       setSelectedTabletId((current) => current || nextTablets[0]?.id || "");
 
       const currentDevice = nextDevices.find((device) => device.id === selectedDeviceId) ?? nextDevices[0];
-      const currentTablet = nextTablets.find((tablet) => tablet.id === selectedTabletId) ?? nextTablets[0];
       const today = new Date().toISOString().slice(0, 10);
       if (currentDevice) {
-        const [statusResult, logsResult, sessionsResult, usersResult] = await Promise.allSettled([
-          apiRequest(`/devices/${currentDevice.id}/status`, { auth: "school" }),
+        const [logsResult, sessionsResult] = await Promise.allSettled([
           apiRequest<AttendanceLog[]>(`/devices/${currentDevice.id}/logs?limit=500`, { auth: "school" }),
           apiRequest<{ sessions?: DeviceSession[] }>(`/devices/${currentDevice.id}/sessions`, { auth: "school" }),
-          currentTablet?.id
-            ? apiRequest(`/tablets/${currentTablet.id}/device/users`, { auth: "school" })
-            : Promise.reject(new Error("No tablet selected")),
         ]);
-        if (statusResult.status === "fulfilled") {
-          setDevices((items) =>
-            items.map((device) => (device.id === currentDevice.id ? { ...device, ...(statusResult.value as Device) } : device))
-          );
-        }
         if (logsResult.status === "fulfilled") {
           const nextLogs = unwrapList<AttendanceLog>(logsResult.value);
           setLogs(nextLogs);
@@ -364,7 +357,6 @@ function ServerCommandCenter() {
           });
         }
         if (sessionsResult.status === "fulfilled") setSessions(sessionsResult.value.sessions ?? []);
-        if (usersResult.status === "fulfilled") setDeviceUsers(unwrapList<DeviceUser>((usersResult.value as any)?.data ?? usersResult.value));
       }
 
       setStats((current) => ({
@@ -387,6 +379,13 @@ function ServerCommandCenter() {
   }, []);
 
   useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refreshAll(false);
+    }, SLOW_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [selectedDeviceId, selectedTabletId]);
+
+  useEffect(() => {
     if (selectedDeviceId) void loadDeviceDetails(selectedDeviceId);
   }, [selectedDeviceId]);
 
@@ -394,9 +393,9 @@ function ServerCommandCenter() {
     if (!autoReconnect || !selectedTabletId) return;
     const timer = window.setInterval(() => {
       void refreshDeviceConnection();
-    }, 60000);
+    }, STATUS_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [autoReconnect, selectedTabletId]);
+  }, [autoReconnect, selectedDevice?.id, selectedTablet?.id]);
 
   useEffect(() => {
     if (!studentForm.section_id && classSections[0]?.id) {
@@ -495,7 +494,7 @@ function ServerCommandCenter() {
       });
       const savedCount = result?.data?.savedCount ?? result?.savedCount ?? 0;
       toast.success(`Saved ${savedCount} log(s) to PostgreSQL`);
-      await refreshAll();
+      if (selectedDevice?.id) await loadDeviceDetails(selectedDevice.id);
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to pull logs");
     } finally {
@@ -715,7 +714,7 @@ function ServerCommandCenter() {
       pushMode === "all"
         ? { mode: "all" }
         : pushMode === "class"
-          ? { mode: "class", class_id: classId }
+          ? { mode: "class", class_id: classId || undefined }
           : { mode: "selected", student_ids: Array.from(selectedStudentIds) };
 
     if (pushMode === "class" && !classId) {
@@ -736,7 +735,7 @@ function ServerCommandCenter() {
       });
       toast.success(`Pushed ${result.pushed_count ?? 0}/${result.selected_count ?? 0} student(s)`);
       setSelectedStudentIds(new Set());
-      await refreshAll();
+      await refreshAll(false);
     } catch (error: any) {
       toast.error(error?.message ?? "Student push failed");
     } finally {
@@ -745,17 +744,26 @@ function ServerCommandCenter() {
   }
 
   async function addSingleStudentToDevice(student: Student) {
-    if (!selectedTablet?.id) {
-      toast.error("Select a tablet first");
+    if (!selectedDevice?.id && !selectedTablet?.id) {
+      toast.error("Select a device or tablet first");
       return;
     }
     try {
-      await apiRequest(`/tablets/${selectedTablet.id}/device/users`, {
-        method: "POST",
-        auth: "school",
-        body: JSON.stringify({ userId: buildDeviceUserId(student), name: studentName(student) }),
-      });
+      if (selectedDevice?.id) {
+        await apiRequest(`/devices/${selectedDevice.id}/push-students`, {
+          method: "POST",
+          auth: "school",
+          body: JSON.stringify({ mode: "selected", student_ids: [student.id] }),
+        });
+      } else {
+        await apiRequest(`/tablets/${selectedTablet!.id}/device/users`, {
+          method: "POST",
+          auth: "school",
+          body: JSON.stringify({ userId: buildDeviceUserId(student), name: studentName(student) }),
+        });
+      }
       toast.success(`${studentName(student)} pushed to device`);
+      await refreshDeviceConnection();
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to push student");
     }

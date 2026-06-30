@@ -26,6 +26,8 @@ import { deviceApi, tabletApi, Device, Tablet } from "@/lib/deviceApi";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { AttendanceConfigDialog } from "@/components/device-management/AttendanceConfigDialog";
 
+const DEVICE_LIST_REFRESH_MS = 20 * 60_000;
+
 export default function DeviceManagementNew() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [tablets, setTablets] = useState<Tablet[]>([]);
@@ -54,11 +56,11 @@ export default function DeviceManagementNew() {
     loadDevices();
     loadTablets();
     
-    // Auto-refresh every 30 seconds
+    // Auto-refresh every 20 minutes
     const interval = setInterval(() => {
       loadDevices();
       loadTablets();
-    }, 30000);
+    }, DEVICE_LIST_REFRESH_MS);
     
     return () => clearInterval(interval);
   }, []);

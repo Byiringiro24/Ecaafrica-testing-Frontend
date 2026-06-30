@@ -25,8 +25,6 @@ type Student = {
   residency: "Boarding" | "Day";
 };
 
-const CLASSES = ["S1", "S2", "S3", "S4", "S5", "S6"];
-
 function DeviceStudentsPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -87,6 +85,10 @@ function DeviceStudentsPage() {
   }, [assignments, classFilter, residencyFilter, search, showAssignedOnly, deviceId, students]);
 
   const assignedList = useMemo(() => students.filter((s) => assignedIds.has(s.id)), [assignedIds, students]);
+  const classOptions = useMemo(
+    () => Array.from(new Set(students.map((student) => student.class).filter(Boolean))).sort(),
+    [students]
+  );
   const boardersAssigned = assignedList.filter((s) => s.residency === "Boarding").length;
   const dayAssigned = assignedList.filter((s) => s.residency === "Day").length;
   const unassigned = students.length - assignedIds.size;
@@ -142,6 +144,28 @@ function DeviceStudentsPage() {
     }
   };
 
+  const pushCurrentClass = async () => {
+    if (classFilter === "All") {
+      toast.error("Choose a class first");
+      return;
+    }
+    const classStudentIds = filteredStudents.map((student) => student.id);
+    if (classStudentIds.length === 0) {
+      toast.error("No students found in this class");
+      return;
+    }
+    try {
+      await apiRequest(`/devices/${deviceId}/push-students`, {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({ mode: "selected", student_ids: classStudentIds }),
+      });
+      toast.success(`Pushed ${classStudentIds.length} ${classFilter} student(s) to ${device?.name ?? deviceId}`);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to push class students");
+    }
+  };
+
   const pushAllAssigned = async () => {
     try {
       await apiRequest(`/devices/${deviceId}/push-students`, {
@@ -189,7 +213,7 @@ function DeviceStudentsPage() {
           className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
         >
           <option value="All">All Classes</option>
-          {CLASSES.map((c) => <option key={c}>{c}</option>)}
+          {classOptions.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <select
           value={residencyFilter}
@@ -230,6 +254,14 @@ function DeviceStudentsPage() {
           className="h-10 inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
         >
           <ArrowUpRight className="h-4 w-4" /> Push Selected
+        </button>
+        <button
+          type="button"
+          onClick={pushCurrentClass}
+          disabled={classFilter === "All"}
+          className="h-10 inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-50"
+        >
+          <ArrowUpRight className="h-4 w-4" /> Push Class
         </button>
       </div>
 

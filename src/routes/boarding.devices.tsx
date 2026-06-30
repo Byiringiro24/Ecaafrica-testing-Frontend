@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
@@ -248,6 +248,8 @@ function ServerCommandCenter() {
     scanned_at: "",
   });
   const [absentDate, setAbsentDate] = useState(new Date().toISOString().slice(0, 10));
+  const refreshAllInFlight = useRef(false);
+  const statusPollInFlight = useRef(false);
 
   const [tabletForm, setTabletForm] = useState({ name: "Main Gate Tablet", ip: "", port: 5000, location: "" });
   const [deviceForm, setDeviceForm] = useState({ ...DEFAULT_FK623_CONFIG });
@@ -298,8 +300,10 @@ function ServerCommandCenter() {
     }));
   }, [logs]);
 
-  async function refreshAll() {
-    setBusy(true);
+  async function refreshAll(showSpinner = true) {
+    if (refreshAllInFlight.current) return;
+    refreshAllInFlight.current = true;
+    if (showSpinner) setBusy(true);
     try {
       const [deviceData, tabletData, classData, sectionData, yearData, studentData] = await Promise.all([
         apiRequest<Device[]>("/devices?limit=500&sort=created_at&order=desc", { auth: "school" }),
@@ -373,7 +377,8 @@ function ServerCommandCenter() {
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to load attendance devices");
     } finally {
-      setBusy(false);
+      refreshAllInFlight.current = false;
+      if (showSpinner) setBusy(false);
     }
   }
 
@@ -389,7 +394,7 @@ function ServerCommandCenter() {
     if (!autoReconnect || !selectedTabletId) return;
     const timer = window.setInterval(() => {
       void refreshDeviceConnection();
-    }, 10000);
+    }, 60000);
     return () => window.clearInterval(timer);
   }, [autoReconnect, selectedTabletId]);
 
@@ -541,7 +546,11 @@ function ServerCommandCenter() {
       toast[healthy ? "success" : "warning"](
         healthy ? `${selectedTablet.name} bridge is reachable` : result?.error || "Tablet bridge is offline"
       );
-      await refreshAll();
+      setTablets((items) =>
+        items.map((tablet) =>
+          tablet.id === selectedTablet.id ? { ...tablet, status: healthy ? "online" : "offline" } : tablet
+        )
+      );
     } catch (error: any) {
       toast.error(error?.message ?? "Tablet health check failed");
     } finally {
@@ -563,7 +572,25 @@ function ServerCommandCenter() {
           ? `FK623 connected: ${status.users ?? 0} users, ${status.logs ?? 0} logs`
           : status?.message || "FK623 is not connected"
       );
-      await refreshAll();
+      const connected = Boolean(status?.connected);
+      setDevices((items) =>
+        items.map((device) =>
+          device.id === selectedDevice?.id
+            ? {
+                ...device,
+                status: connected ? "online" : "offline",
+                is_connected: connected,
+                device_users_count: Number(status?.users ?? device.device_users_count ?? 0),
+                device_logs_count: Number(status?.logs ?? device.device_logs_count ?? 0),
+              }
+            : device
+        )
+      );
+      setTablets((items) =>
+        items.map((tablet) =>
+          tablet.id === selectedTablet.id ? { ...tablet, status: connected ? "online" : "offline" } : tablet
+        )
+      );
     } catch (error: any) {
       toast.error(error?.message ?? "Device status check failed");
     } finally {
@@ -594,11 +621,34 @@ function ServerCommandCenter() {
 
   async function refreshDeviceConnection() {
     if (!selectedTablet?.id) return;
+    if (statusPollInFlight.current) return;
+    statusPollInFlight.current = true;
     try {
-      await apiRequest(`/tablets/${selectedTablet.id}/device/status`, { auth: "school" });
-      await refreshAll();
+      const result = await apiRequest<any>(`/tablets/${selectedTablet.id}/device/status`, { auth: "school" });
+      const status = result?.data ?? result;
+      const connected = Boolean(status?.connected);
+      setDevices((items) =>
+        items.map((device) =>
+          device.id === selectedDevice?.id
+            ? {
+                ...device,
+                status: connected ? "online" : "offline",
+                is_connected: connected,
+                device_users_count: Number(status?.users ?? device.device_users_count ?? 0),
+                device_logs_count: Number(status?.logs ?? device.device_logs_count ?? 0),
+              }
+            : device
+        )
+      );
+      setTablets((items) =>
+        items.map((tablet) =>
+          tablet.id === selectedTablet.id ? { ...tablet, status: connected ? "online" : "offline" } : tablet
+        )
+      );
     } catch {
       // Polling keeps trying; visible manual actions still show toasts.
+    } finally {
+      statusPollInFlight.current = false;
     }
   }
 

@@ -45,7 +45,7 @@ export default function DeviceManagement() {
     
     const interval = setInterval(() => {
       loadDeviceStatus(selectedTablet.id, true); // silent reload
-    }, 10000);
+    }, 60000);
 
     return () => clearInterval(interval);
   }, [selectedTablet]);

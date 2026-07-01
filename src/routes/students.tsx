@@ -40,12 +40,12 @@ type ApiStudent = {
     name: string;
     full_name: string;
   } | null;
-};
-
-function capitalize(s: string) {
   device_user_id?: string | null;
   device_sync_status?: string | null;
   last_device_sync?: string | null;
+};
+
+function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
@@ -262,10 +262,14 @@ function StudentsPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                     <tr>
-                      {["Name", "Student ID", "Class", "Residency", "Parent", "Phone", ""].map(h => (
-                      {['Name', 'Student ID', 'Class', 'Residency', 'Device', 'Parent', 'Phone', ''].map(h => (
-                        <th key={h} className="text-left px-4 py-3">{h}</th>
-                      ))}
+                      <th className="text-left px-4 py-3">Name</th>
+                      <th className="text-left px-4 py-3">Student ID</th>
+                      <th className="text-left px-4 py-3">Class</th>
+                      <th className="text-left px-4 py-3">Residency</th>
+                      <th className="text-left px-4 py-3">Device</th>
+                      <th className="text-left px-4 py-3">Parent</th>
+                      <th className="text-left px-4 py-3">Phone</th>
+                      <th className="text-left px-4 py-3"></th>
                     </tr>
                   </thead>
                   <tbody>

@@ -43,7 +43,22 @@ type ApiStudent = {
 };
 
 function capitalize(s: string) {
+  device_user_id?: string | null;
+  device_sync_status?: string | null;
+  last_device_sync?: string | null;
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function pushStatusLabel(student: ApiStudent) {
+  if (student.device_user_id || student.device_sync_status === "synced") return "Pushed to device";
+  if (student.device_sync_status && student.device_sync_status !== "not synced") return capitalize(student.device_sync_status);
+  return "Not pushed";
+}
+
+function pushStatusClass(student: ApiStudent) {
+  if (student.device_user_id || student.device_sync_status === "synced") return "bg-success/15 text-success";
+  if (student.device_sync_status && student.device_sync_status !== "not synced") return "bg-amber-100 text-amber-700";
+  return "bg-muted text-muted-foreground";
 }
 
 function toDateInput(iso: string | null): string {
@@ -150,7 +165,7 @@ function StudentsPage() {
           </div>
 
           <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap gap-3 items-center">
-            <div className="relative flex-1 min-w-[220px]">
+            <div className="relative flex-1 min-w-55">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 value={search}
@@ -221,6 +236,9 @@ function StudentsPage() {
                           {sectionName}
                         </span>
                       )}
+                      <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${pushStatusClass(s)}`}>
+                        {pushStatusLabel(s)}
+                      </span>
                     </div>
                     {parentPhone && (
                       <div className="mt-3 pt-3 border-t border-border flex items-center gap-2 text-xs text-muted-foreground">
@@ -245,6 +263,7 @@ function StudentsPage() {
                   <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                     <tr>
                       {["Name", "Student ID", "Class", "Residency", "Parent", "Phone", ""].map(h => (
+                      {['Name', 'Student ID', 'Class', 'Residency', 'Device', 'Parent', 'Phone', ''].map(h => (
                         <th key={h} className="text-left px-4 py-3">{h}</th>
                       ))}
                     </tr>
@@ -262,6 +281,11 @@ function StudentsPage() {
                           <td className="px-4 py-3 font-mono text-xs">{s.student_id_number ?? "—"}</td>
                           <td className="px-4 py-3">{sectionName}</td>
                           <td className="px-4 py-3 text-xs font-semibold text-muted-foreground">{residency}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${pushStatusClass(s)}`}>
+                              {pushStatusLabel(s)}
+                            </span>
+                          </td>
                           <td className="px-4 py-3">{parentName}</td>
                           <td className="px-4 py-3 font-mono text-xs">{parentPhone}</td>
                           <td className="px-4 py-3">
@@ -272,7 +296,7 @@ function StudentsPage() {
                     })}
                     {filtered.length === 0 && total > 0 && (
                       <tr>
-                        <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">No students match your search.</td>
+                        <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">No students match your search.</td>
                       </tr>
                     )}
                   </tbody>
@@ -338,7 +362,7 @@ function StudentsSkeleton({ view }: { view: "grid" | "table" }) {
         ))}
       </div>
       <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap gap-3 items-center">
-        <Skeleton className="h-10 flex-1 min-w-[220px]" />
+        <Skeleton className="h-10 flex-1 min-w-55" />
         <Skeleton className="h-10 w-32" />
         <Skeleton className="h-10 w-36" />
         <Skeleton className="h-10 w-20" />
@@ -574,7 +598,7 @@ function EditStudentModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-60 grid place-items-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-2xl rounded-2xl bg-card shadow-2xl max-h-[90vh] flex flex-col">
 
         {/* header */}

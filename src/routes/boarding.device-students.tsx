@@ -143,7 +143,7 @@ function DeviceStudentsPage() {
     [classes]
   );
   const assignedStudents = useMemo(
-    () => students.filter((student) => Boolean(student.deviceUserId) || student.deviceSyncStatus === "synced"),
+    () => students.filter((student) => student.deviceSyncStatus === "synced"),
     [students]
   );
   const assignedIds = useMemo(() => new Set(assignedStudents.map((student) => student.id)), [assignedStudents]);
@@ -188,7 +188,7 @@ function DeviceStudentsPage() {
   };
 
   const loadStudents = async () => {
-    const studentsData = await apiRequest<any[]>("/students?limit=5000", { auth: "school" });
+    const studentsData = await apiRequest<any[]>("/students?limit=5000&status=active", { auth: "school" });
     const mappedStudents = (Array.isArray(studentsData) ? studentsData : []).map((student): Student => ({
       id: student.id,
       name: `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim(),
@@ -224,17 +224,21 @@ function DeviceStudentsPage() {
       toast.error("Select a device first");
       return;
     }
-    if (studentIds.length === 0) {
+    if (actionType !== "push-class" && studentIds.length === 0) {
       toast.error("Select at least one student");
       return;
     }
 
     setBusyAction({ type: actionType, id: actionId });
     try {
+      const body =
+        actionType === "push-class"
+          ? JSON.stringify({ mode: "class", class_id: classFilter })
+          : JSON.stringify({ mode: "selected", student_ids: studentIds });
       const result = await apiRequest<any>(`/devices/${deviceId}/push-students`, {
         method: "POST",
         auth: "school",
-        body: JSON.stringify({ mode: "selected", student_ids: studentIds }),
+        body,
       });
       toast.success(`${result?.pushed_count ?? studentIds.length} student(s) pushed to ${device?.name ?? selectedDeviceLabel}`);
       setSelectedIds(new Set());
@@ -255,7 +259,7 @@ function DeviceStudentsPage() {
       toast.error("Choose a class first");
       return;
     }
-    await pushStudents(filteredStudents.map((student) => student.id), "push-class");
+    await pushStudents([], "push-class");
   };
 
   const pushAllAssigned = async () => {

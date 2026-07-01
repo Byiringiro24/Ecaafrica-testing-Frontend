@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search, UserPlus, ArrowUpRight, X } from "lucide-react";
+import { ArrowUpRight, Search, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
@@ -16,6 +16,22 @@ type Device = {
   location: string;
   maxUsers: number;
   lastSync: string;
+  tabletId?: string | null;
+  deviceUsersCount?: number;
+  deviceLogsCount?: number;
+  isConnected?: boolean;
+};
+
+type DeviceStatus = {
+  connected?: boolean;
+  users?: number;
+  logs?: number;
+  message?: string;
+  deviceId?: string;
+  serialNumber?: string;
+  productName?: string;
+  ipAddress?: string;
+  last_sync_at?: string | null;
 };
 
 type Student = {
@@ -23,19 +39,23 @@ type Student = {
   name: string;
   class: string;
   residency: "Boarding" | "Day";
+  deviceUserId?: string | null;
+  deviceSyncStatus?: string | null;
+  lastDeviceSync?: string | null;
 };
 
 function DeviceStudentsPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [deviceId, setDeviceId] = useState("");
-  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [classFilter, setClassFilter] = useState("All");
   const [residencyFilter, setResidencyFilter] = useState<"All" | "Boarding" | "Day">("All");
   const [search, setSearch] = useState("");
   const [showAssignedOnly, setShowAssignedOnly] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [deviceStatus, setDeviceStatus] = useState<DeviceStatus | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -44,19 +64,29 @@ function DeviceStudentsPage() {
           apiRequest<any[]>("/devices?limit=500&sort=created_at&order=desc", { auth: "school" }),
           apiRequest<any[]>("/students?limit=5000", { auth: "school" }),
         ]);
+
         const mappedDevices = (Array.isArray(deviceData) ? deviceData : []).map((device) => ({
           id: device.id,
           name: device.name,
           location: device.location ?? "—",
           maxUsers: 200,
           lastSync: device.last_sync_at ? new Date(device.last_sync_at).toLocaleString() : "No sync yet",
+          tabletId: device.tablet_id ?? null,
+          deviceUsersCount: Number(device.device_users_count ?? 0),
+          deviceLogsCount: Number(device.device_logs_count ?? 0),
+          isConnected: Boolean(device.is_connected || device.status === "online"),
         }));
-        const mappedStudents = (Array.isArray(studentsData) ? studentsData : []).map((student) => ({
+
+        const mappedStudents = (Array.isArray(studentsData) ? studentsData : []).map((student): Student => ({
           id: student.id,
           name: `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim(),
-          class: student.current_section?.name ?? student.class ?? "—",
+          class: student.current_section?.full_name ?? student.current_section?.name ?? student.class ?? "—",
           residency: student.student_type === "boarding" ? "Boarding" : "Day",
+          deviceUserId: student.device_user_id ?? null,
+          deviceSyncStatus: student.device_sync_status ?? null,
+          lastDeviceSync: student.last_device_sync ?? null,
         }));
+
         setDevices(mappedDevices);
         setStudents(mappedStudents);
         if (!deviceId && mappedDevices[0]) setDeviceId(mappedDevices[0].id);
@@ -70,28 +100,67 @@ function DeviceStudentsPage() {
     void loadData();
   }, []);
 
-  const assignedIds = useMemo(() => new Set(assignments[deviceId] ?? []), [assignments, deviceId]);
-  const device = devices.find((d) => d.id === deviceId) ?? devices[0];
+  useEffect(() => {
+    if (!deviceId) return;
+
+    const loadSelectedDeviceStatus = async () => {
+      try {
+        const result = await apiRequest<any>(`/devices/${deviceId}/status`, { auth: "school" });
+        const status = result?.device_status ?? result?.data?.device_status ?? result?.data ?? result;
+        setDeviceStatus({
+          connected: Boolean(status?.connected ?? result?.is_connected ?? result?.is_online),
+          users: Number(status?.users ?? result?.device_users_count ?? result?.users ?? 0),
+          logs: Number(status?.logs ?? result?.device_logs_count ?? result?.logs ?? 0),
+          message: status?.message ?? result?.message,
+          deviceId: status?.deviceId ?? result?.device_uid,
+          serialNumber: status?.serialNumber,
+          productName: status?.productName ?? result?.product_name,
+          ipAddress: status?.ipAddress ?? result?.tablet_ip,
+          last_sync_at: result?.last_sync_at ?? result?.lastSyncAt ?? status?.last_sync_at ?? null,
+        });
+      } catch {
+        setDeviceStatus(null);
+      }
+    };
+
+    void loadSelectedDeviceStatus();
+    setSelectedIds(new Set());
+  }, [deviceId]);
+
+  const device = devices.find((item) => item.id === deviceId) ?? devices[0];
+  const assignedStudents = useMemo(
+    () => students.filter((student) => Boolean(student.deviceUserId) || student.deviceSyncStatus === "synced"),
+    [students]
+  );
+  const assignedIds = useMemo(() => new Set(assignedStudents.map((student) => student.id)), [assignedStudents]);
 
   const filteredStudents = useMemo(() => {
-    const assignedSet = new Set(assignments[deviceId] ?? []);
+    const normalizedSearch = search.trim().toLowerCase();
     return students.filter((student) => {
       const matchesClass = classFilter === "All" || student.class === classFilter;
       const matchesResidency = residencyFilter === "All" || student.residency === residencyFilter;
-      const matchesSearch = search === "" || student.name.toLowerCase().includes(search.toLowerCase());
-      const matchesAssigned = !showAssignedOnly || assignedSet.has(student.id);
+      const searchable = `${student.name} ${student.class} ${student.id} ${student.deviceUserId ?? ""}`.toLowerCase();
+      const matchesSearch = normalizedSearch === "" || searchable.includes(normalizedSearch);
+      const matchesAssigned = !showAssignedOnly || assignedIds.has(student.id);
       return matchesClass && matchesResidency && matchesSearch && matchesAssigned;
     });
-  }, [assignments, classFilter, residencyFilter, search, showAssignedOnly, deviceId, students]);
+  }, [assignedIds, classFilter, residencyFilter, search, showAssignedOnly, students]);
 
-  const assignedList = useMemo(() => students.filter((s) => assignedIds.has(s.id)), [assignedIds, students]);
   const classOptions = useMemo(
     () => Array.from(new Set(students.map((student) => student.class).filter(Boolean))).sort(),
     [students]
   );
-  const boardersAssigned = assignedList.filter((s) => s.residency === "Boarding").length;
-  const dayAssigned = assignedList.filter((s) => s.residency === "Day").length;
-  const unassigned = students.length - assignedIds.size;
+
+  const assignedList = useMemo(() => students.filter((student) => assignedIds.has(student.id)), [assignedIds, students]);
+  const boardersAssigned = assignedList.filter((student) => student.residency === "Boarding").length;
+  const dayAssigned = assignedList.filter((student) => student.residency === "Day").length;
+  const assignedCount = deviceStatus?.users ?? device?.deviceUsersCount ?? assignedList.length;
+  const capacity = device?.maxUsers ?? 200;
+  const unassigned = students.length - assignedList.length;
+  const selectedDeviceLabel = device?.name ?? "Selected device";
+  const selectedDeviceLocation = device?.location ?? "—";
+  const selectedDeviceLastSync = deviceStatus?.last_sync_at ? new Date(deviceStatus.last_sync_at).toLocaleString() : device?.lastSync ?? "No sync yet";
+  const selectedDeviceIsOnline = Boolean(deviceStatus?.connected ?? device?.isConnected);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -104,44 +173,70 @@ function DeviceStudentsPage() {
 
   const toggleSelectAll = () => {
     if (filteredStudents.length === 0) return;
-    const allSelected = filteredStudents.every((s) => selectedIds.has(s.id));
-    if (allSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filteredStudents.map((s) => s.id)));
-    }
+    const allSelected = filteredStudents.every((student) => selectedIds.has(student.id));
+    setSelectedIds(allSelected ? new Set() : new Set(filteredStudents.map((student) => student.id)));
   };
 
-  const addSelected = () => {
-    if (selectedIds.size === 0) {
+  const loadStudents = async () => {
+    const studentsData = await apiRequest<any[]>("/students?limit=5000", { auth: "school" });
+    const mappedStudents = (Array.isArray(studentsData) ? studentsData : []).map((student): Student => ({
+      id: student.id,
+      name: `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim(),
+      class: student.current_section?.full_name ?? student.current_section?.name ?? student.class ?? "—",
+      residency: student.student_type === "boarding" ? "Boarding" : "Day",
+      deviceUserId: student.device_user_id ?? null,
+      deviceSyncStatus: student.device_sync_status ?? null,
+      lastDeviceSync: student.last_device_sync ?? null,
+    }));
+    setStudents(mappedStudents);
+  };
+
+  const loadSelectedDeviceStatus = async () => {
+    if (!deviceId) return;
+    const result = await apiRequest<any>(`/devices/${deviceId}/status`, { auth: "school" });
+    const status = result?.device_status ?? result?.data?.device_status ?? result?.data ?? result;
+    setDeviceStatus({
+      connected: Boolean(status?.connected ?? result?.is_connected ?? result?.is_online),
+      users: Number(status?.users ?? result?.device_users_count ?? result?.users ?? 0),
+      logs: Number(status?.logs ?? result?.device_logs_count ?? result?.logs ?? 0),
+      message: status?.message ?? result?.message,
+      deviceId: status?.deviceId ?? result?.device_uid,
+      serialNumber: status?.serialNumber,
+      productName: status?.productName ?? result?.product_name,
+      ipAddress: status?.ipAddress ?? result?.tablet_ip,
+      last_sync_at: result?.last_sync_at ?? result?.lastSyncAt ?? status?.last_sync_at ?? null,
+    });
+  };
+
+  const pushStudents = async (studentIds: string[]) => {
+    if (!deviceId) {
+      toast.error("Select a device first");
+      return;
+    }
+    if (studentIds.length === 0) {
       toast.error("Select at least one student");
       return;
     }
-    setAssignments((prev) => {
-      const current = new Set(prev[deviceId] ?? []);
-      selectedIds.forEach((id) => current.add(id));
-      return { ...prev, [deviceId]: Array.from(current) };
-    });
-    toast.success(`Added ${selectedIds.size} students to ${deviceId}`);
-    setSelectedIds(new Set());
+
+    setBusy(true);
+    try {
+      const result = await apiRequest<any>(`/devices/${deviceId}/push-students`, {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({ mode: "selected", student_ids: studentIds }),
+      });
+      toast.success(`${result?.pushed_count ?? studentIds.length} student(s) pushed to ${device?.name ?? selectedDeviceLabel}`);
+      setSelectedIds(new Set());
+      await Promise.all([loadStudents(), loadSelectedDeviceStatus()]);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to push selected students");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const pushSelected = async () => {
-    if (selectedIds.size === 0) {
-      toast.error("Select students to push");
-      return;
-    }
-    try {
-      await apiRequest(`/devices/${deviceId}/push-students`, {
-        method: "POST",
-        auth: "school",
-        body: JSON.stringify({ mode: "selected", student_ids: Array.from(selectedIds) }),
-      });
-      toast.success(`Pushed ${selectedIds.size} students to ${device?.name ?? deviceId}`);
-      setSelectedIds(new Set());
-    } catch (error: any) {
-      toast.error(error?.message ?? "Failed to push selected students");
-    }
+    await pushStudents(Array.from(selectedIds));
   };
 
   const pushCurrentClass = async () => {
@@ -149,49 +244,54 @@ function DeviceStudentsPage() {
       toast.error("Choose a class first");
       return;
     }
-    const classStudentIds = filteredStudents.map((student) => student.id);
-    if (classStudentIds.length === 0) {
-      toast.error("No students found in this class");
-      return;
-    }
-    try {
-      await apiRequest(`/devices/${deviceId}/push-students`, {
-        method: "POST",
-        auth: "school",
-        body: JSON.stringify({ mode: "selected", student_ids: classStudentIds }),
-      });
-      toast.success(`Pushed ${classStudentIds.length} ${classFilter} student(s) to ${device?.name ?? deviceId}`);
-    } catch (error: any) {
-      toast.error(error?.message ?? "Failed to push class students");
-    }
+    await pushStudents(filteredStudents.map((student) => student.id));
   };
 
   const pushAllAssigned = async () => {
+    await pushStudents(Array.from(assignedIds));
+  };
+
+  const pushSingleStudent = async (studentId: string) => {
+    await pushStudents([studentId]);
+  };
+
+  const removeStudent = async (student: Student) => {
+    if (!device?.tabletId) {
+      toast.error("This device is not linked to a tablet");
+      return;
+    }
+    const userId = student.deviceUserId || student.id;
+    if (!window.confirm(`Remove ${student.name} from the device?`)) return;
+
+    setBusy(true);
     try {
-      await apiRequest(`/devices/${deviceId}/push-students`, {
-        method: "POST",
+      await apiRequest(`/tablets/${device.tabletId}/device/users/${encodeURIComponent(userId)}`, {
+        method: "DELETE",
         auth: "school",
-        body: JSON.stringify({ mode: "selected", student_ids: Array.from(assignedIds) }),
       });
-      toast.success(`Pushed ${assignedIds.size} students to ${device?.name ?? deviceId}`);
+      toast.success(`${student.name} removed from device`);
+      await Promise.all([loadStudents(), loadSelectedDeviceStatus()]);
     } catch (error: any) {
-      toast.error(error?.message ?? "Failed to push assigned students");
+      toast.error(error?.message ?? "Failed to remove student from device");
+    } finally {
+      setBusy(false);
     }
   };
 
-  const removeStudent = (id: string) => {
-    setAssignments((prev) => {
-      const current = new Set(prev[deviceId] ?? []);
-      current.delete(id);
-      return { ...prev, [deviceId]: Array.from(current) };
-    });
-    toast.info("Student removed from device");
-  };
+  if (loading) {
+    return (
+      <AppLayout title="Device Students" subtitle="Assign boarding and day students to biometric devices">
+        <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground shadow-sm">
+          Loading device students...
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout title="Device Students" subtitle="Assign boarding and day students to biometric devices">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard label="Assigned Students" value={assignedIds.size} tone="success" icon={<UserPlus className="h-5 w-5" />} />
+        <StatCard label="Assigned Students" value={assignedCount} tone="success" icon={<UserPlus className="h-5 w-5" />} />
         <StatCard label="Boarding" value={boardersAssigned} />
         <StatCard label="Day Students" value={dayAssigned} />
         <StatCard label="Unassigned" value={unassigned} tone="warning" />
@@ -203,8 +303,8 @@ function DeviceStudentsPage() {
           onChange={(event) => setDeviceId(event.target.value)}
           className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
         >
-          {devices.map((d) => (
-            <option key={d.id} value={d.id}>{d.name}</option>
+          {devices.map((item) => (
+            <option key={item.id} value={item.id}>{item.name}</option>
           ))}
         </select>
         <select
@@ -213,7 +313,7 @@ function DeviceStudentsPage() {
           className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
         >
           <option value="All">All Classes</option>
-          {classOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+          {classOptions.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
         <select
           value={residencyFilter}
@@ -232,7 +332,7 @@ function DeviceStudentsPage() {
           />
           Show assigned only
         </label>
-        <div className="relative flex-1 min-w-[12.5rem]">
+        <div className="relative flex-1 min-w-50">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             value={search}
@@ -243,22 +343,16 @@ function DeviceStudentsPage() {
         </div>
         <button
           type="button"
-          onClick={addSelected}
-          className="h-10 inline-flex items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
-        >
-          <UserPlus className="h-4 w-4" /> Add Selected
-        </button>
-        <button
-          type="button"
           onClick={pushSelected}
-          className="h-10 inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold hover:bg-muted"
+          disabled={busy}
+          className="h-10 inline-flex items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          <ArrowUpRight className="h-4 w-4" /> Push Selected
+          <UserPlus className="h-4 w-4" /> Push Selected
         </button>
         <button
           type="button"
           onClick={pushCurrentClass}
-          disabled={classFilter === "All"}
+          disabled={busy}
           className="h-10 inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-50"
         >
           <ArrowUpRight className="h-4 w-4" /> Push Class
@@ -270,7 +364,7 @@ function DeviceStudentsPage() {
           <div className="px-5 py-4 border-b border-border flex items-center justify-between">
             <div>
               <h3 className="font-display font-bold">Student Assignment</h3>
-              <p className="text-xs text-muted-foreground">Select students and assign them to {device?.name ?? "the selected device"}.</p>
+              <p className="text-xs text-muted-foreground">Select students and assign them to {device?.name ?? selectedDeviceLabel}.</p>
             </div>
             <div className="text-xs text-muted-foreground">
               Selected: <span className="font-semibold text-foreground">{selectedIds.size}</span>
@@ -283,7 +377,7 @@ function DeviceStudentsPage() {
                   <th className="text-left px-5 py-3">
                     <input
                       type="checkbox"
-                      checked={filteredStudents.length > 0 && filteredStudents.every((s) => selectedIds.has(s.id))}
+                      checked={filteredStudents.length > 0 && filteredStudents.every((student) => selectedIds.has(student.id))}
                       onChange={toggleSelectAll}
                     />
                   </th>
@@ -322,16 +416,18 @@ function DeviceStudentsPage() {
                         {assigned ? (
                           <button
                             type="button"
-                            onClick={() => removeStudent(student.id)}
-                            className="text-xs font-semibold text-destructive hover:underline"
+                            onClick={() => removeStudent(student)}
+                            className="text-xs font-semibold text-destructive hover:underline disabled:opacity-50"
+                            disabled={busy}
                           >
                             Remove
                           </button>
                         ) : (
                           <button
                             type="button"
-                            onClick={() => setSelectedIds((prev) => new Set(prev).add(student.id))}
-                            className="text-xs font-semibold text-primary hover:underline"
+                            onClick={() => pushSingleStudent(student.id)}
+                            className="text-xs font-semibold text-primary hover:underline disabled:opacity-50"
+                            disabled={busy}
                           >
                             Add
                           </button>
@@ -355,22 +451,27 @@ function DeviceStudentsPage() {
             <div className="flex items-start justify-between">
               <div>
                 <div className="text-xs uppercase tracking-wider text-muted-foreground">Selected device</div>
-                <div className="font-display font-bold text-lg mt-1">{device?.name ?? "No device"}</div>
-                <div className="text-xs text-muted-foreground">{device?.location ?? "—"} - Last sync {device?.lastSync ?? "—"}</div>
+                <div className="font-display font-bold text-lg mt-1">{selectedDeviceLabel}</div>
+                <div className="text-xs text-muted-foreground">{selectedDeviceLocation} - Last sync {selectedDeviceLastSync}</div>
               </div>
               <button
                 type="button"
                 onClick={pushAllAssigned}
-                className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted"
+                disabled={busy}
+                className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
               >
                 <ArrowUpRight className="h-4 w-4" /> Push All
               </button>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <InfoItem label="Assigned" value={String(assignedIds.size)} />
-              <InfoItem label="Capacity" value={`${assignedIds.size}/${device?.maxUsers ?? 0}`} />
+              <InfoItem label="Assigned" value={String(assignedCount)} />
+              <InfoItem label="Capacity" value={`${assignedCount}/${capacity}`} />
               <InfoItem label="Boarding" value={String(boardersAssigned)} />
               <InfoItem label="Day" value={String(dayAssigned)} />
+            </div>
+            <div className="mt-4 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
+              {selectedDeviceIsOnline ? "Device online" : "Device offline"}
+              {deviceStatus?.message ? ` - ${deviceStatus.message}` : ""}
             </div>
           </div>
 
@@ -395,8 +496,9 @@ function DeviceStudentsPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => removeStudent(student.id)}
-                    className="text-xs font-semibold text-destructive hover:underline"
+                    onClick={() => removeStudent(student)}
+                    className="text-xs font-semibold text-destructive hover:underline disabled:opacity-50"
+                    disabled={busy}
                   >
                     Remove
                   </button>

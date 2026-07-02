@@ -48,8 +48,12 @@ export default function Contact() {
                 </div>
                 <div>
                   <div className="font-semibold text-foreground">Phone</div>
-                  <div className="text-sm text-muted-foreground mt-1">+250 786 378 333</div>
-                  <div className="text-sm text-muted-foreground">+250 725 931 731</div>
+                  <a href="tel:+250786402913" className="text-sm text-muted-foreground mt-1 block hover:text-[#0A3D91] transition-colors">
+                    +250 786 402 913
+                  </a>
+                  <a href="tel:+256773666640" className="text-sm text-muted-foreground block hover:text-[#0A3D91] transition-colors">
+                    +256 773 666 640
+                  </a>
                 </div>
               </li>
               <li className="flex items-start gap-4">

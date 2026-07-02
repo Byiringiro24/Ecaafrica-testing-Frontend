@@ -37,10 +37,10 @@ export default function Layout({ children }: LayoutProps) {
           </span>
           <div className="flex flex-wrap items-center gap-4">
             <a href="tel:+250786402913" className="inline-flex items-center gap-2 hover:text-[#42A5F5] transition-colors font-semibold">
-              <Phone className="h-3.5 w-3.5" /> +250 786402913
+              <Phone className="h-3.5 w-3.5" /> +250 786 402 913
             </a>
             <a href="tel:+256773666640" className="inline-flex items-center gap-2 hover:text-[#42A5F5] transition-colors font-semibold">
-              <Phone className="h-3.5 w-3.5" /> +256 773666640
+              <Phone className="h-3.5 w-3.5" /> +256 773 666 640
             </a>
           </div>
         </div>
@@ -182,8 +182,8 @@ export default function Layout({ children }: LayoutProps) {
           <div className="space-y-4">
             <h4 className="font-display font-semibold text-[#42A5F5] tracking-wider uppercase text-xs">Contact Us</h4>
             <ul className="space-y-3 text-sm text-white/70">
-              <li>+250 786 378 333</li>
-              <li>+250 725 931 731</li>
+              <li><a href="tel:+250786402913" className="hover:text-white transition-colors">+250 786 402 913</a></li>
+              <li><a href="tel:+256773666640" className="hover:text-white transition-colors">+256 773 666 640</a></li>
               <li>Netrackdevelopement@gmail.com</li>
             </ul>
           </div>

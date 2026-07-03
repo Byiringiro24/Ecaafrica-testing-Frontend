@@ -11,6 +11,7 @@ import { schoolConfig } from "@/lib/mockData";
 import logo from "@/assets/logo.png";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
+import { isSchoolAdminRole } from "@/lib/schoolAuth";
 
 function handleLogout() {
   clearSchoolAuth();
@@ -101,6 +102,7 @@ export function AppSidebar({ open, onClose }: Props) {
               if (!schoolConfig.enabledModules.includes(it.module)) return false;
               if (!schoolConfig.hasBoarding && (it.module === "boarding" || it.module === "leaves")) return false;
               if (!schoolConfig.hasGateManagement && it.module === "gate") return false;
+              if (isSchoolAdminRole(currentUser?.role) && (it.to === "/tablets" || it.to === "/devices-new")) return false;
               return true;
             });
             if (items.length === 0) return null;

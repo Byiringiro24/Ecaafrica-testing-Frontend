@@ -188,9 +188,7 @@ const navItems: Array<{ id: TabId; label: string; icon: typeof LayoutDashboard }
   { id: "monitor", label: "Live Monitor", icon: Activity },
   { id: "students", label: "Students", icon: Users },
   { id: "devices", label: "Devices", icon: Cpu },
-  { id: "sessions", label: "Sessions", icon: Calendar },
   { id: "reports", label: "Reports", icon: FileSpreadsheet },
-  { id: "settings", label: "Settings", icon: Settings },
 ];
 
 const unwrapList = <T,>(payload: unknown): T[] => {
@@ -935,43 +933,43 @@ function ServerCommandCenter() {
   const connected = Boolean(selectedDevice?.is_connected || selectedDevice?.status === "online");
 
   return (
-    <AppLayout title="Attendance Devices" subtitle="Configure tablets, biometric devices, sessions, and student pushes">
-      <div className="space-y-6">
-        <section className="dashboard-panel p-5">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+    <AppLayout title="Attendance Devices" subtitle="Configure tablets, biometric devices, and student pushes">
+      <div className="space-y-6 pb-6">
+        <section className="overflow-hidden rounded-3xl border border-primary/10 bg-gradient-to-br from-primary/10 via-background to-background p-5 shadow-[0_18px_60px_-30px_rgba(33,65,127,0.45)] md:p-6">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
                 <ShieldCheck size={16} /> PostgreSQL and Prisma command center
               </div>
-              <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">FK Biometric Attendance Console</h1>
-              <p className="mt-1 text-sm text-slate-600">Manage live device commands and store attendance data in the existing backend database.</p>
+              <h1 className="mt-4 text-3xl font-bold tracking-tight text-foreground md:text-4xl">FK Biometric Attendance Console</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Manage live device commands and store attendance data in the existing backend database.</p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <select value={selectedDeviceId} onChange={(event) => setSelectedDeviceId(event.target.value)} className="form-field max-w-xs">
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,18rem)_auto_auto] sm:items-center">
+              <select value={selectedDeviceId} onChange={(event) => setSelectedDeviceId(event.target.value)} className="form-field min-w-0 rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 shadow-sm backdrop-blur-md focus:border-primary focus:ring-2 focus:ring-primary/20">
                 {devices.map((device) => (
                   <option key={device.id} value={device.id}>{device.name}</option>
                 ))}
               </select>
-              <div className={cn("flex items-center gap-2 rounded-xl border px-4 py-3", connected ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50")}>
-                {connected ? <Wifi size={16} className="text-emerald-700" /> : <WifiOff size={16} className="text-rose-700" />}
-                <span className={cn("text-sm font-semibold", connected ? "text-emerald-700" : "text-rose-700")}>{connected ? "Device Online" : "Device Offline"}</span>
+              <div className={cn("flex items-center gap-2 rounded-2xl border px-4 py-3 shadow-sm", connected ? "border-emerald-200 bg-emerald-50/80 text-emerald-700" : "border-rose-200 bg-rose-50/80 text-rose-700")}>
+                {connected ? <Wifi size={16} /> : <WifiOff size={16} />}
+                <span className="text-sm font-semibold">{connected ? "Device Online" : "Device Offline"}</span>
               </div>
-              <button type="button" onClick={refreshAll} disabled={busy} className="primary-action">
+              <button type="button" onClick={refreshAll} disabled={busy} className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
                 {busy ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />} Refresh
               </button>
             </div>
           </div>
         </section>
 
-        <section className="dashboard-panel flex flex-wrap gap-2 p-3">
+        <section className="rounded-3xl border border-border/70 bg-card/95 p-3 shadow-[0_14px_40px_-28px_rgba(15,23,42,0.45)] backdrop-blur-sm">
           {navItems.map((item) => (
             <button
               key={item.id}
               type="button"
               onClick={() => setActiveTab(item.id)}
               className={cn(
-                "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition",
-                activeTab === item.id ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"
+                "inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition-all duration-200",
+                      activeTab === item.id ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
             >
               <item.icon size={16} /> {item.label}
@@ -979,14 +977,15 @@ function ServerCommandCenter() {
           ))}
         </section>
 
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard label="Students" value={stats.totalStudents} icon={Users} tone="blue" />
+          <MetricCard label="Today Logs" value={stats.attendanceToday} icon={CheckCircle2} tone="emerald" />
+          <MetricCard label="Devices Online" value={`${stats.onlineDevices}/${stats.totalDevices}`} icon={Wifi} tone="cyan" />
+          <MetricCard label="Stored Logs" value={stats.totalLogs} icon={Database} tone="violet" />
+        </section>
+
         {activeTab === "overview" && (
           <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <MetricCard label="Students" value={stats.totalStudents} icon={Users} tone="blue" />
-              <MetricCard label="Today Logs" value={stats.attendanceToday} icon={CheckCircle2} tone="emerald" />
-              <MetricCard label="Devices Online" value={`${stats.onlineDevices}/${stats.totalDevices}`} icon={Wifi} tone="cyan" />
-              <MetricCard label="Stored Logs" value={stats.totalLogs} icon={Database} tone="violet" />
-            </div>
             <div className="grid gap-4 xl:grid-cols-[1fr_0.8fr]">
               <Panel title="Attendance by Day" icon={BarChart3}>
                 <ResponsiveContainer width="100%" height={300}>
@@ -1040,14 +1039,14 @@ function ServerCommandCenter() {
                     </select>
                   </label>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <button type="button" onClick={() => setPushMode("class")} disabled={!classId} className="secondary-action">
+                    <button type="button" onClick={() => setPushMode("class")} disabled={!classId} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
                       <Users size={16} /> Use class
                     </button>
-                    <button type="button" onClick={pushStudents} disabled={busy} className="primary-action">
+                    <button type="button" onClick={pushStudents} disabled={busy} className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
                       <UploadCloud size={16} /> Push now
                     </button>
                   </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                  <div className="rounded-2xl border border-border bg-muted/60 p-4 text-xs leading-5 text-muted-foreground">
                     {pushMode === "class"
                       ? `${filteredStudents.length} active student(s) from this class will be sent to the device.`
                       : pushMode === "all"
@@ -1064,26 +1063,26 @@ function ServerCommandCenter() {
                     <Field label="Last Name" value={studentForm.last_name} onChange={(value) => setStudentForm({ ...studentForm, last_name: value })} required />
                   </div>
                   <Field label="Student Number" value={studentForm.student_id_number} onChange={(value) => setStudentForm({ ...studentForm, student_id_number: value })} />
-                  <label className="grid gap-1 text-sm font-medium text-slate-600">
+                  <label className="grid gap-1.5 text-sm font-medium text-muted-foreground">
                     Section
-                    <select value={studentForm.section_id} onChange={(event) => setStudentForm({ ...studentForm, section_id: event.target.value })} className="form-field" required>
+                    <select value={studentForm.section_id} onChange={(event) => setStudentForm({ ...studentForm, section_id: event.target.value })} className="form-field rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 shadow-sm backdrop-blur-md focus:border-primary focus:ring-2 focus:ring-primary/20" required>
                       <option value="">Choose section</option>
                       {classSections.map((section) => (
                         <option key={section.id} value={section.id}>{section.full_name}</option>
                       ))}
                     </select>
                   </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-600">
+                  <label className="grid gap-1.5 text-sm font-medium text-muted-foreground">
                     Student Type
-                    <select value={studentForm.student_type} onChange={(event) => setStudentForm({ ...studentForm, student_type: event.target.value })} className="form-field">
+                    <select value={studentForm.student_type} onChange={(event) => setStudentForm({ ...studentForm, student_type: event.target.value })} className="form-field rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 shadow-sm backdrop-blur-md focus:border-primary focus:ring-2 focus:ring-primary/20">
                       <option value="boarding">Boarding</option>
                       <option value="day">Day</option>
                     </select>
                   </label>
-                  <button className="primary-action" disabled={busy || !selectedAcademicYear}>
+                  <button className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60" disabled={busy || !selectedAcademicYear}>
                     <Plus size={16} /> Add to class
                   </button>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     Enrolls in {selectedAcademicYear?.name ?? "the current academic year"}; push the class afterward to update the device.
                   </p>
                 </form>
@@ -1095,11 +1094,25 @@ function ServerCommandCenter() {
               action={
                 <div className="relative min-w-60">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input value={query} onChange={(event) => setQuery(event.target.value)} className="form-field pl-9" placeholder="Search students" />
+                  <input value={query} onChange={(event) => setQuery(event.target.value)} className="form-field pl-9 rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 shadow-sm backdrop-blur-md placeholder:text-slate-500 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Search students" />
                 </div>
               }
             >
-              <div className="overflow-x-auto">
+              <div className="mb-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-border bg-muted/50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Shown</p>
+                  <p className="mt-2 text-2xl font-bold text-foreground">{filteredStudents.length}</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-muted/50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Selected</p>
+                  <p className="mt-2 text-2xl font-bold text-foreground">{selectedStudentIds.size}</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-muted/50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Total Class Data</p>
+                  <p className="mt-2 text-2xl font-bold text-foreground">{students.length}</p>
+                </div>
+              </div>
+              <div className="overflow-x-auto rounded-2xl border border-border/70 bg-background/80">
                 <table className="data-table">
                   <thead>
                     <tr>
@@ -1145,7 +1158,7 @@ function ServerCommandCenter() {
                         <td className="font-mono">{buildDeviceUserId(student)}</td>
                         <td><StatusPill value={student.device_sync_status || "not synced"} /></td>
                         <td>
-                          <button type="button" onClick={() => addSingleStudentToDevice(student)} className="secondary-action px-3 py-2">
+                          <button type="button" onClick={() => addSingleStudentToDevice(student)} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-3 py-2 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900">
                             <Plus size={14} /> Add one
                           </button>
                         </td>
@@ -1170,12 +1183,12 @@ function ServerCommandCenter() {
                     <Field label="Tablet API Port" type="number" value={tabletForm.port} onChange={(value) => setTabletForm({ ...tabletForm, port: Number(value) })} required />
                   </div>
                   <Field label="Location" value={tabletForm.location} onChange={(value) => setTabletForm({ ...tabletForm, location: value })} />
-                  <button disabled={busy} className="primary-action"><Globe2 size={16} /> Register Tablet</button>
+                  <button disabled={busy} className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"><Globe2 size={16} /> Register Tablet</button>
                 </form>
               </Panel>
               <Panel title="Connect FK623" icon={Cpu}>
                 <form onSubmit={connectDevice} className="grid gap-3">
-                  <select value={selectedTabletId} onChange={(event) => setSelectedTabletId(event.target.value)} className="form-field">
+                  <select value={selectedTabletId} onChange={(event) => setSelectedTabletId(event.target.value)} className="form-field rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 shadow-sm backdrop-blur-md focus:border-primary focus:ring-2 focus:ring-primary/20">
                     {tablets.map((tablet) => <option key={tablet.id} value={tablet.id}>{tablet.name} - {tablet.ip}:{tablet.port}</option>)}
                   </select>
                   <Field label="Device UID" value={deviceForm.deviceId} onChange={(value) => setDeviceForm({ ...deviceForm, deviceId: value })} />
@@ -1185,15 +1198,15 @@ function ServerCommandCenter() {
                     <Field label="License" type="number" value={deviceForm.license} onChange={(value) => setDeviceForm({ ...deviceForm, license: Number(value) })} />
                   </div>
                   <div className="grid gap-2 sm:grid-cols-3">
-                    <button disabled={busy} className="primary-action"><Wifi size={16} /> Connect</button>
-                    <button type="button" onClick={syncTime} className="secondary-action"><Clock size={16} /> Sync</button>
-                    <button type="button" onClick={disconnectDevice} className="secondary-action text-rose-600"><Power size={16} /> Disconnect</button>
+                    <button disabled={busy} className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"><Wifi size={16} /> Connect</button>
+                    <button type="button" onClick={syncTime} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900"><Clock size={16} /> Sync</button>
+                    <button type="button" onClick={disconnectDevice} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-300/40 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-700 shadow-md backdrop-blur-md transition-colors hover:bg-rose-500/20"><Power size={16} /> Disconnect</button>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <button type="button" onClick={checkTabletHealth} disabled={busy} className="secondary-action">
+                    <button type="button" onClick={checkTabletHealth} disabled={busy} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
                       <Network size={16} /> Bridge Health
                     </button>
-                    <button type="button" onClick={checkLiveDeviceStatus} disabled={busy} className="secondary-action">
+                    <button type="button" onClick={checkLiveDeviceStatus} disabled={busy} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
                       <Activity size={16} /> Live Status
                     </button>
                   </div>
@@ -1204,14 +1217,14 @@ function ServerCommandCenter() {
                       value={manualDeviceTime}
                       onChange={setManualDeviceTime}
                     />
-                    <button type="button" onClick={setDeviceTime} disabled={busy || !manualDeviceTime} className="secondary-action self-end">
+                    <button type="button" onClick={setDeviceTime} disabled={busy || !manualDeviceTime} className="secondary-action self-end inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
                       <Clock size={16} /> Set Time
                     </button>
-                    <button type="button" onClick={powerOffDevice} disabled={busy} className="secondary-action self-end text-rose-600">
+                    <button type="button" onClick={powerOffDevice} disabled={busy} className="secondary-action self-end inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-300/40 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-700 shadow-md backdrop-blur-md transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
                       <Power size={16} /> Power Off
                     </button>
                   </div>
-                  <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-600">
+                  <label className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground">
                     <input
                       type="checkbox"
                       checked={autoReconnect}
@@ -1230,16 +1243,16 @@ function ServerCommandCenter() {
                       key={device.id}
                       type="button"
                       onClick={() => setSelectedDeviceId(device.id)}
-                      className={cn("w-full rounded-xl border p-4 text-left transition hover:bg-slate-50", selectedDeviceId === device.id ? "border-blue-500 bg-blue-50/50" : "border-slate-200")}
+                      className={cn("group w-full rounded-2xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md", selectedDeviceId === device.id ? "border-primary/30 bg-primary/5 shadow-[0_12px_30px_-22px_rgba(33,65,127,0.45)]" : "border-border bg-background hover:border-primary/20 hover:bg-muted/50")}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="font-semibold text-slate-950">{device.name}</div>
-                          <div className="text-xs text-slate-500">{device.device_uid ?? device.id} - {device.location ?? "No location"}</div>
+                          <div className="font-semibold text-foreground">{device.name}</div>
+                          <div className="text-xs text-muted-foreground">{device.device_uid ?? device.id} - {device.location ?? "No location"}</div>
                         </div>
                         <StatusPill value={device.is_connected || device.status === "online" ? "online" : "offline"} />
                       </div>
-                      <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-3">
+                      <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
                         <span>Users: {device.device_users_count ?? 0}</span>
                         <span>Logs: {device.device_logs_count ?? 0}</span>
                         <span>Sync: {device.last_sync_status ?? "none"}</span>
@@ -1253,16 +1266,16 @@ function ServerCommandCenter() {
                 title="Live Device Users"
                 icon={Users}
                 action={
-                  <button type="button" onClick={pullDeviceUsers} disabled={busy} className="secondary-action">
+                  <button type="button" onClick={pullDeviceUsers} disabled={busy} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
                     <RefreshCw size={16} /> Refresh Users
                   </button>
                 }
               >
                 <div className="mb-4 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => clearDeviceData("logs")} disabled={busy} className="secondary-action">
+                  <button type="button" onClick={() => clearDeviceData("logs")} disabled={busy} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
                     <Trash2 size={16} /> Clear Logs
                   </button>
-                  <button type="button" onClick={() => clearDeviceData("all")} disabled={busy} className="secondary-action text-rose-600">
+                  <button type="button" onClick={() => clearDeviceData("all")} disabled={busy} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-300/40 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-700 shadow-md backdrop-blur-md transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
                     <Trash2 size={16} /> Reset Device
                   </button>
                 </div>
@@ -1289,7 +1302,7 @@ function ServerCommandCenter() {
                             <td><StatusPill value={user.enabled === false ? "disabled" : "enabled"} /></td>
                             <td>{user.biometricMethods?.length ? user.biometricMethods.join(", ") : "-"}</td>
                             <td>
-                              <button type="button" onClick={() => deleteDeviceUser(userId)} disabled={busy || !userId} className="secondary-action px-3 py-2 text-rose-600">
+                              <button type="button" onClick={() => deleteDeviceUser(userId)} disabled={busy || !userId} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-300/40 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-700 shadow-md backdrop-blur-md transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
                                 <Trash2 size={14} /> Delete
                               </button>
                             </td>
@@ -1305,7 +1318,7 @@ function ServerCommandCenter() {
           </motion.section>
         )}
 
-        {activeTab === "sessions" && (
+        {false && activeTab === "sessions" && (
           <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
             <Panel title="Create Attendance Window" icon={Calendar}>
               <form onSubmit={createSession} className="grid gap-3">
@@ -1315,7 +1328,7 @@ function ServerCommandCenter() {
                   <Field label="Start" type="time" value={sessionForm.start_time} onChange={(value) => setSessionForm({ ...sessionForm, start_time: value })} required />
                   <Field label="End" type="time" value={sessionForm.end_time} onChange={(value) => setSessionForm({ ...sessionForm, end_time: value })} required />
                 </div>
-                <button className="primary-action" disabled={busy}><Plus size={16} /> Save Session</button>
+                <button className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60" disabled={busy}><Plus size={16} /> Save Session</button>
               </form>
             </Panel>
             <Panel title="Saved Sessions" icon={Clock}>
@@ -1324,21 +1337,21 @@ function ServerCommandCenter() {
               </div>
               <div className="space-y-3">
                 {sessions.map((session) => (
-                  <div key={session.id} className="rounded-xl border border-slate-200 p-4">
+                  <div key={session.id} className="rounded-2xl border border-border bg-muted/40 p-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="font-semibold text-slate-950">{session.name}</div>
+                      <div className="font-semibold text-foreground">{session.name}</div>
                       <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={() => markAbsent(session)} disabled={busy} className="secondary-action px-3 py-2">
+                        <button type="button" onClick={() => markAbsent(session)} disabled={busy} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-3 py-2 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
                           <CheckCircle2 size={14} /> Mark Absent
                         </button>
-                        <button type="button" onClick={() => deleteSession(session.id)} disabled={busy} className="secondary-action px-3 py-2 text-rose-600">
+                        <button type="button" onClick={() => deleteSession(session.id)} disabled={busy} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-300/40 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-700 shadow-md backdrop-blur-md transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
                           <Trash2 size={14} /> Delete
                         </button>
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {session.windows.map((window) => (
-                        <span key={window.id ?? `${window.start_time}-${window.end_time}`} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                        <span key={window.id ?? `${window.start_time}-${window.end_time}`} className="rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold text-muted-foreground">
                           {window.label}: {window.start_time}-{window.end_time}
                         </span>
                       ))}
@@ -1353,7 +1366,7 @@ function ServerCommandCenter() {
 
         {activeTab === "monitor" && (
           <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-            <Panel title="Live Attendance Logs" icon={Activity} action={<button type="button" onClick={pullLogs} disabled={busy} className="primary-action"><DownloadCloud size={16} /> Pull Logs</button>}>
+            <Panel title="Live Attendance Logs" icon={Activity} action={<button type="button" onClick={pullLogs} disabled={busy} className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"><DownloadCloud size={16} /> Pull Logs</button>}>
               <div className="mb-4 flex max-w-xs items-center gap-2">
                 <Field label="Read Mark" type="number" value={readMark} onChange={(value) => setReadMark(Number(value))} />
               </div>
@@ -1400,7 +1413,7 @@ function ServerCommandCenter() {
                     value={manualEventForm.scanned_at}
                     onChange={(value) => setManualEventForm({ ...manualEventForm, scanned_at: value })}
                   />
-                  <button className="primary-action" disabled={busy}>
+                  <button className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60" disabled={busy}>
                     <CheckCircle2 size={16} /> Record Event
                   </button>
                 </form>
@@ -1443,7 +1456,7 @@ function ServerCommandCenter() {
                     value={manualLogForm.scanned_at}
                     onChange={(value) => setManualLogForm({ ...manualLogForm, scanned_at: value })}
                   />
-                  <button className="secondary-action" disabled={busy}>
+                  <button className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60" disabled={busy}>
                     <Database size={16} /> Save Raw Log
                   </button>
                 </form>
@@ -1465,7 +1478,7 @@ function ServerCommandCenter() {
           </motion.section>
         )}
 
-        {activeTab === "settings" && (
+        {false && activeTab === "settings" && (
           <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
             <Panel title="Storage and API" icon={Settings}>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1484,19 +1497,19 @@ function ServerCommandCenter() {
 
 function MetricCard({ label, value, icon: Icon, tone }: { label: string; value: string | number; icon: typeof Users; tone: "blue" | "emerald" | "cyan" | "violet" }) {
   const tones = {
-    blue: "bg-blue-50 text-blue-700 border-blue-100",
+    blue: "bg-primary/10 text-primary border-primary/15",
     emerald: "bg-emerald-50 text-emerald-700 border-emerald-100",
     cyan: "bg-cyan-50 text-cyan-700 border-cyan-100",
     violet: "bg-violet-50 text-violet-700 border-violet-100",
   };
   return (
-    <div className="metric-card">
+    <div className="rounded-3xl border border-border/70 bg-card p-5 shadow-[0_10px_35px_-28px_rgba(15,23,42,0.5)]">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-          <p className="mt-2 text-3xl font-bold text-slate-950">{value}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+          <p className="mt-2 text-3xl font-bold text-foreground">{value}</p>
         </div>
-        <div className={cn("rounded-xl border p-3", tones[tone])}><Icon size={21} /></div>
+        <div className={cn("rounded-2xl border p-3", tones[tone])}><Icon size={21} /></div>
       </div>
     </div>
   );
@@ -1504,11 +1517,11 @@ function MetricCard({ label, value, icon: Icon, tone }: { label: string; value: 
 
 function Panel({ title, icon: Icon, action, children }: { title: string; icon: typeof Users; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="dashboard-panel p-5">
+    <div className="rounded-3xl border border-border/70 bg-card p-5 shadow-[0_12px_40px_-28px_rgba(15,23,42,0.45)]">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <div className="rounded-xl bg-slate-100 p-2 text-slate-700"><Icon size={18} /></div>
-          <h2 className="font-semibold text-slate-950">{title}</h2>
+          <div className="rounded-2xl bg-primary/10 p-2 text-primary"><Icon size={18} /></div>
+          <h2 className="font-semibold text-foreground">{title}</h2>
         </div>
         {action}
       </div>
@@ -1519,9 +1532,9 @@ function Panel({ title, icon: Icon, action, children }: { title: string; icon: t
 
 function Field({ label, value, onChange, type = "text", required = false }: { label: string; value: string | number; onChange: (value: string) => void; type?: string; required?: boolean }) {
   return (
-    <label className="grid gap-1 text-sm font-medium text-slate-600">
+    <label className="grid gap-1.5 text-sm font-medium text-muted-foreground">
       {label}
-      <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} className="form-field" />
+      <input required={required} type={type} value={value} onChange={(event) => onChange(event.target.value)} className="form-field rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 shadow-sm backdrop-blur-md placeholder:text-slate-500 focus:border-primary focus:ring-2 focus:ring-primary/20" />
     </label>
   );
 }
@@ -1540,9 +1553,9 @@ function SelectField({
   required?: boolean;
 }) {
   return (
-    <label className="grid gap-1 text-sm font-medium text-slate-600">
+    <label className="grid gap-1.5 text-sm font-medium text-muted-foreground">
       {label}
-      <select required={required} value={value} onChange={(event) => onChange(event.target.value)} className="form-field">
+      <select required={required} value={value} onChange={(event) => onChange(event.target.value)} className="form-field rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 shadow-sm backdrop-blur-md focus:border-primary focus:ring-2 focus:ring-primary/20">
         {children}
       </select>
     </label>
@@ -1551,7 +1564,7 @@ function SelectField({
 
 function LogTable({ logs }: { logs: AttendanceLog[] }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto rounded-2xl border border-border/70">
       <table className="data-table">
         <thead>
           <tr>
@@ -1568,8 +1581,8 @@ function LogTable({ logs }: { logs: AttendanceLog[] }) {
           {logs.map((log) => (
             <tr key={log.id}>
               <td>
-                <div className="font-semibold text-slate-900">{`${log.first_name ?? ""} ${log.last_name ?? ""}`.trim() || log.student_id_number || log.student_id || "Unknown"}</div>
-                <div className="text-xs text-slate-500">{log.student_id_number ?? log.student_id ?? "-"}</div>
+                <div className="font-semibold text-foreground">{`${log.first_name ?? ""} ${log.last_name ?? ""}`.trim() || log.student_id_number || log.student_id || "Unknown"}</div>
+                <div className="text-xs text-muted-foreground">{log.student_id_number ?? log.student_id ?? "-"}</div>
               </td>
               <td>{log.device_id ?? "-"}</td>
               <td>{log.scan_method ?? "-"}</td>
@@ -1588,24 +1601,24 @@ function LogTable({ logs }: { logs: AttendanceLog[] }) {
 
 function Feature({ icon: Icon, label, value }: { icon: typeof Users; label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <Icon className="text-blue-600" size={18} />
-      <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-sm font-semibold text-slate-950">{value}</p>
+    <div className="rounded-2xl border border-border bg-muted/60 p-4">
+      <Icon className="text-primary" size={18} />
+      <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-foreground">{value}</p>
     </div>
   );
 }
 
 function MetricBox({ label, value, color }: { label: string; value: string | number; color: "blue" | "emerald" | "amber" | "rose" }) {
   const colors = {
-    blue: "bg-blue-50 text-blue-700 border-blue-200",
+    blue: "bg-primary/10 text-primary border-primary/15",
     emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
     amber: "bg-amber-50 text-amber-700 border-amber-200",
     rose: "bg-rose-50 text-rose-700 border-rose-200",
   };
   return (
     <div className={cn("rounded-xl border p-4", colors[color])}>
-      <p className="text-xs font-semibold uppercase tracking-wide">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em]">{label}</p>
       <p className="mt-2 text-2xl font-bold">{value}</p>
     </div>
   );
@@ -1614,15 +1627,15 @@ function MetricBox({ label, value, color }: { label: string; value: string | num
 function StatusPill({ value }: { value: string }) {
   const normalized = value.toLowerCase();
   const tone = normalized.includes("online") || normalized.includes("synced") || normalized.includes("present")
-    ? "bg-emerald-50 text-emerald-700"
+    ? "bg-emerald-100 text-emerald-700"
     : normalized.includes("late") || normalized.includes("partial")
-      ? "bg-amber-50 text-amber-700"
+      ? "bg-amber-100 text-amber-700"
       : normalized.includes("offline") || normalized.includes("failed") || normalized.includes("absent")
-        ? "bg-rose-50 text-rose-700"
-        : "bg-slate-100 text-slate-700";
-  return <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", tone)}>{value}</span>;
+        ? "bg-rose-100 text-rose-700"
+        : "bg-muted text-muted-foreground";
+  return <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize", tone)}>{value}</span>;
 }
 
 function EmptyState({ text }: { text: string }) {
-  return <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">{text}</div>;
+  return <div className="rounded-2xl border border-dashed border-border bg-muted/40 p-6 text-center text-sm text-muted-foreground">{text}</div>;
 }

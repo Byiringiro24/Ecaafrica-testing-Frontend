@@ -74,6 +74,7 @@ function SchoolTab() {
   const [yearStart, setYearStart] = useState("");
   const [yearEnd, setYearEnd] = useState("");
   const [yearCurrent, setYearCurrent] = useState(true);
+  const todayValue = new Date().toISOString().split("T")[0];
 
   const currentYear = useMemo(() => academicYears.find((year) => year.isCurrent), [academicYears]);
 
@@ -115,6 +116,16 @@ function SchoolTab() {
   const handleAddYear = async () => {
     if (!yearName.trim() || !yearStart || !yearEnd) {
       toast.error("Name, start date, and end date are required");
+      return;
+    }
+
+    if (yearStart > todayValue) {
+      toast.error("Start date cannot be in the future");
+      return;
+    }
+
+    if (yearEnd < todayValue) {
+      toast.error("End date cannot be in the past");
       return;
     }
 
@@ -302,10 +313,10 @@ function SchoolTab() {
             <input value={yearName} onChange={(event) => setYearName(event.target.value)} className={inputClass} placeholder="2025/2026" />
           </Field>
           <Field label="Start date">
-            <input type="date" value={yearStart} onChange={(event) => setYearStart(event.target.value)} className={inputClass} />
+            <input type="date" value={yearStart} max={todayValue} onChange={(event) => setYearStart(event.target.value)} className={inputClass} />
           </Field>
           <Field label="End date">
-            <input type="date" value={yearEnd} onChange={(event) => setYearEnd(event.target.value)} className={inputClass} />
+            <input type="date" value={yearEnd} min={todayValue} onChange={(event) => setYearEnd(event.target.value)} className={inputClass} />
           </Field>
           <Toggle label="Set as current" checked={yearCurrent} onChange={setYearCurrent} />
         </div>

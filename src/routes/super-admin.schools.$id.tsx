@@ -239,6 +239,7 @@ function SchoolDetailPage() {
   const [users, setUsers] = useState<SchoolUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [resettingSchoolPassword, setResettingSchoolPassword] = useState(false);
   const [auditLogs, setAuditLogs] = useState<SchoolAuditLog[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [tab, setTab] = useState("Overview");
@@ -249,6 +250,7 @@ function SchoolDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [plans, setPlans] = useState<PlatformPlan[]>([]);
   const [editForm, setEditForm] = useState<SchoolFormState | null>(null);
+  const [editFormErrors, setEditFormErrors] = useState<Partial<Record<keyof SchoolFormState, boolean>>>({});
   const [savingModules, setSavingModules] = useState(false);
   const moduleDefaults = useMemo(() => buildModuleState(school), [school]);
   const [moduleState, setModuleState] = useState<Record<string, boolean>>(() => buildModuleState(null));
@@ -455,8 +457,18 @@ function SchoolDetailPage() {
 
   const handleUpdateSchool = async () => {
     if (!editForm) return;
-    if (!editForm.name.trim() || !editForm.country.trim() || !editForm.province.trim() || !editForm.district.trim()) {
-      toast.error("Name, country, province, and district are required.");
+    const errors: Partial<Record<keyof SchoolFormState, boolean>> = {};
+    if (!editForm.name.trim()) errors.name = true;
+    if (!editForm.country.trim()) errors.country = true;
+    if (!editForm.province.trim()) errors.province = true;
+    if (!editForm.district.trim()) errors.district = true;
+    if (!editForm.school_email?.trim()) errors.school_email = true;
+    if (!editForm.school_phone?.trim()) errors.school_phone = true;
+      const [editForm, setEditForm] = useState<SchoolFormState | null>(null);
+      const [editFormErrors, setEditFormErrors] = useState<Partial<Record<keyof SchoolFormState, boolean>>>({});
+    if (Object.keys(errors).length > 0) {
+      setEditFormErrors(errors);
+      toast.error("Please fill all required fields.");
       return;
     }
 
@@ -487,6 +499,7 @@ function SchoolDetailPage() {
     };
 
     try {
+      setEditFormErrors({});
       setSaving(true);
       const updated = await apiRequest<PlatformSchool>(`/platform/schools/${id}`, {
         method: "PATCH",
@@ -567,19 +580,32 @@ function SchoolDetailPage() {
     }
   };
 
+  const handleResetSchoolPassword = async () => {
+    const resetEmail = school.school_email ?? school.principal_email;
+
+    if (!resetEmail) {
+      toast.error("No school admin email is configured.");
+      return;
+    }
+
+    try {
+      setResettingSchoolPassword(true);
+      await apiRequest("/auth/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email: resetEmail })
+      });
+      toast.success("Reset link sent to the school admin email.");
+    } catch (error) {
+      const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to send reset link";
+      toast.error(message);
+    } finally {
+      setResettingSchoolPassword(false);
+    }
+  };
+
   return (
     <SuperAdminLayout
       title={school.name}
-      subtitle={location}
-      breadcrumbs={
-        <SuperAdminBreadcrumbs
-          items={[
-            { label: "Super Admin", to: "/super-admin" },
-            { label: "Schools", to: "/super-admin/schools" },
-            { label: school.name },
-          ]}
-        />
-      }
     >
       <div className="rounded-xl border border-border bg-card p-5 mb-5 shadow-sm">
         <div className="flex flex-wrap gap-4 items-start justify-between">
@@ -601,6 +627,14 @@ function SchoolDetailPage() {
         </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={openEdit} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold">Edit</button>
+            <button
+              type="button"
+              onClick={handleResetSchoolPassword}
+              disabled={resettingSchoolPassword || !(school.school_email ?? school.principal_email)}
+              className="rounded-lg border border-amber-300 bg-amber-50 text-amber-800 px-3 py-1.5 text-xs font-semibold disabled:opacity-60"
+            >
+              {resettingSchoolPassword ? "Sending..." : "Reset School Password"}
+            </button>
             {school.status === "suspended" ? (
               <button type="button" onClick={() => handleStatusAction("activate")} className="rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 px-3 py-1.5 text-xs font-semibold">Activate</button>
             ) : (
@@ -888,12 +922,13 @@ function SchoolDetailPage() {
               <option value="">No plan</option>
               {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </SaSelect>
-            <SaInput label="Admin Email" value={editForm.school_email} onChange={e => setEditForm(s => s ? { ...s, school_email: e.target.value } : s)} />
+            <SaInput label="Admin Email" value={editForm.school_email} onChange={e => setEditForm(s => s ? { ...s, school_email: e.target.value } : s)} required />
             <SaPhoneInput
               label="School Phone"
               value={editForm.school_phone}
               onChange={v => setEditForm(s => s ? { ...s, school_phone: v } : s)}
               defaultCountryName={editForm.country}
+              required
             />
             <SaInput label="Timezone" value={editForm.timezone} onChange={e => setEditForm(s => s ? { ...s, timezone: e.target.value } : s)} />
             <SaInput label="Currency" value={editForm.currency} onChange={e => setEditForm(s => s ? { ...s, currency: e.target.value } : s)} />

@@ -152,6 +152,7 @@ function SchoolsIndexPage() {
   const [countryFilter, setCountryFilter] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<SchoolFormState>(() => ({ ...EMPTY_FORM }));
+  const [formErrors, setFormErrors] = useState<Partial<Record<keyof SchoolFormState, boolean>>>({});
   const [creating, setCreating] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const showSkeleton = loading && schools.length === 0;
@@ -226,8 +227,17 @@ function SchoolsIndexPage() {
   const resetForm = () => setForm({ ...EMPTY_FORM });
 
   const handleCreateSchool = async () => {
-    if (!form.name.trim() || !form.country.trim() || !form.province.trim() || !form.district.trim()) {
-      toast.error("Name, country, province, and district are required.");
+    const errors: Partial<Record<keyof SchoolFormState, boolean>> = {};
+    if (!form.name.trim()) errors.name = true;
+    if (!form.country.trim()) errors.country = true;
+    if (!form.province.trim()) errors.province = true;
+    if (!form.district.trim()) errors.district = true;
+    if (!form.school_email?.trim()) errors.school_email = true;
+    if (!form.school_phone?.trim()) errors.school_phone = true;
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      toast.error("Please fill all required fields.");
       return;
     }
 
@@ -258,6 +268,7 @@ function SchoolsIndexPage() {
     };
 
     try {
+      setFormErrors({});
       setCreating(true);
       await apiRequest<PlatformSchool>("/platform/schools", {
         method: "POST",
@@ -472,12 +483,27 @@ function SchoolsIndexPage() {
               <option key={opt} value={opt}>{opt}</option>
             ))}
           </SaSelect>
-          <SaInput label="Admin Email" type="email" value={form.school_email} onChange={(e) => setForm({ ...form, school_email: e.target.value })} />
+          <SaInput
+            label="Admin Email *"
+            type="email"
+            value={form.school_email}
+            onChange={(e) => {
+              setForm({ ...form, school_email: e.target.value });
+              setFormErrors((s) => ({ ...s, school_email: false }));
+            }}
+            required
+            error={Boolean(formErrors.school_email)}
+          />
           <SaPhoneInput
-            label="School Phone"
+            label="School Phone *"
             value={form.school_phone}
-            onChange={(v) => setForm({ ...form, school_phone: v })}
+            onChange={(v) => {
+              setForm({ ...form, school_phone: v });
+              setFormErrors((s) => ({ ...s, school_phone: false }));
+            }}
             defaultCountryName={form.country}
+            required
+            error={Boolean(formErrors.school_phone)}
           />
           <SaSelect label="Subscription Plan" value={form.subscription_plan_id} onChange={(e) => setForm({ ...form, subscription_plan_id: e.target.value })}>
             <option value="">No plan</option>

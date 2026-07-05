@@ -175,11 +175,17 @@ export function FilterBar({ children }: { children: ReactNode }) {
   return <div className="flex flex-wrap gap-2 items-center mb-4">{children}</div>;
 }
 
-export function SaInput({ label, className, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+export function SaInput({ label, className, error, ...props }: { label: string; error?: boolean } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <div className={className}>
       <label className="block text-xs font-semibold mb-1.5 text-foreground">{label}</label>
-      <input className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm" {...props} />
+      <input
+        className={cn(
+          "h-10 w-full rounded-lg border bg-background px-3 text-sm",
+          error ? "border-destructive" : "border-border",
+        )}
+        {...props}
+      />
     </div>
   );
 }
@@ -268,6 +274,7 @@ export function SaPhoneInput({
   className,
   placeholder = "Phone number",
   error = false,
+  ...props
 }: {
   label: string;
   value: string;
@@ -276,7 +283,7 @@ export function SaPhoneInput({
   className?: string;
   placeholder?: string;
   error?: boolean;
-}) {
+} & React.InputHTMLAttributes<HTMLInputElement>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const parsed = useMemo(() => parsePhoneValue(value), [value]);
@@ -358,6 +365,7 @@ export function SaPhoneInput({
             "h-10 flex-1 min-w-0 rounded-lg border bg-background px-3 text-sm",
             error ? "border-destructive" : "border-border",
           )}
+          {...props}
         />
       </div>
     </div>

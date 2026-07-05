@@ -5,6 +5,7 @@ import {
   buildPhoneValue,
   countryFlagSrc,
   findCountryByName,
+  normalizePhoneDigits,
   parsePhoneValue,
   searchCountries,
   type Country,
@@ -293,6 +294,7 @@ export function SaPhoneInput({
   );
   const selectedCountry = parsed.country ?? defaultCountry;
   const filtered = useMemo(() => searchCountries(query), [query]);
+  const phoneError = error || (parsed.nationalNumber.length > 0 && parsed.nationalNumber.length !== 9);
 
   const handleCountrySelect = (country: Country) => {
     onChange(buildPhoneValue(country, parsed.nationalNumber));
@@ -301,7 +303,7 @@ export function SaPhoneInput({
   };
 
   const handleNumberChange = (nationalNumber: string) => {
-    onChange(buildPhoneValue(selectedCountry, nationalNumber));
+    onChange(buildPhoneValue(selectedCountry, normalizePhoneDigits(nationalNumber)));
   };
 
   return (
@@ -314,7 +316,7 @@ export function SaPhoneInput({
             onClick={() => setOpen((s) => !s)}
             className={cn(
               "h-10 min-w-[7.5rem] rounded-lg border bg-background px-2 text-sm flex items-center gap-1.5",
-              error ? "border-destructive" : "border-border",
+                  phoneError ? "border-destructive" : "border-border",
             )}
           >
             {selectedCountry ? (
@@ -358,16 +360,25 @@ export function SaPhoneInput({
         </div>
         <input
           type="tel"
+          inputMode="numeric"
+          maxLength={9}
           value={parsed.nationalNumber}
           onChange={(e) => handleNumberChange(e.target.value)}
+          onPaste={(e) => {
+            e.preventDefault();
+            handleNumberChange(e.clipboardData.getData("text"));
+          }}
           placeholder={placeholder}
           className={cn(
             "h-10 flex-1 min-w-0 rounded-lg border bg-background px-3 text-sm",
-            error ? "border-destructive" : "border-border",
+            phoneError ? "border-destructive" : "border-border",
           )}
           {...props}
         />
       </div>
+      {!error && parsed.nationalNumber.length > 0 && parsed.nationalNumber.length !== 9 && (
+        <p className="mt-1 text-[11px] text-destructive">Enter exactly 9 digits after the country code.</p>
+      )}
     </div>
   );
 }

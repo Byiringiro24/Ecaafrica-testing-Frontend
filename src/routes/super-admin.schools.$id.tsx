@@ -13,6 +13,7 @@ import {
 } from "@/lib/superAdminMockData";
 import { formatRWF } from "@/lib/mockData";
 import { apiRequest } from "@/lib/api";
+import { parsePhoneValue } from "@/lib/countries";
 
 export const Route = createFileRoute("/super-admin/schools/$id")({ component: SchoolDetailPage });
 
@@ -463,7 +464,7 @@ function SchoolDetailPage() {
     if (!editForm.province.trim()) errors.province = true;
     if (!editForm.district.trim()) errors.district = true;
     if (!editForm.school_email?.trim()) errors.school_email = true;
-    if (!editForm.school_phone?.trim()) errors.school_phone = true;
+    if (parsePhoneValue(editForm.school_phone).nationalNumber.length !== 9) errors.school_phone = true;
       const [editForm, setEditForm] = useState<SchoolFormState | null>(null);
       const [editFormErrors, setEditFormErrors] = useState<Partial<Record<keyof SchoolFormState, boolean>>>({});
     if (Object.keys(errors).length > 0) {
@@ -929,6 +930,7 @@ function SchoolDetailPage() {
               onChange={v => setEditForm(s => s ? { ...s, school_phone: v } : s)}
               defaultCountryName={editForm.country}
               required
+              error={Boolean(editFormErrors.school_phone)}
             />
             <SaInput label="Timezone" value={editForm.timezone} onChange={e => setEditForm(s => s ? { ...s, timezone: e.target.value } : s)} />
             <SaInput label="Currency" value={editForm.currency} onChange={e => setEditForm(s => s ? { ...s, currency: e.target.value } : s)} />

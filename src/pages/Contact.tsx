@@ -5,14 +5,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Phone, Mail, Globe, MapPin } from "lucide-react";
 import { toast } from "sonner";
-import { FormEvent } from "react";
+import { FormEvent, useState } from "react";
 import contactBg from "@/assets/contact.png";
+import { normalizePhoneDigits } from "@/lib/countries";
 
 export default function Contact() {
+  const [phone, setPhone] = useState("");
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     toast.success("Thanks! We'll be in touch shortly.");
     (e.target as HTMLFormElement).reset();
+    setPhone("");
   };
 
   return (
@@ -105,7 +109,16 @@ export default function Contact() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="phone" className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Phone</Label>
-                  <Input id="phone" type="tel" className="bg-background/50 h-11" />
+                  <Input
+                    id="phone"
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={9}
+                    value={phone}
+                    onChange={(e) => setPhone(normalizePhoneDigits(e.target.value))}
+                    placeholder="9 digits"
+                    className="bg-background/50 h-11"
+                  />
                 </div>
               </div>
               <div className="space-y-2">

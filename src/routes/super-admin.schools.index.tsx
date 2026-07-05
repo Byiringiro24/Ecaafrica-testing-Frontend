@@ -7,7 +7,7 @@ import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs
 import { EmptyState, FilterBar, Pagination, SaInput, SaModal, SaPhoneInput, SaSelect, SaCountrySelect } from "@/components/super-admin/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
-import { COUNTRY_NAMES } from "@/lib/countries";
+import { COUNTRY_NAMES, parsePhoneValue } from "@/lib/countries";
 import { planBadgeClass, statusBadgeClass } from "@/lib/superAdminMockData";
 
 export const Route = createFileRoute("/super-admin/schools/")({
@@ -233,7 +233,7 @@ function SchoolsIndexPage() {
     if (!form.province.trim()) errors.province = true;
     if (!form.district.trim()) errors.district = true;
     if (!form.school_email?.trim()) errors.school_email = true;
-    if (!form.school_phone?.trim()) errors.school_phone = true;
+    if (parsePhoneValue(form.school_phone).nationalNumber.length !== 9) errors.school_phone = true;
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);

@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/api";
 import { SaPhoneInput } from "@/components/super-admin/ui";
 import { useSchoolCountryName } from "@/hooks/useSchoolCountry";
+import { parsePhoneValue } from "@/lib/countries";
 
 interface Props {
   open: boolean;
@@ -114,7 +115,10 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
     }
     if (step === 1) {
       if (!data.parentName.trim()) e.parentName = true;
-      if (!data.parentPhone.trim()) e.parentPhone = true;
+      if (parsePhoneValue(data.parentPhone).nationalNumber.length !== 9) e.parentPhone = true;
+      if (data.parentPhone2.trim() && parsePhoneValue(data.parentPhone2).nationalNumber.length !== 9) {
+        e.parentPhone2 = true;
+      }
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -370,6 +374,7 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
                 value={data.parentPhone2}
                 onChange={(v) => set("parentPhone2", v)}
                 defaultCountryName={schoolCountry ?? undefined}
+                error={!!errors.parentPhone2}
                 className="sm:col-span-2"
               />
               <Field label="Email">

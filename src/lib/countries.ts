@@ -22,6 +22,14 @@ export function countryFlagSrc(flag: string) {
   return `data:image/png;base64,${flag}`;
 }
 
+export function normalizePhoneDigits(value: string, maxLength = 9) {
+  return value.replace(/\D/g, "").slice(0, maxLength);
+}
+
+export function isValidPhoneDigits(value: string, length = 9) {
+  return new RegExp(`^\\d{${length}}$`).test(value);
+}
+
 export function findCountryByName(name: string): Country | undefined {
   return COUNTRIES.find((country) => country.name === name);
 }
@@ -55,16 +63,16 @@ export function parsePhoneValue(value: string): { country?: Country; nationalNum
 
   for (const country of PHONE_CODE_SORTED) {
     if (normalized.startsWith(country.phoneCode)) {
-      const nationalNumber = normalized.slice(country.phoneCode.length).trim();
+      const nationalNumber = normalizePhoneDigits(normalized.slice(country.phoneCode.length).trim());
       return { country, nationalNumber };
     }
   }
 
-  return { nationalNumber: trimmed.replace(/^\+/, "") };
+  return { nationalNumber: normalizePhoneDigits(trimmed.replace(/^\+/, "")) };
 }
 
 export function buildPhoneValue(country: Country | undefined, nationalNumber: string): string {
-  const digits = nationalNumber.trim();
+  const digits = normalizePhoneDigits(nationalNumber);
   if (!digits) return "";
   if (!country?.phoneCode) return digits;
   return `${country.phoneCode} ${digits}`;

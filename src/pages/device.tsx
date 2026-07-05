@@ -22,6 +22,7 @@ import {
   FiWifiOff,
 } from "react-icons/fi";
 import { attendanceApi, dashboardApi, deviceApi, studentApi } from "@/lib/api";
+import { normalizePhoneDigits } from "@/lib/countries";
 
 type Stats = {
   totalStudents: number;
@@ -528,7 +529,12 @@ export default function SmartAttendanceDashboard() {
                   <Field label="Student Full Name" value={studentForm.name} onChange={(value) => setStudentForm({ ...studentForm, name: value })} required />
                   <Field label="Student ID (Rwanda)" value={studentForm.studentId} onChange={(value) => setStudentForm({ ...studentForm, studentId: value.toUpperCase() })} placeholder="RW-0001" required />
                   <Field label="Student Device ID" value={studentForm.studentDeviceId} onChange={(value) => setStudentForm({ ...studentForm, studentDeviceId: value })} placeholder="1001" required />
-                  <Field label="Parent Phone" value={studentForm.parentPhone} onChange={(value) => setStudentForm({ ...studentForm, parentPhone: value })} />
+                  <Field
+                    label="Parent Phone"
+                    value={studentForm.parentPhone}
+                    onChange={(value) => setStudentForm({ ...studentForm, parentPhone: normalizePhoneDigits(value) })}
+                    placeholder="9 digits"
+                  />
                   <SelectField label="Class" value={studentForm.className} onChange={(value) => setStudentForm({ ...studentForm, className: value })} options={classes} />
                   <Field label="Section" value={studentForm.section} onChange={(value) => setStudentForm({ ...studentForm, section: value })} />
                 </div>
@@ -638,7 +644,23 @@ function NavItem({ icon, label, active = false }: { icon: React.ReactNode; label
 }
 
 function Field({ label, value, onChange, type = "text", placeholder, required = false }: { label: string; value: string | number; onChange: (value: string) => void; type?: string; placeholder?: string; required?: boolean }) {
-  return <label className="block"><span className="mb-1 block text-sm text-slate-400">{label}</span><input required={required} type={type} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className="form-field" /></label>;
+  const isPhoneField = label.toLowerCase().includes("phone");
+
+  return (
+    <label className="block">
+      <span className="mb-1 block text-sm text-slate-400">{label}</span>
+      <input
+        required={required}
+        type={type}
+        inputMode={isPhoneField ? "numeric" : undefined}
+        maxLength={isPhoneField ? 9 : undefined}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(isPhoneField ? normalizePhoneDigits(e.target.value) : e.target.value)}
+        className="form-field"
+      />
+    </label>
+  );
 }
 
 function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {

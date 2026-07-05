@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { SaPhoneInput } from "@/components/super-admin/ui";
 import { useSchoolCountryName } from "@/hooks/useSchoolCountry";
+import { parsePhoneValue } from "@/lib/countries";
 
 export const Route = createFileRoute("/visitors")({ component: VisitorsPage });
 
@@ -948,7 +949,7 @@ function RegisterModal({
     if (s === 1) {
       if (!data.name.trim()) e.name = "Required";
       if (!data.nationalId.trim()) e.nationalId = "Required";
-      if (!data.phone.trim()) e.phone = "Required";
+      if (parsePhoneValue(data.phone).nationalNumber.length !== 9) e.phone = "Enter exactly 9 digits";
       if (data.visitorType === "parent_guardian" && !matchedStudent) e.studentSearch = "Select a student";
       if (data.visitorType === "organization" && !data.organization.trim()) e.organization = "Required";
     }

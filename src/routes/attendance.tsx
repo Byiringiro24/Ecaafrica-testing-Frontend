@@ -8,7 +8,6 @@ import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
-import { syncLiveAttendanceFromTablets, type SyncSummary } from "@/lib/liveAttendanceSync";
 
 export const Route = createFileRoute("/attendance")({
   component: AttendancePage,
@@ -175,7 +174,7 @@ const nextManualStatus = (current?: ApiStatus) => {
 
 function AttendancePage() {
   const todayValue = new Date().toISOString().slice(0, 10);
-  const [tab, setTab] = useState<"live" | "manual">("live");
+  const [tab, setTab] = useState<"records" | "manual">("records");
   const [classRecords, setClassRecords] = useState<ClassRecord[]>([]);
   const [sectionRecords, setSectionRecords] = useState<SectionRecord[]>([]);
   const [studentsById, setStudentsById] = useState<Record<string, ApiStudent>>({});
@@ -189,7 +188,6 @@ function AttendancePage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [recordsLoading, setRecordsLoading] = useState(false);
-  const [syncSummary, setSyncSummary] = useState<SyncSummary | null>(null);
 
   const [manualSectionId, setManualSectionId] = useState("");
   const [manualDate, setManualDate] = useState(todayValue);
@@ -274,11 +272,6 @@ function AttendancePage() {
   const loadAttendanceData = async (targetDate: string) => {
     setRecordsLoading(true);
     try {
-      if (targetDate === todayValue) {
-        const sync = await syncLiveAttendanceFromTablets();
-        setSyncSummary(sync);
-      }
-
       const [sessionList, recordList] = await Promise.all([
         apiRequest<ApiSession[]>(`/attendance/sessions?date=${targetDate}&limit=500`, {
           auth: "school"
@@ -434,7 +427,7 @@ function AttendancePage() {
       toast.success("Attendance saved");
       setDateFilter(manualDate);
       await loadAttendanceData(manualDate);
-      setTab("live");
+      setTab("records");
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to save attendance");
     } finally {
@@ -667,9 +660,9 @@ function AttendancePage() {
   };
 
   return (
-    <AppLayout title="Live Attendance" subtitle="Scan student ID cards to mark attendance">
+    <AppLayout title="Attendance" subtitle="Review and mark manual attendance only">
       <div className="flex gap-1 border-b border-border mt-4">
-        {(["live", "manual"] as const).map((item) => (
+        {(["records", "manual"] as const).map((item) => (
           <button
             key={item}
             onClick={() => setTab(item)}
@@ -679,19 +672,14 @@ function AttendancePage() {
                 : "border-transparent text-muted-foreground"
             }`}
           >
-            {item === "live" ? "Today's Attendance" : "Make Attendance"}
+            {item === "records" ? "Today's Attendance" : "Make Attendance"}
           </button>
         ))}
       </div>
 
-      {tab === "live" && (
+      {tab === "records" && (
         <>
           <div className="mt-6 rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap gap-3 items-center">
-            {syncSummary && dateFilter === todayValue && (
-              <div className="basis-full text-xs text-muted-foreground">
-                Live device sync: {syncSummary.pulled} tablet(s), {syncSummary.attendanceRecords} attendance record(s), {syncSummary.duplicates} duplicate(s)
-              </div>
-            )}
             <input
               type="date"
               value={dateFilter}

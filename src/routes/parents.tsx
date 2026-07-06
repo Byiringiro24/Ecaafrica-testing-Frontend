@@ -7,9 +7,46 @@ import { Avatar } from "@/components/ui-kit/Avatar";
 import { SMSComposeModal } from "@/components/modals/SMSComposeModal";
 import { ConfirmModal } from "@/components/modals/ConfirmModal";
 import { apiRequest } from "@/lib/api";
-import { SMS_LOGS, TODAY_ATTENDANCE } from "@/lib/mockData";
 
 export const Route = createFileRoute("/parents")({ component: ParentsPage });
+
+type NotificationStatus = "queued" | "sent" | "delivered" | "failed" | "retry";
+
+type NotificationLogRecord = {
+  id: string;
+  created_at: string;
+  phone: string | null;
+  body_en: string | null;
+  status: NotificationStatus;
+  channel: "sms";
+  trigger_type: string | null;
+  recipient_name: string | null;
+  recipient_type: string;
+};
+
+type NotificationLogsResponse = {
+  data: NotificationLogRecord[];
+  meta: {
+    page?: number;
+    limit?: number;
+    total?: number;
+    summary?: {
+      totalSms: number;
+      sent: number;
+      failed: number;
+      pending: number;
+    };
+  };
+};
+
+type AttendanceLogRecord = {
+  id: string;
+  status?: string | null;
+  student_name?: string | null;
+  student_id?: string | null;
+  device_id?: string | null;
+  timestamp?: string;
+};
 
 type ParentRecord = {
   id: string;
@@ -68,7 +105,14 @@ function ParentsPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [parents, setParents] = useState<ParentRecord[]>([]);
   const [students, setStudents] = useState<StudentRecord[]>([]);
+  const [notificationLogs, setNotificationLogs] = useState<NotificationLogRecord[]>([]);
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLogRecord[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const today = new Date();
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const toDateInput = (date: Date) => date.toISOString().slice(0, 10);
+  const isSameDay = (value: string) => new Date(value).toDateString() === today.toDateString();
 
   const studentViews = useMemo<StudentView[]>(() =>
     students.map((student) => {
@@ -102,8 +146,8 @@ function ParentsPage() {
 
     return parents.map((parent) => {
       const name = buildFullName(parent.first_name, parent.last_name) || "Unnamed";
-      const smsLogs = SMS_LOGS.filter(
-        (log) => log.phone === parent.phone || log.parentName === name
+      const smsLogs = notificationLogs.filter(
+        (log) => log.phone === parent.phone || log.recipient_name === name
       );
 
       return {
@@ -112,11 +156,19 @@ function ParentsPage() {
         phone: parent.phone,
         district: extractDistrict(parent.address),
         studentIds: studentsByParentPhone.get(parent.phone) ?? [],
-        lastSMSSent: smsLogs[0]?.timestamp ?? "—",
+        lastSMSSent: smsLogs[0]?.created_at ?? "—",
         totalSMSCount: smsLogs.length
       };
     });
-  }, [parents, studentViews]);
+  }, [parents, studentViews, notificationLogs]);
+
+  const todaySmsLogs = useMemo(
+    () => notificationLogs.filter((log) => isSameDay(log.created_at)),
+    [notificationLogs]
+  );
+
+  const sentToday = todaySmsLogs.filter((log) => log.status === "sent" || log.status === "delivered").length;
+  const failedToday = todaySmsLogs.filter((log) => log.status === "failed").length;
 
   const districtOptions = useMemo(() => {
     const districts = new Set<string>();
@@ -150,13 +202,28 @@ function ParentsPage() {
   const loadParents = async () => {
     setLoading(true);
     try {
-      const [parentData, studentData] = await Promise.all([
+      const notificationParams = new URLSearchParams({
+        page: "1",
+        limit: "1000",
+        channel: "sms",
+        from: toDateInput(monthStart),
+        to: toDateInput(today)
+      });
+
+      const [parentData, studentData, notificationData, attendanceData] = await Promise.all([
         apiRequest<ParentRecord[]>("/parents?limit=1000", { auth: "school" }),
-        apiRequest<StudentRecord[]>("/students?limit=2000", { auth: "school" })
+        apiRequest<StudentRecord[]>("/students?limit=2000", { auth: "school" }),
+        apiRequest<NotificationLogsResponse>(`/notifications/logs?${notificationParams.toString()}`, {
+          auth: "school",
+          returnMeta: true
+        }),
+        apiRequest<AttendanceLogRecord[]>("/attendance/records/today", { auth: "school" })
       ]);
 
       setParents(Array.isArray(parentData) ? parentData : []);
       setStudents(Array.isArray(studentData) ? studentData : []);
+      setNotificationLogs(notificationData.data ?? []);
+      setAttendanceLogs(Array.isArray(attendanceData) ? attendanceData : []);
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to load parent records");
     } finally {
@@ -179,9 +246,6 @@ function ParentsPage() {
     }
     return true;
   });
-
-  const failedToday = SMS_LOGS.filter(s => s.status === "failed").length;
-  const sentToday = SMS_LOGS.filter(s => s.status === "sent").length;
 
   return (
     <AppLayout title="Parent Management" subtitle={`${parentRows.length} parents registered`}>
@@ -284,12 +348,13 @@ function ParentsPage() {
         students={smsStudents}
         onClose={() => setComposeFor(null)}
       />
-      {historyFor && <HistoryDrawer parent={historyFor} onClose={() => setHistoryFor(null)} />}
+      {historyFor && <HistoryDrawer parent={historyFor} logs={notificationLogs} onClose={() => setHistoryFor(null)} />}
       {bulkOpen && (
         <BulkSMSModal
           onClose={() => setBulkOpen(false)}
           parentCount={parentRows.length}
           students={smsStudents}
+          attendanceLogs={attendanceLogs}
         />
       )}
     </AppLayout>
@@ -307,8 +372,8 @@ function Stat({ label, value, tone = "primary", extra }: { label: string; value:
   );
 }
 
-function HistoryDrawer({ parent, onClose }: { parent: ParentRow; onClose: () => void }) {
-  const logs = SMS_LOGS.filter((log) => log.phone === parent.phone || log.parentName === parent.name);
+function HistoryDrawer({ parent, logs, onClose }: { parent: ParentRow; logs: NotificationLogRecord[]; onClose: () => void }) {
+  const parentLogs = logs.filter((log) => log.phone === parent.phone || log.recipient_name === parent.name);
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/50" onClick={onClose} />
@@ -321,22 +386,22 @@ function HistoryDrawer({ parent, onClose }: { parent: ParentRow; onClose: () => 
           <button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-5 w-5" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
-          {logs.length === 0 && <p className="text-center text-muted-foreground text-sm">No SMS history.</p>}
-          {logs.map(l => {
-            const tcls = l.trigger === "present" ? "border-l-success" : l.trigger === "absent" ? "border-l-destructive" : "border-l-amber-500";
+          {parentLogs.length === 0 && <p className="text-center text-muted-foreground text-sm">No SMS history.</p>}
+          {parentLogs.map((log) => {
+            const tcls = log.trigger_type === "class_entry" ? "border-l-success" : log.trigger_type === "school_entry" ? "border-l-amber-500" : "border-l-destructive";
             return (
-              <div key={l.id} className={`border-l-4 ${tcls} bg-muted/30 p-3 rounded-r-lg`}>
+              <div key={log.id} className={`border-l-4 ${tcls} bg-muted/30 p-3 rounded-r-lg`}>
                 <div className="flex justify-between text-xs mb-1">
-                  <span className="font-semibold">{l.studentName}</span>
-                  <span className="text-muted-foreground">{l.timestamp}</span>
+                  <span className="font-semibold">{extractStudentName(log.body_en ?? "")}</span>
+                  <span className="text-muted-foreground">{new Date(log.created_at).toLocaleString()}</span>
                 </div>
-                <p className="text-xs text-muted-foreground line-clamp-2">{l.message}</p>
+                <p className="text-xs text-muted-foreground line-clamp-2">{log.body_en ?? ""}</p>
                 <div className="mt-1.5">
                   <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                    l.status === "sent" ? "bg-success/15 text-success" :
-                    l.status === "failed" ? "bg-destructive/15 text-destructive" :
+                    log.status === "sent" || log.status === "delivered" ? "bg-success/15 text-success" :
+                    log.status === "failed" ? "bg-destructive/15 text-destructive" :
                     "bg-amber-100 text-amber-700"
-                  }`}>{l.status}</span>
+                  }`}>{log.status}</span>
                 </div>
               </div>
             );
@@ -350,11 +415,13 @@ function HistoryDrawer({ parent, onClose }: { parent: ParentRow; onClose: () => 
 function BulkSMSModal({
   onClose,
   parentCount,
-  students
+  students,
+  attendanceLogs
 }: {
   onClose: () => void;
   parentCount: number;
   students: StudentView[];
+  attendanceLogs: AttendanceLogRecord[];
 }) {
   const [target, setTarget] = useState<"all"|"absent"|"risk"|"class">("absent");
   const [cls, setCls] = useState("S1A");
@@ -364,10 +431,10 @@ function BulkSMSModal({
 
   const targetCount = useMemo(() => {
     if (target === "all") return parentCount;
-    if (target === "absent") return TODAY_ATTENDANCE.filter(a => a.status === "Absent").length;
+    if (target === "absent") return attendanceLogs.filter((a) => (a.status ?? "").toLowerCase() === "absent").length;
     if (target === "risk") return 0;
     return students.filter(s => s.class === cls).length;
-  }, [target, cls, parentCount, students]);
+  }, [target, cls, parentCount, students, attendanceLogs]);
 
   const start = () => {
     setProgress({ current: 0, total: targetCount });

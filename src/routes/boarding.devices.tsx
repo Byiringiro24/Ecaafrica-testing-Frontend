@@ -269,7 +269,10 @@ function ServerCommandCenter() {
   });
 
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? devices[0];
-  const selectedTablet = tablets.find((tablet) => tablet.id === selectedTabletId) ?? tablets[0];
+  const selectedTablet =
+    tablets.find((tablet) => tablet.id === selectedTabletId) ??
+    tablets.find((tablet) => tablet.id === selectedDevice?.tablet_id) ??
+    tablets[0];
   const selectedAcademicYear = academicYears.find((year) => year.is_current || year.isCurrent) ?? academicYears[0];
   const classSections = sections.filter((section) => !classId || section.class_id === classId);
 
@@ -1188,7 +1191,7 @@ function ServerCommandCenter() {
               </Panel>
               <Panel title="Connect FK623" icon={Cpu}>
                 <form onSubmit={connectDevice} className="grid gap-3">
-                  <select value={selectedTabletId} onChange={(event) => setSelectedTabletId(event.target.value)} className="form-field rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 shadow-sm backdrop-blur-md focus:border-primary focus:ring-2 focus:ring-primary/20">
+                  <select value={selectedTablet?.id ?? ""} onChange={(event) => setSelectedTabletId(event.target.value)} className="form-field rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 shadow-sm backdrop-blur-md focus:border-primary focus:ring-2 focus:ring-primary/20">
                     {tablets.map((tablet) => <option key={tablet.id} value={tablet.id}>{tablet.name} - {tablet.ip}:{tablet.port}</option>)}
                   </select>
                   <Field label="Device UID" value={deviceForm.deviceId} onChange={(value) => setDeviceForm({ ...deviceForm, deviceId: value })} />

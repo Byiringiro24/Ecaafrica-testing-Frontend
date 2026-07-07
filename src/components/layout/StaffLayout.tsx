@@ -21,7 +21,6 @@ const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "Gate Operations",
     items: [
-      { to: "/staff/gate", label: "Gate Control", icon: DoorOpen },
       { to: "/staff/visitors", label: "Visitors", icon: UserCheck },
     ],
   },

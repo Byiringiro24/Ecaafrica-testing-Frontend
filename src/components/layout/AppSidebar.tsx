@@ -32,7 +32,6 @@ const SECTIONS: Section[] = [
   ]},
   { id: "boarding", label: "Boarding", items: [
     { to: "/boarding", label: "Boarding", icon: Home, module: "boarding", match: "exact" },
-    { to: "/gate", label: "Gate", icon: DoorOpen, module: "gate" },
     { to: "/leaves", label: "Leaves", icon: FileText, module: "leaves" },
   ]},
   { id: "devices", label: "Device Management", items: [

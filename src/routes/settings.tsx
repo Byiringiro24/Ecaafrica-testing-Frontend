@@ -80,7 +80,6 @@ function SettingsPage() {
 }
 
 function SchoolTab() {
-  const currentUser = useCurrentUser();
   const [schoolProfile, setSchoolProfile] = useState<SchoolProfileApi | null>(null);
   const [logoPreview, setLogoPreview] = useState<string>("");
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
@@ -91,18 +90,18 @@ function SchoolTab() {
   const [yearCurrent, setYearCurrent] = useState(true);
   const todayValue = new Date().toISOString().split("T")[0];
 
-  const schoolName = schoolProfile?.school_name ?? "Education Care Africa";
-  const district = schoolProfile?.school_district ?? "Gasabo";
-  const province = schoolProfile?.school_province ?? "Kigali City";
-  const schoolEmail = schoolProfile?.school_email ?? "admin@educationcareafrica.rw";
+  const schoolName = schoolProfile?.school_name ?? "";
+  const district = schoolProfile?.school_district ?? "";
+  const province = schoolProfile?.school_province ?? "";
+  const schoolEmail = schoolProfile?.school_email ?? "";
   const formattedAddress = [
     schoolProfile?.school_sector,
     schoolProfile?.school_district,
     schoolProfile?.school_province,
-    schoolProfile?.school_country
+    schoolProfile?.school_country,
   ]
     .filter(Boolean)
-    .join(", ") || "Kigali, Rwanda";
+    .join(", ");
   const logoSrc = logoPreview || schoolProfile?.school_logo_url || "";
 
   const currentYear = useMemo(() => academicYears.find((year) => year.isCurrent), [academicYears]);
@@ -373,7 +372,7 @@ function ResetPasswordTab() {
       </section>
       <section className="rounded-2xl border border-border bg-background p-5">
         <Field label="Email address">
-          <input value={currentUser?.email ?? "admin@educationcareafrica.rw"} readOnly className={inputClass} />
+          <input value={currentUser?.email ?? ""} readOnly className={inputClass} />
         </Field>
         <button type="button" onClick={() => toast.success("Password reset link sent")} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
           <LockKeyhole className="h-4 w-4" />

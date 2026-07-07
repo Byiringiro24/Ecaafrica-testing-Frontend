@@ -42,9 +42,6 @@ const SECTIONS: Section[] = [
     { to: "/boarding/device-students", label: "Device Students", icon: UserPlus, module: "boarding" },
     { to: "/boarding/device-logs", label: "Device Logs", icon: ListChecks, module: "boarding" },
   ]},
-  { id: "finance", label: "Finance", items: [
-    { to: "/fees", label: "Fees", icon: Wallet, module: "fees" },
-  ]},
   { id: "hr", label: "HR", items: [
     { to: "/staff", label: "Staff", icon: Briefcase, module: "staff" },
   ]},
@@ -52,8 +49,8 @@ const SECTIONS: Section[] = [
     { to: "/parents", label: "Parents", icon: Heart, module: "parents" },
     { to: "/notifications", label: "Notifications", icon: MessageSquare, module: "notifications" },
   ]},
-  { id: "analytics", label: "Analytics", items: [
-    { to: "/reports", label: "Reports", icon: BarChart3, module: "reports" },
+  { id: "system", label: "System", items: [
+    { to: "/settings", label: "Settings", icon: Settings, module: "settings" },
   ]},
   { id: "system", label: "System", items: [
     { to: "/settings", label: "Settings", icon: Settings, module: "settings" },

@@ -11,6 +11,17 @@ export type CurrentUser = {
   status: string;
   avatar_url: string | null;
   school_country?: string | null;
+  school_name?: string | null;
+  school_province?: string | null;
+  school_district?: string | null;
+  school_sector?: string | null;
+  school_logo_url?: string | null;
+  school_website?: string | null;
+  school_principal_name?: string | null;
+  school_principal_phone?: string | null;
+  school_principal_email?: string | null;
+  school_phone?: string | null;
+  school_email?: string | null;
 };
 
 export function getInitials(name: string): string {

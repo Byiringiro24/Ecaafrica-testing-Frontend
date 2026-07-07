@@ -86,9 +86,6 @@ export function AppSidebar({ open, onClose }: Props) {
             <img src={logo} alt="ecareafrica logo" className="h-9 w-9 rounded-lg object-contain" />
             <div className="font-display font-bold text-sidebar-foreground text-base leading-tight">
               ecareafrica
-              <div className="text-[10px] font-normal text-sidebar-foreground/70 truncate max-w-35">
-                {schoolConfig.schoolName}
-              </div>
             </div>
           </Link>
           <button onClick={onClose} className="lg:hidden rounded-md p-1.5 text-sidebar-foreground/70 hover:bg-sidebar-accent">

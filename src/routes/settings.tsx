@@ -4,6 +4,7 @@ import { Building2, LockKeyhole, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest } from "@/lib/api";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 export const Route = createFileRoute("/settings")({ component: SettingsPage });
 
@@ -23,6 +24,23 @@ type AcademicYear = {
   startDate: string;
   endDate: string;
   isCurrent: boolean;
+};
+
+type SchoolProfileApi = {
+  school_name?: string | null;
+  school_country?: string | null;
+  school_province?: string | null;
+  school_district?: string | null;
+  school_sector?: string | null;
+  school_logo_url?: string | null;
+  school_website?: string | null;
+  school_principal_name?: string | null;
+  school_principal_phone?: string | null;
+  school_principal_email?: string | null;
+  school_phone?: string | null;
+  school_email?: string | null;
+  name?: string;
+  email?: string | null;
 };
 
 const tabs: Array<{ id: TabId; label: string; icon: typeof Building2 }> = [
@@ -62,11 +80,8 @@ function SettingsPage() {
 }
 
 function SchoolTab() {
-  const [schoolName, setSchoolName] = useState("Education Care Africa");
-  const [address, setAddress] = useState("Kigali, Rwanda");
-  const [district, setDistrict] = useState("Gasabo");
-  const [province, setProvince] = useState("Kigali City");
-  const [principal, setPrincipal] = useState("Dr. Niyomugabo Jean");
+  const currentUser = useCurrentUser();
+  const [schoolProfile, setSchoolProfile] = useState<SchoolProfileApi | null>(null);
   const [logoPreview, setLogoPreview] = useState<string>("");
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [editingYearId, setEditingYearId] = useState<string | null>(null);
@@ -75,6 +90,20 @@ function SchoolTab() {
   const [yearEnd, setYearEnd] = useState("");
   const [yearCurrent, setYearCurrent] = useState(true);
   const todayValue = new Date().toISOString().split("T")[0];
+
+  const schoolName = schoolProfile?.school_name ?? "Education Care Africa";
+  const district = schoolProfile?.school_district ?? "Gasabo";
+  const province = schoolProfile?.school_province ?? "Kigali City";
+  const schoolEmail = schoolProfile?.school_email ?? "admin@educationcareafrica.rw";
+  const formattedAddress = [
+    schoolProfile?.school_sector,
+    schoolProfile?.school_district,
+    schoolProfile?.school_province,
+    schoolProfile?.school_country
+  ]
+    .filter(Boolean)
+    .join(", ") || "Kigali, Rwanda";
+  const logoSrc = logoPreview || schoolProfile?.school_logo_url || "";
 
   const currentYear = useMemo(() => academicYears.find((year) => year.isCurrent), [academicYears]);
 
@@ -87,18 +116,21 @@ function SchoolTab() {
   });
 
   useEffect(() => {
-    const loadAcademicYears = async () => {
+    const loadData = async () => {
       try {
-        const years = await apiRequest<AcademicYearApi[]>('/academic-years?limit=100', {
-          auth: 'school'
-        });
+        const [profile, years] = await Promise.all([
+          apiRequest<SchoolProfileApi>('/auth/me', { auth: 'school' }),
+          apiRequest<AcademicYearApi[]>('/academic-years?limit=100', { auth: 'school' })
+        ]);
+
+        setSchoolProfile(profile);
         setAcademicYears(years.map(normalizeAcademicYear));
       } catch (error: any) {
-        toast.error(error?.message ?? 'Failed to load academic years');
+        toast.error(error?.message ?? 'Failed to load settings data');
       }
     };
 
-    void loadAcademicYears();
+    void loadData();
   }, []);
 
   const handleLogoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -207,11 +239,11 @@ function SchoolTab() {
       <section className="grid gap-4 rounded-2xl border border-border bg-background p-5 lg:grid-cols-2">
         <div className="space-y-4">
           <h3 className="font-display text-lg font-bold">School Details</h3>
-          <Field label="School name">
+                  <Field label="School name">
             <input value={schoolName} readOnly className={inputClass} />
           </Field>
           <Field label="Address">
-            <input value={address} readOnly className={inputClass} />
+            <input value={formattedAddress} readOnly className={inputClass} />
           </Field>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="District">
@@ -221,8 +253,8 @@ function SchoolTab() {
               <input value={province} readOnly className={inputClass} />
             </Field>
           </div>
-          <Field label="Principal">
-            <input value={principal} readOnly className={inputClass} />
+          <Field label="School email">
+            <input value={schoolEmail} readOnly className={inputClass} />
           </Field>
         </div>
 
@@ -233,8 +265,8 @@ function SchoolTab() {
           </div>
           <div className="flex items-center gap-4">
             <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-border bg-background">
-              {logoPreview ? (
-                <img src={logoPreview} alt="School logo preview" className="h-full w-full object-cover" />
+              {logoSrc ? (
+                <img src={logoSrc} alt="School logo preview" className="h-full w-full object-cover" />
               ) : (
                 <Building2 className="h-8 w-8 text-muted-foreground" />
               )}
@@ -331,6 +363,8 @@ function SchoolTab() {
 }
 
 function ResetPasswordTab() {
+  const currentUser = useCurrentUser();
+
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-border bg-background p-5">
@@ -339,7 +373,7 @@ function ResetPasswordTab() {
       </section>
       <section className="rounded-2xl border border-border bg-background p-5">
         <Field label="Email address">
-          <input value="admin@educationcareafrica.rw" readOnly className={inputClass} />
+          <input value={currentUser?.email ?? "admin@educationcareafrica.rw"} readOnly className={inputClass} />
         </Field>
         <button type="button" onClick={() => toast.success("Password reset link sent")} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
           <LockKeyhole className="h-4 w-4" />

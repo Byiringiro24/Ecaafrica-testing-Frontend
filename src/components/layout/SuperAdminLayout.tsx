@@ -10,7 +10,7 @@ import logo from "@/assets/logo.png";
 import { SUPER_ADMIN_USER } from "@/lib/superAdminMockData";
 import { clearPlatformAuth, getPlatformAuth } from "@/lib/platformAuth";
 
-type NavItem = { to: string; label: string; icon: typeof Globe; exact?: boolean };
+type NavItem = { to: string; label: string; icon: typeof Globe; exact?: boolean; hidden?: boolean };
 type NavSection = { label: string; items: NavItem[] };
 
 const NAV: NavSection[] = [
@@ -25,25 +25,25 @@ const NAV: NavSection[] = [
   {
     label: "Operations",
     items: [
-      { to: "/super-admin/analytics", label: "Platform Analytics", icon: BarChart3 },
-      { to: "/super-admin/hardware", label: "Hardware Assignment", icon: Cpu },
-      { to: "/super-admin/announcements", label: "Announcements", icon: Megaphone },
-      { to: "/super-admin/support", label: "Support Tickets", icon: Headphones },
+      { to: "/super-admin/analytics", label: "Platform Analytics", icon: BarChart3, hidden: true },
+      { to: "/super-admin/hardware", label: "Hardware Assignment", icon: Cpu, hidden: true },
+      { to: "/super-admin/announcements", label: "Announcements", icon: Megaphone, hidden: true },
+      { to: "/super-admin/support", label: "Support Tickets", icon: Headphones, hidden: true },
     ],
   },
   {
     label: "Finance",
     items: [
-      { to: "/super-admin/billing", label: "Billing", icon: Receipt },
-      { to: "/super-admin/revenue", label: "Revenue", icon: TrendingUp },
-      { to: "/super-admin/subscriptions", label: "Subscriptions", icon: Repeat },
+      { to: "/super-admin/billing", label: "Billing", icon: Receipt, hidden: true },
+      { to: "/super-admin/revenue", label: "Revenue", icon: TrendingUp, hidden: true },
+      { to: "/super-admin/subscriptions", label: "Subscriptions", icon: Repeat, hidden: true },
     ],
   },
   {
     label: "System",
     items: [
-      { to: "/super-admin/system", label: "System Settings", icon: Settings },
-      { to: "/super-admin/audit", label: "Audit Logs", icon: ClipboardList },
+      { to: "/super-admin/system", label: "System Settings", icon: Settings, hidden: true },
+      { to: "/super-admin/audit", label: "Audit Logs", icon: ClipboardList, hidden: true },
     ],
   },
 ];
@@ -91,37 +91,43 @@ export function SuperAdminLayout({ title, subtitle, headerExtra, breadcrumbs, ch
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
           {NAV.map(section => {
+            const visibleItems = section.items.filter(item => !item.hidden);
+
+            if (visibleItems.length === 0) {
+              return null;
+            }
+
             return (
-            <div key={section.label}>
-              <div className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-200/60">
-                {section.label}
+              <div key={section.label}>
+                <div className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-200/60">
+                  {section.label}
+                </div>
+                <div className="space-y-0.5">
+                  {visibleItems.map(item => {
+                    const Icon = item.icon;
+                    const active = item.exact
+                      ? pathname === "/super-admin" || pathname === "/super-admin/"
+                      : pathname.startsWith(item.to);
+                    return (
+                      <Link
+                        key={item.to}
+                        to={item.to}
+                        activeOptions={item.exact ? { exact: true } : undefined}
+                        onClick={() => setOpen(false)}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                          active
+                            ? "bg-amber-500/90 text-amber-950 shadow-sm"
+                            : "text-white/75 hover:bg-white/10 hover:text-white",
+                        )}
+                      >
+                        <Icon className="h-[17px] w-[17px] shrink-0" />
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="space-y-0.5">
-                {section.items.map(item => {
-                  const Icon = item.icon;
-                  const active = item.exact
-                    ? pathname === "/super-admin" || pathname === "/super-admin/"
-                    : pathname.startsWith(item.to);
-                  return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      activeOptions={item.exact ? { exact: true } : undefined}
-                      onClick={() => setOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                        active
-                          ? "bg-amber-500/90 text-amber-950 shadow-sm"
-                          : "text-white/75 hover:bg-white/10 hover:text-white",
-                      )}
-                    >
-                      <Icon className="h-[17px] w-[17px] shrink-0" />
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
             );
           })}
         </nav>

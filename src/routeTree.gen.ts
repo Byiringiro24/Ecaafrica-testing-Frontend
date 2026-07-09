@@ -56,6 +56,7 @@ import { Route as SuperAdminSupportRouteImport } from './routes/super-admin.supp
 import { Route as SuperAdminSubscriptionsRouteImport } from './routes/super-admin.subscriptions'
 import { Route as SuperAdminSchoolsRouteImport } from './routes/super-admin.schools'
 import { Route as SuperAdminRevenueRouteImport } from './routes/super-admin.revenue'
+import { Route as SuperAdminManageSmsRouteImport } from './routes/super-admin.manage-sms'
 import { Route as SuperAdminHardwareRouteImport } from './routes/super-admin.hardware'
 import { Route as SuperAdminBillingRouteImport } from './routes/super-admin.billing'
 import { Route as SuperAdminAuditRouteImport } from './routes/super-admin.audit'
@@ -330,6 +331,11 @@ const SuperAdminRevenueRoute = SuperAdminRevenueRouteImport.update({
   path: '/revenue',
   getParentRoute: () => SuperAdminRoute,
 } as any)
+const SuperAdminManageSmsRoute = SuperAdminManageSmsRouteImport.update({
+  id: '/manage-sms',
+  path: '/manage-sms',
+  getParentRoute: () => SuperAdminRoute,
+} as any)
 const SuperAdminHardwareRoute = SuperAdminHardwareRouteImport.update({
   id: '/hardware',
   path: '/hardware',
@@ -589,6 +595,7 @@ export interface FileRoutesByFullPath {
   '/super-admin/audit': typeof SuperAdminAuditRoute
   '/super-admin/billing': typeof SuperAdminBillingRoute
   '/super-admin/hardware': typeof SuperAdminHardwareRoute
+  '/super-admin/manage-sms': typeof SuperAdminManageSmsRoute
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
   '/super-admin/schools': typeof SuperAdminSchoolsRouteWithChildren
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
@@ -671,6 +678,7 @@ export interface FileRoutesByTo {
   '/super-admin/audit': typeof SuperAdminAuditRoute
   '/super-admin/billing': typeof SuperAdminBillingRoute
   '/super-admin/hardware': typeof SuperAdminHardwareRoute
+  '/super-admin/manage-sms': typeof SuperAdminManageSmsRoute
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
   '/super-admin/support': typeof SuperAdminSupportRoute
@@ -758,6 +766,7 @@ export interface FileRoutesById {
   '/super-admin/audit': typeof SuperAdminAuditRoute
   '/super-admin/billing': typeof SuperAdminBillingRoute
   '/super-admin/hardware': typeof SuperAdminHardwareRoute
+  '/super-admin/manage-sms': typeof SuperAdminManageSmsRoute
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
   '/super-admin/schools': typeof SuperAdminSchoolsRouteWithChildren
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
@@ -847,6 +856,7 @@ export interface FileRouteTypes {
     | '/super-admin/audit'
     | '/super-admin/billing'
     | '/super-admin/hardware'
+    | '/super-admin/manage-sms'
     | '/super-admin/revenue'
     | '/super-admin/schools'
     | '/super-admin/subscriptions'
@@ -929,6 +939,7 @@ export interface FileRouteTypes {
     | '/super-admin/audit'
     | '/super-admin/billing'
     | '/super-admin/hardware'
+    | '/super-admin/manage-sms'
     | '/super-admin/revenue'
     | '/super-admin/subscriptions'
     | '/super-admin/support'
@@ -1015,6 +1026,7 @@ export interface FileRouteTypes {
     | '/super-admin/audit'
     | '/super-admin/billing'
     | '/super-admin/hardware'
+    | '/super-admin/manage-sms'
     | '/super-admin/revenue'
     | '/super-admin/schools'
     | '/super-admin/subscriptions'
@@ -1423,6 +1435,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SuperAdminRevenueRouteImport
       parentRoute: typeof SuperAdminRoute
     }
+    '/super-admin/manage-sms': {
+      id: '/super-admin/manage-sms'
+      path: '/manage-sms'
+      fullPath: '/super-admin/manage-sms'
+      preLoaderRoute: typeof SuperAdminManageSmsRouteImport
+      parentRoute: typeof SuperAdminRoute
+    }
     '/super-admin/hardware': {
       id: '/super-admin/hardware'
       path: '/hardware'
@@ -1777,6 +1796,7 @@ interface SuperAdminRouteChildren {
   SuperAdminAuditRoute: typeof SuperAdminAuditRoute
   SuperAdminBillingRoute: typeof SuperAdminBillingRoute
   SuperAdminHardwareRoute: typeof SuperAdminHardwareRoute
+  SuperAdminManageSmsRoute: typeof SuperAdminManageSmsRoute
   SuperAdminRevenueRoute: typeof SuperAdminRevenueRoute
   SuperAdminSchoolsRoute: typeof SuperAdminSchoolsRouteWithChildren
   SuperAdminSubscriptionsRoute: typeof SuperAdminSubscriptionsRoute
@@ -1792,6 +1812,7 @@ const SuperAdminRouteChildren: SuperAdminRouteChildren = {
   SuperAdminAuditRoute: SuperAdminAuditRoute,
   SuperAdminBillingRoute: SuperAdminBillingRoute,
   SuperAdminHardwareRoute: SuperAdminHardwareRoute,
+  SuperAdminManageSmsRoute: SuperAdminManageSmsRoute,
   SuperAdminRevenueRoute: SuperAdminRevenueRoute,
   SuperAdminSchoolsRoute: SuperAdminSchoolsRouteWithChildren,
   SuperAdminSubscriptionsRoute: SuperAdminSubscriptionsRoute,

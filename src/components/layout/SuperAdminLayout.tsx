@@ -31,6 +31,7 @@ const NAV: NavSection[] = [
   {
     label: "Operations",
     items: [
+      { to: "/super-admin/manage-sms", label: "Manage SMS", icon: Mail },
       { to: "/super-admin/analytics", label: "Platform Analytics", icon: BarChart3, hidden: true },
       { to: "/super-admin/announcements", label: "Announcements", icon: Megaphone, hidden: true },
       { to: "/super-admin/support", label: "Support Tickets", icon: Headphones, hidden: true },
@@ -42,13 +43,6 @@ const NAV: NavSection[] = [
       { to: "/super-admin/billing", label: "Billing", icon: Receipt, hidden: true },
       { to: "/super-admin/revenue", label: "Revenue", icon: TrendingUp, hidden: true },
       { to: "/super-admin/subscriptions", label: "Subscriptions", icon: Repeat, hidden: true },
-    ],
-  },
-  {
-    label: "System",
-    items: [
-      { to: "/super-admin/system", label: "System Settings", icon: Settings, hidden: true },
-      { to: "/super-admin/audit", label: "Audit Logs", icon: ClipboardList, hidden: true },
     ],
   },
 ];

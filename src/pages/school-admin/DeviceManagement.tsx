@@ -5,6 +5,7 @@ import { DeviceCard } from "../../components/device-management/DeviceCard";
 import { DeviceStatusPanel } from "../../components/device-management/DeviceStatusPanel";
 import { AddTabletModal } from "../../components/device-management/AddTabletModal";
 import { DEFAULT_FK623_CONFIG, tabletApi, Tablet, DeviceStatus } from "../../lib/tabletApi";
+import { apiRequest } from "../../lib/api";
 import { toast } from "sonner";
 
 export default function DeviceManagement() {
@@ -329,3 +330,6 @@ export default function DeviceManagement() {
     </div>
   );
 }
+
+
+

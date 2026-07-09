@@ -1,6 +1,10 @@
 /**
  * API Service for Device Logs feature
- * Handles all API calls for the boarding device-logs page
+ * Handles all API calls for the boarding device-logs page.
+ *
+ * Primary data source: /attendance/records/device-logs
+ * (reads from attendance_logs table - populated automatically by the
+ *  server-side pull-logs job every 5 minutes).
  */
 
 import { apiRequest } from './api';
@@ -13,8 +17,25 @@ import type {
   DeviceLog
 } from './device-logs-types';
 
+// Types
+
+export type PullAllResult = {
+  tablets: Array<{
+    tabletId: string;
+    tabletName: string;
+    status: string;
+    saved?: number;
+    duplicates?: number;
+    errors?: string[];
+  }>;
+  totalSaved: number;
+  totalErrors: number;
+  summary: string;
+};
+
 /**
- * Fetch device logs with filtering and pagination
+ * Fetch device logs with filtering and pagination.
+ * Reads from the attendance_logs table via the new /device-logs endpoint.
  */
 export async function fetchDeviceLogs(params: {
   page?: number;
@@ -28,73 +49,62 @@ export async function fetchDeviceLogs(params: {
   syncState?: string;
   search?: string;
 }): Promise<AttendanceResponse> {
-  const queryParams = new URLSearchParams();
-  
-  if (params.page) queryParams.append('page', String(params.page));
-  if (params.limit) queryParams.append('limit', String(params.limit));
-  if (params.startDate) queryParams.append('startDate', params.startDate);
-  if (params.endDate) queryParams.append('endDate', params.endDate);
-  if (params.studentId) queryParams.append('studentId', params.studentId);
-  if (params.deviceId) queryParams.append('deviceId', params.deviceId);
-  if (params.method) queryParams.append('method', params.method);
-  if (params.status) queryParams.append('status', params.status);
-  if (params.syncState) queryParams.append('syncState', params.syncState);
-  if (params.search) queryParams.append('search', params.search);
+  const q = new URLSearchParams();
+
+  if (params.page) q.append('page', String(params.page));
+  if (params.limit) q.append('limit', String(params.limit));
+  if (params.startDate) q.append('startDate', params.startDate);
+  if (params.endDate) q.append('endDate', params.endDate);
+  if (params.studentId) q.append('studentId', params.studentId);
+  if (params.deviceId) q.append('deviceId', params.deviceId);
+  if (params.method) q.append('method', params.method);
+  if (params.status) q.append('status', params.status);
+  if (params.syncState) q.append('syncState', params.syncState);
+  if (params.search) q.append('search', params.search);
 
   const response = await apiRequest<{ data: DeviceLog[]; meta: any }>(
-    `/attendance/records/logs?${queryParams.toString()}`,
-    {
-      auth: 'school',
-      returnMeta: true
-    }
+    `/attendance/records/device-logs?${q.toString()}`,
+    { auth: 'school', returnMeta: true }
   );
 
   return {
-    data: response.data,
-    meta: response.meta
+    data: response.data ?? [],
+    meta: response.meta ?? { total: 0, page: 1, limit: 20, totalPages: 1 }
   };
 }
 
 /**
- * Fetch today's attendance logs
+ * Fetch today's attendance logs from the attendance_logs table.
  */
 export async function fetchTodayAttendance(): Promise<TodayAttendanceResponse> {
   const response = await apiRequest<{ data: DeviceLog[] }>(
-    '/attendance/records/today',
-    {
-      auth: 'school'
-    }
+    '/attendance/records/device-logs/today',
+    { auth: 'school' }
   );
 
-  return {
-    data: response.data
-  };
+  return { data: response.data ?? [] };
 }
 
 /**
- * Fetch attendance statistics
+ * Fetch attendance statistics from the attendance_logs table.
  */
 export async function fetchAttendanceStats(params?: {
   startDate?: string;
   endDate?: string;
 }): Promise<AttendanceStats> {
-  const queryParams = new URLSearchParams();
-  
-  if (params?.startDate) queryParams.append('startDate', params.startDate);
-  if (params?.endDate) queryParams.append('endDate', params.endDate);
+  const q = new URLSearchParams();
+  if (params?.startDate) q.append('startDate', params.startDate);
+  if (params?.endDate) q.append('endDate', params.endDate);
 
-  const query = queryParams.toString();
-  const url = query ? `/attendance/records/stats?${query}` : '/attendance/records/stats';
+  const qs = q.toString();
+  const url = `/attendance/records/device-logs/stats${qs ? '?' + qs : ''}`;
 
-  const response = await apiRequest<{ data: AttendanceStats }>(url, {
-    auth: 'school'
-  });
-
-  return response.data;
+  const response = await apiRequest<AttendanceStats>(url, { auth: 'school' });
+  return response as AttendanceStats;
 }
 
 /**
- * Fetch all tablets with optional filtering and pagination
+ * Fetch all tablets with optional filtering and pagination.
  */
 export async function fetchTablets(params?: {
   status?: string;
@@ -102,15 +112,14 @@ export async function fetchTablets(params?: {
   page?: number;
   limit?: number;
 }): Promise<TabletsResponse> {
-  const queryParams = new URLSearchParams();
-  
-  if (params?.status) queryParams.append('status', params.status);
-  if (params?.is_active !== undefined) queryParams.append('is_active', String(params.is_active));
-  if (params?.page) queryParams.append('page', String(params.page));
-  if (params?.limit) queryParams.append('limit', String(params.limit));
+  const q = new URLSearchParams();
+  if (params?.status) q.append('status', params.status);
+  if (params?.is_active !== undefined) q.append('is_active', String(params.is_active));
+  if (params?.page) q.append('page', String(params.page));
+  if (params?.limit) q.append('limit', String(params.limit));
 
-  const query = queryParams.toString();
-  const url = query ? `/tablets/device-logs/list?${query}` : '/tablets/device-logs/list';
+  const qs = q.toString();
+  const url = `/tablets/device-logs/list${qs ? '?' + qs : ''}`;
 
   const response = await apiRequest<{ data: any[]; meta?: any }>(url, {
     auth: 'school',
@@ -118,27 +127,33 @@ export async function fetchTablets(params?: {
   });
 
   return {
-    data: response.data,
+    data: response.data ?? [],
     meta: response.meta
   };
 }
 
 /**
- * Fetch device connection statuses
+ * Fetch device connection statuses.
  */
 export async function fetchDeviceStatus(tabletId?: string): Promise<DeviceStatusResponse> {
-  const queryParams = new URLSearchParams();
-  
-  if (tabletId) queryParams.append('tabletId', tabletId);
+  const q = new URLSearchParams();
+  if (tabletId) q.append('tabletId', tabletId);
 
-  const query = queryParams.toString();
-  const url = query ? `/devices/status?${query}` : '/devices/status';
+  const qs = q.toString();
+  const url = `/devices/status${qs ? '?' + qs : ''}`;
 
-  const response = await apiRequest<{ data: any[] }>(url, {
-    auth: 'school'
-  });
+  const response = await apiRequest<{ data: any[] }>(url, { auth: 'school' });
+  return { data: response.data ?? [] };
+}
 
-  return {
-    data: response.data
-  };
+/**
+ * Trigger an immediate pull from all active, online tablets for this school.
+ * Used by the "Sync Now" button on the device-logs page.
+ */
+export async function pullAllLogs(): Promise<PullAllResult> {
+  const response = await apiRequest<PullAllResult>(
+    '/tablets/pull-all-logs',
+    { method: 'POST', auth: 'school' }
+  );
+  return response as PullAllResult;
 }

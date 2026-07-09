@@ -1,17 +1,16 @@
 import { useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard, ScanLine, Users, BookOpen, BarChart3,
+  LayoutDashboard, ScanLine, Users, BookOpen,
   Heart, MessageSquare, Settings, LogOut, X,
-  Home, DoorOpen, FileText, Wallet, Briefcase, ChevronDown, UserCheck,
-  Cpu, UserPlus, ListChecks, GraduationCap, Clock3,
+  Home, FileText, Briefcase, ChevronDown, UserCheck,
+  Cpu, UserPlus, ListChecks, GraduationCap, Clock3, TabletSmartphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { schoolConfig } from "@/lib/mockData";
 import logo from "@/assets/logo.png";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
-import { isSchoolAdminRole } from "@/lib/schoolAuth";
 
 function handleLogout() {
   clearSchoolAuth();
@@ -34,13 +33,10 @@ const SECTIONS: Section[] = [
     { to: "/boarding", label: "Boarding", icon: Home, module: "boarding", match: "exact" },
     { to: "/leaves", label: "Leaves", icon: FileText, module: "leaves" },
   ]},
-  { id: "devices", label: "Device Management", items: [
-    { to: "/tablets", label: "Tablets", icon: Cpu, module: "boarding" },
-    { to: "/devices-new", label: "Hardware Devices", icon: Cpu, module: "boarding" },
-    { to: "/boarding/devices", label: "Device Management", icon: Cpu, module: "boarding" },
-    { to: "/boarding/device-sessions", label: "Sessions", icon: Clock3, module: "boarding" },
+  { id: "devices", label: "Tablets & Devices", items: [
+    { to: "/boarding/devices", label: "Device Management", icon: TabletSmartphone, module: "boarding" },
+    { to: "/boarding/device-sessions", label: "Attendance Sessions", icon: Clock3, module: "boarding" },
     { to: "/boarding/device-students", label: "Device Students", icon: UserPlus, module: "boarding" },
-    { to: "/boarding/device-logs", label: "Device Logs", icon: ListChecks, module: "boarding" },
   ]},
   { id: "hr", label: "HR", items: [
     { to: "/staff", label: "Staff", icon: Briefcase, module: "staff" },
@@ -48,9 +44,6 @@ const SECTIONS: Section[] = [
   { id: "comm", label: "Communication", items: [
     { to: "/parents", label: "Parents", icon: Heart, module: "parents" },
     { to: "/notifications", label: "Notifications", icon: MessageSquare, module: "notifications" },
-  ]},
-  { id: "system", label: "System", items: [
-    { to: "/settings", label: "Settings", icon: Settings, module: "settings" },
   ]},
   { id: "system", label: "System", items: [
     { to: "/settings", label: "Settings", icon: Settings, module: "settings" },
@@ -95,7 +88,6 @@ export function AppSidebar({ open, onClose }: Props) {
               if (!schoolConfig.enabledModules.includes(it.module)) return false;
               if (!schoolConfig.hasBoarding && (it.module === "boarding" || it.module === "leaves")) return false;
               if (!schoolConfig.hasGateManagement && it.module === "gate") return false;
-              if (isSchoolAdminRole(currentUser?.role) && (it.to === "/tablets" || it.to === "/devices-new")) return false;
               return true;
             });
             if (items.length === 0) return null;

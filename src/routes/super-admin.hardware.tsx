@@ -65,9 +65,9 @@ function HardwarePage() {
 
   return (
     <SuperAdminLayout
-      title="Hardware & Assignment"
-      subtitle="Register schools, tablets, and devices � then assign them together"
-      breadcrumbs={<SuperAdminBreadcrumbs items={[{ label: "Super Admin", to: "/super-admin" }, { label: "Hardware & Assignment" }]} />}
+      title="Tablets & Devices"
+      subtitle="Register tablets and biometric devices, then assign them to schools"
+      breadcrumbs={<SuperAdminBreadcrumbs items={[{ label: "Super Admin", to: "/super-admin" }, { label: "Tablets & Devices" }]} />}
     >
       <div className="mb-5 flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
@@ -171,11 +171,11 @@ function TabletsTab({ tablets, schools, onRefresh }: {
         </div>
         <form onSubmit={handleCreate} className="grid gap-4">
           <SaSelect label="School *" value={form.school_id} onChange={e => setForm({...form, school_id: e.target.value})}>
-            <option value="">� select school �</option>
+            <option value="">� select school �</option>
             {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </SaSelect>
           <SaInput label="Tablet Name *" value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Main Gate Tablet" required />
-          {/* IP and port are technical fields � shown to admin but labeled clearly */}
+          {/* IP and port are technical fields � shown to admin but labeled clearly */}
           <div className="grid gap-3 md:grid-cols-2">
             <SaInput label="Bridge IP (WireGuard VPN) *" value={form.ip} onChange={e => setForm({...form, ip: e.target.value})} placeholder="10.0.0.2" required />
             <SaInput label="API Port *" type="number" value={form.port} onChange={e => setForm({...form, port: e.target.value})} required />
@@ -210,7 +210,7 @@ function TabletsTab({ tablets, schools, onRefresh }: {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate">{t.name}</div>
                     <div className="text-xs text-muted-foreground truncate">
-                      {school?.name ?? "Unassigned"}{t.location ? ` � ${t.location}` : ""}
+                      {school?.name ?? "Unassigned"}{t.location ? ` � ${t.location}` : ""}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -232,7 +232,7 @@ function TabletsTab({ tablets, schools, onRefresh }: {
 }
 
 // --- Devices Tab -------------------------------------------------------------
-// Create FK623 device records. No IP shown � IP is internal.
+// Create FK623 device records. No IP shown � IP is internal.
 
 function DevicesTab({ devices, tablets, schools, onRefresh }: {
   devices: PlatformDevice[]; tablets: PlatformTablet[];
@@ -291,7 +291,7 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
         </div>
         <form onSubmit={handleCreate} className="grid gap-4">
           <SaSelect label="School *" value={form.school_id} onChange={e => setForm({...form, school_id: e.target.value})}>
-            <option value="">� select school �</option>
+            <option value="">� select school �</option>
             {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </SaSelect>
           <div className="grid gap-3 md:grid-cols-2">
@@ -306,14 +306,14 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
             </SaSelect>
             <SaInput label="Location" value={form.location} onChange={e => setForm({...form, location: e.target.value})} placeholder="Main Gate" />
           </div>
-          {/* Device serial / product name � visible to admin, not to school users */}
+          {/* Device serial / product name � visible to admin, not to school users */}
           <div className="grid gap-3 md:grid-cols-2">
             <SaInput label="Serial Number" value={form.device_serial} onChange={e => setForm({...form, device_serial: e.target.value})} />
             <SaInput label="Product Name" value={form.product_name} onChange={e => setForm({...form, product_name: e.target.value})} placeholder="FK623" />
           </div>
-          {/* Device IP/port � internal network details, admin only */}
+          {/* Device IP/port � internal network details, admin only */}
           <div className="rounded-lg border border-border/60 bg-muted/30 p-3 grid gap-3 md:grid-cols-3">
-            <p className="md:col-span-3 text-xs text-muted-foreground font-medium">Device network settings (internal � not shown to school users)</p>
+            <p className="md:col-span-3 text-xs text-muted-foreground font-medium">Device network settings (internal � not shown to school users)</p>
             <SaInput label="Device IP" value={form.device_ip} onChange={e => setForm({...form, device_ip: e.target.value})} placeholder="192.168.1.x" />
             <SaInput label="Device Port" type="number" value={form.device_port} onChange={e => setForm({...form, device_port: e.target.value})} />
             <SaInput label="License No." type="number" value={form.license_number} onChange={e => setForm({...form, license_number: e.target.value})} />
@@ -343,8 +343,8 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate">{d.name}</div>
                     <div className="text-xs text-muted-foreground truncate">
-                      {school?.name ?? "?"} � {d.mode}
-                      {linkedTablet ? ` � linked to ${linkedTablet.name}` : " � no tablet linked"}
+                      {school?.name ?? "?"} � {d.mode}
+                      {linkedTablet ? ` � linked to ${linkedTablet.name}` : " � no tablet linked"}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -360,6 +360,357 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
             })}
           </div>
         )}
+      </section>
+    </div>
+  );
+}
+
+// --- Assign Tab --------------------------------------------------------------
+// Three assignment actions:
+//   1. Move tablet → different school
+//   2. Link device → tablet (so auto-pull knows which bridge to use)
+//   3. Move device → different school
+
+function AssignTab({ tablets, devices, schools, onRefresh }: {
+  tablets: PlatformTablet[];
+  devices: PlatformDevice[];
+  schools: SchoolRecord[];
+  onRefresh: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  // ── 1. Reassign tablet to school ──────────────────────────────────────────
+  const [tabletSchoolForm, setTabletSchoolForm] = useState({ tablet_id: "", school_id: "" });
+
+  const handleReassignTablet = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!tabletSchoolForm.tablet_id || !tabletSchoolForm.school_id) {
+      toast.error("Select both a tablet and a target school");
+      return;
+    }
+    const tablet = tablets.find(t => t.id === tabletSchoolForm.tablet_id);
+    const school = schools.find(s => s.id === tabletSchoolForm.school_id);
+    if (!confirm(`Move "${tablet?.name}" to "${school?.name}"?`)) return;
+    setBusy(true);
+    try {
+      await platformHardwareApi.updateTablet(tabletSchoolForm.tablet_id, {
+        school_id: tabletSchoolForm.school_id,
+      } as any);
+      toast.success(`Tablet moved to ${school?.name}`);
+      setTabletSchoolForm({ tablet_id: "", school_id: "" });
+      onRefresh();
+    } catch (e: any) { toast.error(e?.message || "Failed to reassign tablet"); }
+    finally { setBusy(false); }
+  };
+
+  // ── 2. Link device → tablet ───────────────────────────────────────────────
+  const [linkForm, setLinkForm] = useState({ device_id: "", tablet_id: "" });
+
+  const handleLinkDevice = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!linkForm.device_id || !linkForm.tablet_id) {
+      toast.error("Select both a device and a tablet");
+      return;
+    }
+    const device = devices.find(d => d.id === linkForm.device_id);
+    const tablet = tablets.find(t => t.id === linkForm.tablet_id);
+    setBusy(true);
+    try {
+      await platformHardwareApi.updateDevice(linkForm.device_id, {
+        tablet_id: linkForm.tablet_id,
+      });
+      toast.success(`"${device?.name}" linked to tablet "${tablet?.name}"`);
+      setLinkForm({ device_id: "", tablet_id: "" });
+      onRefresh();
+    } catch (e: any) { toast.error(e?.message || "Failed to link device"); }
+    finally { setBusy(false); }
+  };
+
+  // ── 3. Move device → different school ────────────────────────────────────
+  const [deviceSchoolForm, setDeviceSchoolForm] = useState({ device_id: "", school_id: "" });
+
+  const handleReassignDevice = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!deviceSchoolForm.device_id || !deviceSchoolForm.school_id) {
+      toast.error("Select both a device and a target school");
+      return;
+    }
+    const device = devices.find(d => d.id === deviceSchoolForm.device_id);
+    const school = schools.find(s => s.id === deviceSchoolForm.school_id);
+    if (!confirm(`Move device "${device?.name}" to "${school?.name}"?`)) return;
+    setBusy(true);
+    try {
+      await platformHardwareApi.updateDevice(deviceSchoolForm.device_id, {
+        school_id: deviceSchoolForm.school_id,
+      } as any);
+      toast.success(`Device moved to ${school?.name}`);
+      setDeviceSchoolForm({ device_id: "", school_id: "" });
+      onRefresh();
+    } catch (e: any) { toast.error(e?.message || "Failed to reassign device"); }
+    finally { setBusy(false); }
+  };
+
+  // ── Current assignments overview ─────────────────────────────────────────
+  return (
+    <div className="space-y-5">
+
+      {/* Info banner */}
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
+        <strong>How it works:</strong> The auto-pull job runs every 10 seconds. Once a tablet is assigned to a school and a device is linked to that tablet, logs pull automatically — no clicking needed. SMS messages are sent to parents instantly when a scan is saved.
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-3">
+
+        {/* ── Action 1: Tablet → School ── */}
+        <section className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="grid h-9 w-9 place-items-center rounded-lg bg-amber-100">
+              <TabletSmartphone className="h-5 w-5 text-amber-700" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-sm">Assign Tablet to School</h2>
+              <p className="text-xs text-muted-foreground">Move a tablet to a different school</p>
+            </div>
+          </div>
+          <form onSubmit={handleReassignTablet} className="grid gap-3">
+            <SaSelect
+              label="Tablet"
+              value={tabletSchoolForm.tablet_id}
+              onChange={e => setTabletSchoolForm({ ...tabletSchoolForm, tablet_id: e.target.value })}
+            >
+              <option value="">— select tablet —</option>
+              {tablets.map(t => {
+                const currentSchool = schools.find(s => String(s.id) === String(t.school_id));
+                return (
+                  <option key={t.id} value={t.id}>
+                    {t.name} {currentSchool ? `(${currentSchool.name})` : "(unassigned)"}
+                  </option>
+                );
+              })}
+            </SaSelect>
+
+            {/* Show current school for selected tablet */}
+            {tabletSchoolForm.tablet_id && (() => {
+              const t = tablets.find(x => x.id === tabletSchoolForm.tablet_id);
+              const s = schools.find(x => String(x.id) === String(t?.school_id));
+              return s ? (
+                <div className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                  Currently assigned to: <strong className="text-foreground">{s.name}</strong>
+                </div>
+              ) : null;
+            })()}
+
+            <SaSelect
+              label="Move to School"
+              value={tabletSchoolForm.school_id}
+              onChange={e => setTabletSchoolForm({ ...tabletSchoolForm, school_id: e.target.value })}
+            >
+              <option value="">— select target school —</option>
+              {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </SaSelect>
+
+            <button
+              type="submit"
+              disabled={busy || !tabletSchoolForm.tablet_id || !tabletSchoolForm.school_id}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+            >
+              <ArrowRightLeft className="h-4 w-4" /> Move Tablet
+            </button>
+          </form>
+        </section>
+
+        {/* ── Action 2: Device → Tablet ── */}
+        <section className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="grid h-9 w-9 place-items-center rounded-lg bg-blue-100">
+              <ArrowRight className="h-5 w-5 text-blue-700" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-sm">Link Device to Tablet</h2>
+              <p className="text-xs text-muted-foreground">Connect a biometric reader to its Windows bridge</p>
+            </div>
+          </div>
+          <form onSubmit={handleLinkDevice} className="grid gap-3">
+            <SaSelect
+              label="Biometric Device (FK623)"
+              value={linkForm.device_id}
+              onChange={e => setLinkForm({ ...linkForm, device_id: e.target.value })}
+            >
+              <option value="">— select device —</option>
+              {devices.map(d => {
+                const currentTablet = tablets.find(t => String(t.id) === String(d.tablet_id));
+                return (
+                  <option key={d.id} value={d.id}>
+                    {d.name} {currentTablet ? `→ ${currentTablet.name}` : "(not linked)"}
+                  </option>
+                );
+              })}
+            </SaSelect>
+
+            {/* Show current link */}
+            {linkForm.device_id && (() => {
+              const d = devices.find(x => x.id === linkForm.device_id);
+              const t = tablets.find(x => String(x.id) === String(d?.tablet_id));
+              return (
+                <div className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                  {t
+                    ? <>Currently linked to: <strong className="text-foreground">{t.name}</strong></>
+                    : <span className="text-amber-600">Not linked to any tablet yet</span>
+                  }
+                </div>
+              );
+            })()}
+
+            <SaSelect
+              label="Tablet (Windows Bridge)"
+              value={linkForm.tablet_id}
+              onChange={e => setLinkForm({ ...linkForm, tablet_id: e.target.value })}
+            >
+              <option value="">— select tablet —</option>
+              {tablets.map(t => {
+                const school = schools.find(s => String(s.id) === String(t.school_id));
+                return (
+                  <option key={t.id} value={t.id}>
+                    {t.name} {school ? `(${school.name})` : ""}
+                  </option>
+                );
+              })}
+            </SaSelect>
+
+            <button
+              type="submit"
+              disabled={busy || !linkForm.device_id || !linkForm.tablet_id}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              <CheckCircle2 className="h-4 w-4" /> Link Device
+            </button>
+          </form>
+        </section>
+
+        {/* ── Action 3: Device → School ── */}
+        <section className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="grid h-9 w-9 place-items-center rounded-lg bg-emerald-100">
+              <Cpu className="h-5 w-5 text-emerald-700" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-sm">Reassign Device to School</h2>
+              <p className="text-xs text-muted-foreground">Move a biometric device to a different school</p>
+            </div>
+          </div>
+          <form onSubmit={handleReassignDevice} className="grid gap-3">
+            <SaSelect
+              label="Device"
+              value={deviceSchoolForm.device_id}
+              onChange={e => setDeviceSchoolForm({ ...deviceSchoolForm, device_id: e.target.value })}
+            >
+              <option value="">— select device —</option>
+              {devices.map(d => {
+                const currentSchool = schools.find(s => String(s.id) === String(d.school_id));
+                return (
+                  <option key={d.id} value={d.id}>
+                    {d.name} {currentSchool ? `(${currentSchool.name})` : "(unassigned)"}
+                  </option>
+                );
+              })}
+            </SaSelect>
+
+            {deviceSchoolForm.device_id && (() => {
+              const d = devices.find(x => x.id === deviceSchoolForm.device_id);
+              const s = schools.find(x => String(x.id) === String(d?.school_id));
+              return s ? (
+                <div className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                  Currently at: <strong className="text-foreground">{s.name}</strong>
+                </div>
+              ) : null;
+            })()}
+
+            <SaSelect
+              label="Move to School"
+              value={deviceSchoolForm.school_id}
+              onChange={e => setDeviceSchoolForm({ ...deviceSchoolForm, school_id: e.target.value })}
+            >
+              <option value="">— select target school —</option>
+              {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </SaSelect>
+
+            <button
+              type="submit"
+              disabled={busy || !deviceSchoolForm.device_id || !deviceSchoolForm.school_id}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              <ArrowRightLeft className="h-4 w-4" /> Move Device
+            </button>
+          </form>
+        </section>
+      </div>
+
+      {/* ── Current assignments table ── */}
+      <section className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="font-semibold">Current Assignments Overview</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Every device and tablet, what school they belong to, and whether they are linked to each other.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/40">
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Device</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mode</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">School</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Linked Tablet</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Auto-pull</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {devices.length === 0 ? (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground text-xs">No devices registered yet</td></tr>
+              ) : devices.map(d => {
+                const school = schools.find(s => String(s.id) === String(d.school_id));
+                const linkedTablet = d.tablet ?? tablets.find(t => String(t.id) === String(d.tablet_id));
+                const autopullReady = Boolean(linkedTablet) && Boolean(school);
+                return (
+                  <tr key={d.id} className="hover:bg-muted/30">
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{d.name}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{d.device_uid}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium capitalize">{d.mode}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {school
+                        ? <span className="font-medium">{school.name}</span>
+                        : <span className="text-amber-600 text-xs font-medium">⚠ Not assigned</span>
+                      }
+                    </td>
+                    <td className="px-4 py-3">
+                      {linkedTablet
+                        ? <span className="font-medium">{linkedTablet.name}</span>
+                        : <span className="text-amber-600 text-xs font-medium">⚠ Not linked</span>
+                      }
+                    </td>
+                    <td className="px-4 py-3">
+                      {autopullReady
+                        ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">✓ Active</span>
+                        : <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">⚠ Incomplete</span>
+                      }
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn(
+                        "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize",
+                        d.is_connected ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground"
+                      )}>
+                        {d.is_connected ? "Online" : "Offline"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );

@@ -1,12 +1,17 @@
+/**
+ * liveAttendanceSync.ts
+ *
+ * The server now automatically pulls logs from all devices every 5 minutes
+ * via the pull-logs.job.ts background job. This module is retained for
+ * compatibility but delegates to the server-side pull endpoint.
+ *
+ * Call `syncLiveAttendanceFromTablets({ force: true })` to trigger an
+ * immediate pull (e.g., on page load or after a user action).
+ */
+
 import { apiRequest } from "./api";
 
-type Tablet = {
-  id: string;
-  status?: string | null;
-  is_active?: boolean | null;
-};
-
-const LIVE_ATTENDANCE_SYNC_MIN_MS = 20 * 60_000;
+const LIVE_ATTENDANCE_SYNC_MIN_MS = 5 * 60_000; // respect server cadence
 let lastLiveAttendanceSyncAt = 0;
 let liveAttendanceSyncInFlight: Promise<SyncSummary> | null = null;
 
@@ -25,29 +30,23 @@ const emptySummary = (): SyncSummary => ({
   saved: 0,
   attendanceRecords: 0,
   duplicates: 0,
-  errors: [],
+  errors: []
 });
 
-const unwrapTablets = (payload: unknown): Tablet[] => {
-  if (Array.isArray(payload)) return payload as Tablet[];
-  const data = (payload as { data?: unknown })?.data;
-  if (Array.isArray(data)) return data as Tablet[];
-  return [];
-};
-
-const unwrapPullResult = (payload: unknown) => {
-  const nested = (payload as { data?: unknown })?.data ?? payload;
-  return (nested as { data?: unknown })?.data ?? nested;
-};
-
-export async function syncLiveAttendanceFromTablets(options: { force?: boolean } = {}): Promise<SyncSummary> {
+/**
+ * Trigger an immediate server-side pull from all active tablets.
+ * Throttled to once per server pull interval unless `force: true` is passed.
+ */
+export async function syncLiveAttendanceFromTablets(
+  options: { force?: boolean } = {}
+): Promise<SyncSummary> {
   const now = Date.now();
   if (!options.force && now - lastLiveAttendanceSyncAt < LIVE_ATTENDANCE_SYNC_MIN_MS) {
     return emptySummary();
   }
   if (liveAttendanceSyncInFlight) return liveAttendanceSyncInFlight;
 
-  liveAttendanceSyncInFlight = runLiveAttendanceSync().finally(() => {
+  liveAttendanceSyncInFlight = runSync().finally(() => {
     lastLiveAttendanceSyncAt = Date.now();
     liveAttendanceSyncInFlight = null;
   });
@@ -55,45 +54,23 @@ export async function syncLiveAttendanceFromTablets(options: { force?: boolean }
   return liveAttendanceSyncInFlight;
 }
 
-async function runLiveAttendanceSync(): Promise<SyncSummary> {
-  const summary = emptySummary();
+async function runSync(): Promise<SyncSummary> {
+  try {
+    const result = await apiRequest<{
+      tablets?: Array<{ saved?: number; duplicates?: number; errors?: string[] }>;
+      totalSaved?: number;
+    }>("/tablets/pull-all-logs", { method: "POST", auth: "school" });
 
-  const tabletPayload = await apiRequest<unknown>("/tablets?limit=500", { auth: "school" });
-  const tablets = unwrapTablets(tabletPayload).filter((tablet) => tablet.is_active !== false);
-  summary.checked = tablets.length;
-
-  for (const tablet of tablets) {
-    try {
-      const connected = tablet.status === "online";
-      if (!connected) {
-        const statusPayload = await apiRequest<unknown>(`/tablets/${tablet.id}/device/status`, {
-          auth: "school",
-        });
-        const status = (statusPayload as { data?: any })?.data ?? statusPayload;
-        if (!Boolean((status as any)?.connected ?? (status as any)?.data?.connected)) continue;
-      }
-
-      const pullPayload = await apiRequest<unknown>(`/tablets/${tablet.id}/device/pull-logs`, {
-        method: "POST",
-        auth: "school",
-        body: JSON.stringify({ readMark: 0 }),
-      });
-      const pull = unwrapPullResult(pullPayload) as {
-        savedCount?: number;
-        attendanceRecordCount?: number;
-        duplicateCount?: number;
-        errors?: string[];
-      };
-
-      summary.pulled += 1;
-      summary.saved += Number(pull.savedCount ?? 0);
-      summary.attendanceRecords += Number(pull.attendanceRecordCount ?? 0);
-      summary.duplicates += Number(pull.duplicateCount ?? 0);
-      if (Array.isArray(pull.errors)) summary.errors.push(...pull.errors);
-    } catch (error) {
-      summary.errors.push(error instanceof Error ? error.message : "Failed to sync tablet");
-    }
+    const tablets = result?.tablets ?? [];
+    return {
+      checked: tablets.length,
+      pulled: tablets.filter((t) => (t.saved ?? 0) > 0).length,
+      saved: result?.totalSaved ?? 0,
+      attendanceRecords: result?.totalSaved ?? 0,
+      duplicates: tablets.reduce((s, t) => s + (t.duplicates ?? 0), 0),
+      errors: tablets.flatMap((t) => t.errors ?? [])
+    };
+  } catch {
+    return emptySummary();
   }
-
-  return summary;
 }

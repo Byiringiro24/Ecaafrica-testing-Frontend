@@ -87,6 +87,8 @@ type Device = {
   device_logs_count?: number | null;
   last_sync_at?: string | null;
   last_sync_status?: string | null;
+  last_seen_at?: string | null;       // updated every 10s by auto-pull job
+  last_connection_at?: string | null; // updated on connect/disconnect
 };
 
 type Tablet = {
@@ -170,8 +172,18 @@ type DeviceUser = {
 
 type PushMode = "selected" | "class" | "all";
 
-const STATUS_POLL_MS = 60_000;
-const SLOW_REFRESH_MS = 20 * 60_000;
+const STATUS_POLL_MS = 15_000;   // check device status every 15 seconds
+const SLOW_REFRESH_MS = 5 * 60_000; // refresh page data every 5 minutes
+
+// A device is "live-online" if last_seen_at was within the last 90 seconds.
+// The auto-pull job updates last_seen_at on every successful pull (every 10s).
+const isDeviceLiveOnline = (device: Device): boolean => {
+  if (device.last_seen_at) {
+    const age = Date.now() - new Date(device.last_seen_at).getTime();
+    if (age < 90_000) return true;
+  }
+  return Boolean(device.is_connected || device.status === "online");
+};
 
 const emptyStats: Stats = {
   totalStudents: 0,
@@ -378,7 +390,7 @@ function ServerCommandCenter() {
             cardCount: nextLogs.filter((log) => log.scan_method === "nfc").length,
             passwordCount: nextLogs.filter((log) => log.scan_method === "manual").length,
             totalDevices: nextDevices.length,
-            onlineDevices: nextDevices.filter((device) => device.status === "online" || device.is_connected).length,
+            onlineDevices: nextDevices.filter(isDeviceLiveOnline).length,
           });
         }
         if (sessionsResult.status === "fulfilled") setSessions(sessionsResult.value.sessions ?? []);
@@ -388,7 +400,7 @@ function ServerCommandCenter() {
         ...current,
         totalStudents: nextStudents.length,
         totalDevices: nextDevices.length,
-        onlineDevices: nextDevices.filter((device) => device.status === "online" || device.is_connected).length,
+        onlineDevices: nextDevices.filter(isDeviceLiveOnline).length,
         attendanceToday: current.totalLogs ? current.attendanceToday : logs.filter((log) => log.scanned_at?.startsWith(today)).length,
       }));
     } catch (error: any) {
@@ -982,7 +994,7 @@ function ServerCommandCenter() {
     }
   }
 
-  const connected = Boolean(selectedDevice?.is_connected || selectedDevice?.status === "online");
+  const connected = isDeviceLiveOnline(selectedDevice ?? {} as Device);
 
   // ── Socket-backed live monitor ──────────────────────────────────────────
   const handleGateEvent = useCallback((event: GateSocketEvent) => {
@@ -1346,12 +1358,12 @@ function ServerCommandCenter() {
                           <div className="font-semibold text-foreground">{device.name}</div>
                           <div className="text-xs text-muted-foreground">{device.location ?? "No location"}</div>
                         </div>
-                        <StatusPill value={device.is_connected || device.status === "online" ? "online" : "offline"} />
+                        <StatusPill value={isDeviceLiveOnline(device) ? "online" : "offline"} />
                       </div>
                       <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
                         <span>Users on device: {device.device_users_count ?? 0}</span>
                         <span>Logs on device: {device.device_logs_count ?? 0}</span>
-                        <span>Last sync: {device.last_sync_at ? new Date(device.last_sync_at).toLocaleTimeString() : "never"}</span>
+                        <span>Last seen: {device.last_seen_at ? new Date(device.last_seen_at).toLocaleTimeString() : "never"}</span>
                       </div>
                     </button>
                   ))}

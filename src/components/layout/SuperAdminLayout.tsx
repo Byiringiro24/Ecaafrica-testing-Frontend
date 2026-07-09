@@ -3,7 +3,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   Globe, School as SchoolIcon, UsersRound,
   BarChart3, Megaphone, Headphones, Settings, ClipboardList,
-  LogOut, X, Menu, Receipt, TrendingUp, Repeat, Cpu,
+  LogOut, X, Menu, Receipt, TrendingUp, Repeat, Cpu, TabletSmartphone,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
@@ -23,10 +23,15 @@ const NAV: NavSection[] = [
     ],
   },
   {
+    label: "Hardware",
+    items: [
+      { to: "/super-admin/hardware", label: "Tablets & Devices", icon: TabletSmartphone },
+    ],
+  },
+  {
     label: "Operations",
     items: [
       { to: "/super-admin/analytics", label: "Platform Analytics", icon: BarChart3, hidden: true },
-      { to: "/super-admin/hardware", label: "Hardware Assignment", icon: Cpu, hidden: true },
       { to: "/super-admin/announcements", label: "Announcements", icon: Megaphone, hidden: true },
       { to: "/super-admin/support", label: "Support Tickets", icon: Headphones, hidden: true },
     ],

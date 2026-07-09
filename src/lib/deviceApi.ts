@@ -107,6 +107,8 @@ export type UpdateDeviceRequest = {
   api_url?: string | null;
   tablet_ip?: string | null;
   tablet_port?: number | null;
+  tablet_id?: string | number | null;
+  school_id?: string | number | null;
 };
 
 export type UpdateTabletRequest = {
@@ -118,6 +120,7 @@ export type UpdateTabletRequest = {
   firmware_version?: string | null;
   os_info?: string | null;
   is_active?: boolean;
+  school_id?: string | number | null;
 };
 
 export type PushStudentsRequest = {
@@ -274,7 +277,7 @@ export const platformHardwareApi = {
       auth: "platform",
     }),
 
-  updateTablet: (id: string, data: UpdateTabletRequest) =>
+  updateTablet: (id: string, data: UpdateTabletRequest & { school_id?: string | number | null }) =>
     apiRequest<{ tablet: Tablet }>(`/platform/hardware/tablets/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),

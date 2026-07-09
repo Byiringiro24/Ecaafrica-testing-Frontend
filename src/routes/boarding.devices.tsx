@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { motion } from "framer-motion";
 import {
@@ -28,7 +28,13 @@ import {
   Users,
   Wifi,
   WifiOff,
+  Radio,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+import { useGateSocket, type GateSocketEvent } from "@/hooks/useGateSocket";
+import { fetchDeviceLogs } from "@/lib/device-logs-api";
 import {
   Bar,
   BarChart,
@@ -52,6 +58,7 @@ export const Route = createFileRoute("/boarding/devices")({
 });
 
 type TabId = "overview" | "monitor" | "students" | "devices" | "sessions" | "reports" | "settings";
+type MonitorMode = "live" | "database";
 
 type Stats = {
   totalStudents: number;
@@ -251,6 +258,26 @@ function ServerCommandCenter() {
   const [absentDate, setAbsentDate] = useState(new Date().toISOString().slice(0, 10));
   const refreshAllInFlight = useRef(false);
   const statusPollInFlight = useRef(false);
+
+  // ── Live Monitor state ─────────────────────────────────────────────────────
+  const [monitorMode, setMonitorMode] = useState<MonitorMode>("live");
+  const [liveEvents, setLiveEvents] = useState<GateSocketEvent[]>([]);
+  const [liveSearch, setLiveSearch] = useState("");
+  const [liveDirectionFilter, setLiveDirectionFilter] = useState("");
+
+  // Database logs state
+  const [dbLogs, setDbLogs] = useState<any[]>([]);
+  const [dbLogsLoading, setDbLogsLoading] = useState(false);
+  const [dbLogsMeta, setDbLogsMeta] = useState({ total: 0, page: 1, limit: 20, totalPages: 1 });
+  const [dbLogsPage, setDbLogsPage] = useState(1);
+  const [dbStartDate, setDbStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dbEndDate, setDbEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dbStartTime, setDbStartTime] = useState("00:00");
+  const [dbEndTime, setDbEndTime] = useState("23:59");
+  const [dbSearch, setDbSearch] = useState("");
+  const [dbDirectionFilter, setDbDirectionFilter] = useState("");
+  const [dbMethodFilter, setDbMethodFilter] = useState("");
+  // ─────────────────────────────────────────────────────────────────────────
 
   const [tabletForm, setTabletForm] = useState({ name: "Main Gate Tablet", ip: "", port: 5000, location: "" });
   const [deviceForm, setDeviceForm] = useState({ ...DEFAULT_FK623_CONFIG });
@@ -935,6 +962,62 @@ function ServerCommandCenter() {
 
   const connected = Boolean(selectedDevice?.is_connected || selectedDevice?.status === "online");
 
+  // ── Socket-backed live monitor ──────────────────────────────────────────
+  const handleGateEvent = useCallback((event: GateSocketEvent) => {
+    setLiveEvents((prev) => {
+      // Deduplicate: keep latest scan per student
+      const filtered = prev.filter((e) => e.studentId !== event.studentId);
+      return [event, ...filtered].slice(0, 200); // cap at 200 rows
+    });
+  }, []);
+
+  useGateSocket({
+    enabled: activeTab === "monitor" && monitorMode === "live",
+    onEvent: handleGateEvent,
+  });
+
+  // ── Database logs loader ─────────────────────────────────────────────────
+  const loadDbLogs = useCallback(async (page = 1) => {
+    setDbLogsLoading(true);
+    try {
+      const startDateTime = dbStartDate ? `${dbStartDate}T${dbStartTime || "00:00"}:00` : undefined;
+      const endDateTime = dbEndDate ? `${dbEndDate}T${dbEndTime || "23:59"}:59` : undefined;
+      const result = await fetchDeviceLogs({
+        page,
+        limit: 20,
+        startDate: startDateTime,
+        endDate: endDateTime,
+        search: dbSearch || undefined,
+        method: dbMethodFilter || undefined,
+      });
+      setDbLogs(result.data ?? []);
+      setDbLogsMeta(result.meta ?? { total: 0, page, limit: 20, totalPages: 1 });
+      setDbLogsPage(page);
+    } catch {
+      // silent — table shows empty
+    } finally {
+      setDbLogsLoading(false);
+    }
+  }, [dbStartDate, dbEndDate, dbStartTime, dbEndTime, dbSearch, dbMethodFilter]);
+
+  useEffect(() => {
+    if (activeTab === "monitor" && monitorMode === "database") {
+      void loadDbLogs(1);
+    }
+  }, [activeTab, monitorMode]);
+
+  const filteredLiveEvents = useMemo(() => {
+    const q = liveSearch.trim().toLowerCase();
+    return liveEvents.filter((e) => {
+      const matchDir = !liveDirectionFilter ||
+        e.direction.toLowerCase().includes(liveDirectionFilter.toLowerCase());
+      const matchSearch = !q ||
+        e.studentName.toLowerCase().includes(q) ||
+        e.studentId.toLowerCase().includes(q);
+      return matchDir && matchSearch;
+    });
+  }, [liveEvents, liveSearch, liveDirectionFilter]);
+
   return (
     <AppLayout title="Attendance Devices" subtitle="Configure tablets, biometric devices, and student pushes">
       <div className="space-y-6 pb-6">
@@ -944,7 +1027,7 @@ function ServerCommandCenter() {
               <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
                 <ShieldCheck size={16} /> PostgreSQL and Prisma command center
               </div>
-              <h1 className="mt-4 text-3xl font-bold tracking-tight text-foreground md:text-4xl">FK Biometric Attendance Console</h1>
+              <h1 className="mt-4 text-3xl font-bold tracking-tight text-foreground md:text-4xl"> Biometric Attendance Management </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Manage live device commands and store attendance data in the existing backend database.</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-[minmax(0,18rem)_auto_auto] sm:items-center">
@@ -957,7 +1040,7 @@ function ServerCommandCenter() {
                 {connected ? <Wifi size={16} /> : <WifiOff size={16} />}
                 <span className="text-sm font-semibold">{connected ? "Device Online" : "Device Offline"}</span>
               </div>
-              <button type="button" onClick={refreshAll} disabled={busy} className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
+              <button type="button" onClick={() => void refreshAll()} disabled={busy} className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
                 {busy ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />} Refresh
               </button>
             </div>
@@ -1368,103 +1451,322 @@ function ServerCommandCenter() {
         )}
 
         {activeTab === "monitor" && (
-          <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-            <Panel title="Live Attendance Logs" icon={Activity} action={<button type="button" onClick={pullLogs} disabled={busy} className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"><DownloadCloud size={16} /> Pull Logs</button>}>
-              <div className="mb-4 flex max-w-xs items-center gap-2">
-                <Field label="Read Mark" type="number" value={readMark} onChange={(value) => setReadMark(Number(value))} />
+          <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+            {/* Mode toggle */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-border/70 bg-card p-4">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMonitorMode("live")}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all",
+                    monitorMode === "live"
+                      ? "bg-emerald-600 text-white shadow-lg shadow-emerald-600/25"
+                      : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <Radio size={15} className={monitorMode === "live" ? "animate-pulse" : ""} />
+                  Live Attendance
+                  {monitorMode === "live" && liveEvents.length > 0 && (
+                    <span className="ml-1 rounded-full bg-white/25 px-1.5 py-0.5 text-xs">{liveEvents.length}</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setMonitorMode("database"); void loadDbLogs(1); }}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all",
+                    monitorMode === "database"
+                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                      : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <Database size={15} />
+                  Logs in Database
+                </button>
               </div>
-              <LogTable logs={logs} />
-            </Panel>
-            <div className="space-y-4">
-              <Panel title="Manual Attendance Event" icon={CheckCircle2}>
-                <form onSubmit={recordManualAttendanceEvent} className="grid gap-3">
-                  <SelectField
-                    label="Student"
-                    value={manualEventForm.student_id}
-                    onChange={(value) => setManualEventForm({ ...manualEventForm, student_id: value })}
-                  >
-                    <option value="">No student selected</option>
-                    {students.map((student) => (
-                      <option key={student.id} value={student.id}>
-                        {studentName(student)}
-                      </option>
-                    ))}
-                  </SelectField>
-                  <SelectField
-                    label="Session"
-                    value={manualEventForm.session_name}
-                    onChange={(value) => setManualEventForm({ ...manualEventForm, session_name: value })}
-                  >
-                    <option value="">Default session</option>
-                    {sessions.map((session) => (
-                      <option key={session.id} value={session.name}>{session.name}</option>
-                    ))}
-                  </SelectField>
-                  <SelectField
-                    label="Scan Method"
-                    value={manualEventForm.scan_method}
-                    onChange={(value) => setManualEventForm({ ...manualEventForm, scan_method: value })}
-                  >
-                    <option value="fingerprint">Fingerprint</option>
-                    <option value="face">Face</option>
-                    <option value="nfc">Card</option>
-                    <option value="manual">Manual/PIN</option>
-                  </SelectField>
-                  <Field
-                    label="Scanned At"
-                    type="datetime-local"
-                    value={manualEventForm.scanned_at}
-                    onChange={(value) => setManualEventForm({ ...manualEventForm, scanned_at: value })}
-                  />
-                  <button className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60" disabled={busy}>
-                    <CheckCircle2 size={16} /> Record Event
-                  </button>
-                </form>
-              </Panel>
-              <Panel title="Manual Raw Device Log" icon={Database}>
-                <form onSubmit={createManualLog} className="grid gap-3">
-                  <SelectField
-                    label="Student"
-                    value={manualLogForm.student_id}
-                    onChange={(value) => setManualLogForm({ ...manualLogForm, student_id: value })}
-                  >
-                    <option value="">No student selected</option>
-                    {students.map((student) => (
-                      <option key={student.id} value={student.id}>
-                        {studentName(student)}
-                      </option>
-                    ))}
-                  </SelectField>
-                  <SelectField
-                    label="Direction"
-                    value={manualLogForm.event_type}
-                    onChange={(value) => setManualLogForm({ ...manualLogForm, event_type: value })}
-                  >
-                    <option value="entry">Entry</option>
-                    <option value="exit">Exit</option>
-                  </SelectField>
-                  <SelectField
-                    label="Scan Method"
-                    value={manualLogForm.scan_method}
-                    onChange={(value) => setManualLogForm({ ...manualLogForm, scan_method: value })}
-                  >
-                    <option value="fingerprint">Fingerprint</option>
-                    <option value="face">Face</option>
-                    <option value="nfc">Card</option>
-                    <option value="manual">Manual/PIN</option>
-                  </SelectField>
-                  <Field
-                    label="Scanned At"
-                    type="datetime-local"
-                    value={manualLogForm.scanned_at}
-                    onChange={(value) => setManualLogForm({ ...manualLogForm, scanned_at: value })}
-                  />
-                  <button className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60" disabled={busy}>
-                    <Database size={16} /> Save Raw Log
-                  </button>
-                </form>
-              </Panel>
+              <button
+                type="button"
+                onClick={pullLogs}
+                disabled={busy}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {busy ? <Loader2 className="animate-spin" size={15} /> : <DownloadCloud size={15} />}
+                Sync Now
+              </button>
             </div>
+
+            {/* ─── LIVE MODE ─── */}
+            {monitorMode === "live" && (
+              <div className="grid gap-4 xl:grid-cols-[1.4fr_0.6fr]">
+                <Panel
+                  title="Live Attendance Feed"
+                  icon={Activity}
+                  action={
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Live
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setLiveEvents([])}
+                        className="rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  }
+                >
+                  <div className="mb-3 flex flex-col gap-2 sm:flex-row">
+                    <div className="relative flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={liveSearch}
+                        onChange={(e) => setLiveSearch(e.target.value)}
+                        className="w-full form-field pl-9 rounded-xl border border-white/10 bg-slate-950/70 px-4 py-2.5 text-slate-100 text-sm shadow-sm backdrop-blur-md placeholder:text-slate-500"
+                        placeholder="Search by name or ID…"
+                      />
+                    </div>
+                    <select
+                      value={liveDirectionFilter}
+                      onChange={(e) => setLiveDirectionFilter(e.target.value)}
+                      className="form-field rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2.5 text-slate-100 text-sm shadow-sm backdrop-blur-md"
+                    >
+                      <option value="">All directions</option>
+                      <option value="In">Entry (In)</option>
+                      <option value="Out">Exit (Out)</option>
+                    </select>
+                  </div>
+                  {filteredLiveEvents.length === 0 ? (
+                    <EmptyState text="Waiting for scans… The feed updates automatically when a student scans." />
+                  ) : (
+                    <div className="overflow-x-auto rounded-2xl border border-border/70">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Student</th>
+                            <th>Direction</th>
+                            <th>Method</th>
+                            <th>Class</th>
+                            <th>Status</th>
+                            <th>Time</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredLiveEvents.map((event) => (
+                            <tr key={`${event.studentId}-${event.timestamp}`}>
+                              <td>
+                                <div className="font-semibold text-foreground">{event.studentName}</div>
+                                <div className="text-xs text-muted-foreground">{event.studentId}</div>
+                              </td>
+                              <td>
+                                <span className={cn(
+                                  "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold",
+                                  event.direction === "In" || event.direction === "entry"
+                                    ? "bg-emerald-100 text-emerald-700"
+                                    : "bg-amber-100 text-amber-700"
+                                )}>
+                                  {event.direction}
+                                </span>
+                              </td>
+                              <td>{event.method}</td>
+                              <td>{event.className ?? event.section ?? "-"}</td>
+                              <td><StatusPill value={event.status} /></td>
+                              <td className="text-xs">{new Date(event.timestamp).toLocaleTimeString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </Panel>
+
+                <div className="space-y-4">
+                  <Panel title="Manual Attendance Event" icon={CheckCircle2}>
+                    <form onSubmit={recordManualAttendanceEvent} className="grid gap-3">
+                      <SelectField label="Student" value={manualEventForm.student_id} onChange={(value) => setManualEventForm({ ...manualEventForm, student_id: value })}>
+                        <option value="">No student selected</option>
+                        {students.map((student) => <option key={student.id} value={student.id}>{studentName(student)}</option>)}
+                      </SelectField>
+                      <SelectField label="Session" value={manualEventForm.session_name} onChange={(value) => setManualEventForm({ ...manualEventForm, session_name: value })}>
+                        <option value="">Default session</option>
+                        {sessions.map((session) => <option key={session.id} value={session.name}>{session.name}</option>)}
+                      </SelectField>
+                      <SelectField label="Scan Method" value={manualEventForm.scan_method} onChange={(value) => setManualEventForm({ ...manualEventForm, scan_method: value })}>
+                        <option value="fingerprint">Fingerprint</option>
+                        <option value="face">Face</option>
+                        <option value="nfc">Card</option>
+                        <option value="manual">Manual/PIN</option>
+                      </SelectField>
+                      <Field label="Scanned At" type="datetime-local" value={manualEventForm.scanned_at} onChange={(value) => setManualEventForm({ ...manualEventForm, scanned_at: value })} />
+                      <button className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60" disabled={busy}>
+                        <CheckCircle2 size={16} /> Record Event
+                      </button>
+                    </form>
+                  </Panel>
+                </div>
+              </div>
+            )}
+
+            {/* ─── DATABASE MODE ─── */}
+            {monitorMode === "database" && (
+              <Panel title="Attendance Logs — Database" icon={Database}>
+                {/* Filters */}
+                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
+                    Start Date
+                    <input
+                      type="date"
+                      value={dbStartDate}
+                      onChange={(e) => setDbStartDate(e.target.value)}
+                      className="form-field rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-slate-100 text-sm shadow-sm backdrop-blur-md"
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
+                    Start Time
+                    <input
+                      type="time"
+                      value={dbStartTime}
+                      onChange={(e) => setDbStartTime(e.target.value)}
+                      className="form-field rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-slate-100 text-sm shadow-sm backdrop-blur-md"
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
+                    End Date
+                    <input
+                      type="date"
+                      value={dbEndDate}
+                      onChange={(e) => setDbEndDate(e.target.value)}
+                      className="form-field rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-slate-100 text-sm shadow-sm backdrop-blur-md"
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
+                    End Time
+                    <input
+                      type="time"
+                      value={dbEndTime}
+                      onChange={(e) => setDbEndTime(e.target.value)}
+                      className="form-field rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2 text-slate-100 text-sm shadow-sm backdrop-blur-md"
+                    />
+                  </label>
+                </div>
+                <div className="mb-4 flex flex-col gap-2 sm:flex-row">
+                  <div className="relative flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={dbSearch}
+                      onChange={(e) => setDbSearch(e.target.value)}
+                      className="w-full form-field pl-9 rounded-xl border border-white/10 bg-slate-950/70 px-4 py-2.5 text-slate-100 text-sm shadow-sm backdrop-blur-md placeholder:text-slate-500"
+                      placeholder="Search by student name, ID, class…"
+                    />
+                  </div>
+                  <select
+                    value={dbMethodFilter}
+                    onChange={(e) => setDbMethodFilter(e.target.value)}
+                    className="form-field rounded-xl border border-white/10 bg-slate-950/70 px-3 py-2.5 text-slate-100 text-sm shadow-sm backdrop-blur-md"
+                  >
+                    <option value="">All methods</option>
+                    <option value="fingerprint">Fingerprint</option>
+                    <option value="face">Face</option>
+                    <option value="card">Card/RFID</option>
+                    <option value="manual">Manual/PIN</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => void loadDbLogs(1)}
+                    disabled={dbLogsLoading}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-primary/20 bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:opacity-60"
+                  >
+                    {dbLogsLoading ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
+                    Search
+                  </button>
+                </div>
+
+                {/* Summary */}
+                <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{dbLogsMeta.total} records found</span>
+                  <span>Page {dbLogsMeta.page} of {dbLogsMeta.totalPages}</span>
+                </div>
+
+                {/* Table */}
+                {dbLogsLoading ? (
+                  <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+                    <Loader2 className="animate-spin" size={18} /> Loading…
+                  </div>
+                ) : dbLogs.length === 0 ? (
+                  <EmptyState text="No logs found for the selected filters. Try adjusting the date range." />
+                ) : (
+                  <div className="overflow-x-auto rounded-2xl border border-border/70">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Student</th>
+                          <th>Class</th>
+                          <th>Method</th>
+                          <th>Direction</th>
+                          <th>Session</th>
+                          <th>Status</th>
+                          <th>Timestamp</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dbLogs.map((log) => (
+                          <tr key={log.id}>
+                            <td>
+                              <div className="font-semibold text-foreground">{log.studentName ?? log.student_name ?? "Unknown"}</div>
+                              <div className="text-xs text-muted-foreground">{log.studentId ?? log.student_id ?? "-"}</div>
+                            </td>
+                            <td>{log.className ?? log.class_name ?? "-"}</td>
+                            <td>{log.method ?? log.authentication_method ?? "-"}</td>
+                            <td>
+                              <span className={cn(
+                                "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold",
+                                (log.direction === "In" || log.direction === "entry")
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-amber-100 text-amber-700"
+                              )}>
+                                {log.direction ?? "-"}
+                              </span>
+                            </td>
+                            <td>{log.sessionName ?? log.attendance_period ?? "-"}</td>
+                            <td><StatusPill value={log.status ?? "synced"} /></td>
+                            <td className="text-xs">
+                              {log.timestamp ? new Date(log.timestamp).toLocaleString() : "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Pagination */}
+                {dbLogsMeta.totalPages > 1 && (
+                  <div className="mt-4 flex items-center justify-between">
+                    <button
+                      type="button"
+                      disabled={dbLogsMeta.page <= 1 || dbLogsLoading}
+                      onClick={() => void loadDbLogs(dbLogsMeta.page - 1)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-40"
+                    >
+                      <ChevronLeft size={15} /> Previous
+                    </button>
+                    <span className="text-xs text-muted-foreground">
+                      Showing {((dbLogsMeta.page - 1) * dbLogsMeta.limit) + 1}–{Math.min(dbLogsMeta.page * dbLogsMeta.limit, dbLogsMeta.total)} of {dbLogsMeta.total}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={dbLogsMeta.page >= dbLogsMeta.totalPages || dbLogsLoading}
+                      onClick={() => void loadDbLogs(dbLogsMeta.page + 1)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted disabled:opacity-40"
+                    >
+                      Next <ChevronRight size={15} />
+                    </button>
+                  </div>
+                )}
+              </Panel>
+            )}
           </motion.section>
         )}
 

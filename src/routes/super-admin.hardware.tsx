@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   School, TabletSmartphone, Cpu, ArrowRight,
   Plus, Trash2, RefreshCw, CheckCircle2, ArrowRightLeft,
+  Pencil, X, Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
@@ -127,6 +128,10 @@ function TabletsTab({ tablets, schools, onRefresh }: {
   const [liveStatus, setLiveStatus] = useState<Record<string, "online" | "offline" | "checking">>({});
   const [form, setForm] = useState({ name: "", ip: "", port: "5000", location: "", notes: "", school_id: "" });
 
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", ip: "", port: "5000", location: "", notes: "", school_id: "" });
+
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     if (!form.school_id) { toast.error("Select a school"); return; }
@@ -148,6 +153,38 @@ function TabletsTab({ tablets, schools, onRefresh }: {
     if (!confirm(`Delete tablet "${t.name}"?`)) return;
     try { await platformHardwareApi.deleteTablet(t.id); toast.success("Deleted"); onRefresh(); }
     catch (e: any) { toast.error(e?.message || "Failed"); }
+  };
+
+  const startEdit = (t: PlatformTablet) => {
+    setEditingId(t.id);
+    setEditForm({
+      name: t.name ?? "",
+      ip: (t as any).ip ?? "",
+      port: String((t as any).port ?? 5000),
+      location: (t as any).location ?? "",
+      notes: (t as any).notes ?? "",
+      school_id: String(t.school_id ?? ""),
+    });
+  };
+
+  const cancelEdit = () => { setEditingId(null); };
+
+  const handleSaveEdit = async (t: PlatformTablet) => {
+    setSaving(true);
+    try {
+      await platformHardwareApi.updateTablet(t.id, {
+        name: editForm.name,
+        ip: editForm.ip,
+        port: Number(editForm.port || 5000),
+        location: editForm.location || undefined,
+        notes: editForm.notes || undefined,
+        school_id: editForm.school_id || undefined,
+      } as any);
+      toast.success("Tablet updated");
+      setEditingId(null);
+      onRefresh();
+    } catch (e: any) { toast.error(e?.message || "Failed to save"); }
+    finally { setSaving(false); }
   };
 
   const handlePing = async (t: PlatformTablet) => {
@@ -202,7 +239,7 @@ function TabletsTab({ tablets, schools, onRefresh }: {
         <div className="border-b border-border px-5 py-4 flex items-center justify-between">
           <div>
             <h2 className="font-display text-lg font-semibold">All Tablets</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Click the refresh icon to do a live ping.</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Click the pencil to edit, refresh icon to ping.</p>
           </div>
           <Badge variant="secondary">{tablets.length}</Badge>
         </div>
@@ -213,43 +250,84 @@ function TabletsTab({ tablets, schools, onRefresh }: {
               const live = liveStatus[t.id];
               const displayStatus = live ?? t.status;
               const { label: staleLabel, stale } = staleness(t.last_health_check);
+              const isEditing = editingId === t.id;
               return (
                 <div key={t.id} className="px-5 py-3">
-                  <div className="flex items-start gap-3">
-                    <div className="grid h-9 w-9 place-items-center rounded-lg bg-muted shrink-0">
-                      <TabletSmartphone className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold">{t.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {school ? school.name : <span className="text-amber-600 font-medium">Not assigned to a school</span>}
-                        {t.location ? ` · ${t.location}` : ""}
+                  {isEditing ? (
+                    /* ── Inline edit form ── */
+                    <div className="grid gap-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-semibold text-primary">Editing: {t.name}</span>
+                        <button onClick={cancelEdit} className="p-1 rounded hover:bg-muted text-muted-foreground"><X className="h-4 w-4" /></button>
                       </div>
-                      <div className="text-xs text-muted-foreground font-mono">{t.ip}:{t.port}</div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="text-right">
-                        <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize block",
-                          displayStatus === "online" ? "bg-emerald-100 text-emerald-700"
-                          : displayStatus === "checking" ? "bg-blue-100 text-blue-700"
-                          : "bg-muted text-muted-foreground"
-                        )}>
-                          {displayStatus === "checking" ? "pinging..." : (displayStatus ?? "unknown")}
-                          {live && <span className="ml-1 opacity-60 text-[10px]">(live)</span>}
-                        </span>
-                        <span className={cn("text-[10px] block mt-0.5", stale ? "text-amber-600" : "text-muted-foreground")}>
-                          {stale ? "stale: " : ""}{staleLabel}
-                        </span>
+                      <SaSelect label="School" value={editForm.school_id} onChange={e => setEditForm({...editForm, school_id: e.target.value})}>
+                        <option value="">-- no school --</option>
+                        {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </SaSelect>
+                      <SaInput label="Name" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} required />
+                      <div className="grid gap-2 grid-cols-2">
+                        <SaInput label="VPN IP" value={editForm.ip} onChange={e => setEditForm({...editForm, ip: e.target.value})} placeholder="10.0.0.2" />
+                        <SaInput label="Port" type="number" value={editForm.port} onChange={e => setEditForm({...editForm, port: e.target.value})} />
                       </div>
-                      <button onClick={() => void handlePing(t)} disabled={pinging === t.id}
-                        title="Live ping" className="p-1.5 rounded-md border border-border hover:bg-muted text-muted-foreground disabled:opacity-40">
-                        <RefreshCw className={cn("h-3.5 w-3.5", pinging === t.id && "animate-spin")} />
-                      </button>
-                      <button onClick={() => void handleDelete(t)} className="p-1.5 rounded-md hover:bg-rose-50 hover:text-rose-600 text-muted-foreground">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      <SaInput label="Location" value={editForm.location} onChange={e => setEditForm({...editForm, location: e.target.value})} />
+                      <label>
+                        <span className="mb-1 block text-xs font-semibold">Notes</span>
+                        <textarea value={editForm.notes} onChange={e => setEditForm({...editForm, notes: e.target.value})} rows={2}
+                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                      </label>
+                      <div className="flex gap-2">
+                        <button onClick={() => void handleSaveEdit(t)} disabled={saving}
+                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                          <Save className="h-3.5 w-3.5" /> Save
+                        </button>
+                        <button onClick={cancelEdit}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold hover:bg-muted">
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    /* ── Normal row ── */
+                    <div className="flex items-start gap-3">
+                      <div className="grid h-9 w-9 place-items-center rounded-lg bg-muted shrink-0">
+                        <TabletSmartphone className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold">{t.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {school ? school.name : <span className="text-amber-600 font-medium">Not assigned to a school</span>}
+                          {(t as any).location ? ` · ${(t as any).location}` : ""}
+                        </div>
+                        <div className="text-xs text-muted-foreground font-mono">{(t as any).ip}:{(t as any).port}</div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="text-right">
+                          <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize block",
+                            displayStatus === "online" ? "bg-emerald-100 text-emerald-700"
+                            : displayStatus === "checking" ? "bg-blue-100 text-blue-700"
+                            : "bg-muted text-muted-foreground"
+                          )}>
+                            {displayStatus === "checking" ? "pinging..." : (displayStatus ?? "unknown")}
+                            {live && <span className="ml-1 opacity-60 text-[10px]">(live)</span>}
+                          </span>
+                          <span className={cn("text-[10px] block mt-0.5", stale ? "text-amber-600" : "text-muted-foreground")}>
+                            {stale ? "stale: " : ""}{staleLabel}
+                          </span>
+                        </div>
+                        <button onClick={() => void handlePing(t)} disabled={pinging === t.id}
+                          title="Live ping" className="p-1.5 rounded-md border border-border hover:bg-muted text-muted-foreground disabled:opacity-40">
+                          <RefreshCw className={cn("h-3.5 w-3.5", pinging === t.id && "animate-spin")} />
+                        </button>
+                        <button onClick={() => startEdit(t)} title="Edit tablet"
+                          className="p-1.5 rounded-md hover:bg-amber-50 hover:text-amber-600 text-muted-foreground border border-border">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => void handleDelete(t)} className="p-1.5 rounded-md hover:bg-rose-50 hover:text-rose-600 text-muted-foreground">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -268,6 +346,14 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
   const [form, setForm] = useState({
     school_id: "", name: "", device_uid: "",
     mode: "gate" as "gate" | "boarding" | "classroom",
+    location: "", device_ip: "", device_port: "4370", license_number: "0",
+    device_serial: "", product_name: "",
+  });
+
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "", school_id: "", mode: "gate" as "gate" | "boarding" | "classroom",
     location: "", device_ip: "", device_port: "4370", license_number: "0",
     device_serial: "", product_name: "",
   });
@@ -299,8 +385,47 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
     catch (e: any) { toast.error(e?.message || "Failed"); }
   };
 
+  const startEdit = (d: PlatformDevice) => {
+    setEditingId(d.id);
+    setEditForm({
+      name: d.name ?? "",
+      school_id: String(d.school_id ?? ""),
+      mode: (d.mode as any) ?? "gate",
+      location: (d as any).location ?? "",
+      device_ip: (d as any).tablet_ip ?? "",
+      device_port: String((d as any).tablet_port ?? 4370),
+      license_number: String((d as any).license_number ?? 0),
+      device_serial: (d as any).device_serial ?? "",
+      product_name: (d as any).product_name ?? "",
+    });
+  };
+
+  const cancelEdit = () => setEditingId(null);
+
+  const handleSaveEdit = async (d: PlatformDevice) => {
+    setSaving(true);
+    try {
+      await platformHardwareApi.updateDevice(d.id, {
+        name: editForm.name,
+        school_id: editForm.school_id || undefined,
+        mode: editForm.mode,
+        location: editForm.location || undefined,
+        tablet_ip: editForm.device_ip || undefined,
+        tablet_port: editForm.device_port ? Number(editForm.device_port) : undefined,
+        license_number: editForm.license_number ? Number(editForm.license_number) : undefined,
+        device_serial: editForm.device_serial || undefined,
+        product_name: editForm.product_name || undefined,
+      } as any);
+      toast.success("Device updated");
+      setEditingId(null);
+      onRefresh();
+    } catch (e: any) { toast.error(e?.message || "Failed to save"); }
+    finally { setSaving(false); }
+  };
+
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_1.2fr]">
+      {/* ── Create form ── */}
       <section className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-center gap-2 mb-4">
           <Cpu className="h-5 w-5 text-amber-600" />
@@ -342,9 +467,14 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
           </button>
         </form>
       </section>
+
+      {/* ── Device list ── */}
       <section className="rounded-xl border border-border bg-card">
         <div className="border-b border-border px-5 py-4 flex items-center justify-between">
-          <h2 className="font-display text-lg font-semibold">All Devices</h2>
+          <div>
+            <h2 className="font-display text-lg font-semibold">All Devices</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Click the pencil to edit any device.</p>
+          </div>
           <Badge variant="secondary">{devices.length}</Badge>
         </div>
         {devices.length === 0 ? <EmptyState message="No devices registered yet." /> : (
@@ -352,31 +482,82 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
             {devices.map(d => {
               const school = schools.find(s => String(s.id) === String(d.school_id));
               const linkedTablet = d.tablet ?? tablets.find(t => String(t.id) === String(d.tablet_id));
+              const isEditing = editingId === d.id;
               return (
-                <div key={d.id} className="flex items-center gap-3 px-5 py-3">
-                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-muted shrink-0">
-                    <Cpu className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate">{d.name}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {school?.name ?? <span className="text-amber-600">No school</span>} · {d.mode}
+                <div key={d.id} className="px-5 py-3">
+                  {isEditing ? (
+                    /* ── Inline edit form ── */
+                    <div className="grid gap-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-semibold text-primary">Editing: {d.name}</span>
+                        <button onClick={cancelEdit} className="p-1 rounded hover:bg-muted text-muted-foreground"><X className="h-4 w-4" /></button>
+                      </div>
+                      <SaSelect label="School" value={editForm.school_id} onChange={e => setEditForm({...editForm, school_id: e.target.value})}>
+                        <option value="">-- no school --</option>
+                        {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </SaSelect>
+                      <div className="grid gap-2 grid-cols-2">
+                        <SaInput label="Name" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} required />
+                        <SaSelect label="Mode" value={editForm.mode} onChange={e => setEditForm({...editForm, mode: e.target.value as any})}>
+                          <option value="gate">Gate</option>
+                          <option value="boarding">Boarding</option>
+                          <option value="classroom">Classroom</option>
+                        </SaSelect>
+                      </div>
+                      <SaInput label="Location" value={editForm.location} onChange={e => setEditForm({...editForm, location: e.target.value})} />
+                      <div className="grid gap-2 grid-cols-2">
+                        <SaInput label="Serial No." value={editForm.device_serial} onChange={e => setEditForm({...editForm, device_serial: e.target.value})} />
+                        <SaInput label="Product Name" value={editForm.product_name} onChange={e => setEditForm({...editForm, product_name: e.target.value})} />
+                      </div>
+                      <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 grid gap-2 grid-cols-3">
+                        <p className="col-span-3 text-xs font-semibold text-amber-800">Network (internal)</p>
+                        <SaInput label="Device IP" value={editForm.device_ip} onChange={e => setEditForm({...editForm, device_ip: e.target.value})} />
+                        <SaInput label="Port" type="number" value={editForm.device_port} onChange={e => setEditForm({...editForm, device_port: e.target.value})} />
+                        <SaInput label="License No." type="number" value={editForm.license_number} onChange={e => setEditForm({...editForm, license_number: e.target.value})} />
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => void handleSaveEdit(d)} disabled={saving}
+                          className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                          <Save className="h-3.5 w-3.5" /> Save
+                        </button>
+                        <button onClick={cancelEdit}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-semibold hover:bg-muted">
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {linkedTablet
-                        ? <span className="text-emerald-700">Linked: {linkedTablet.name}</span>
-                        : <span className="text-amber-600">Not linked to tablet — auto-pull inactive</span>}
+                  ) : (
+                    /* ── Normal row ── */
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-9 w-9 place-items-center rounded-lg bg-muted shrink-0">
+                        <Cpu className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold truncate">{d.name}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {school?.name ?? <span className="text-amber-600">No school</span>} · {d.mode}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {linkedTablet
+                            ? <span className="text-emerald-700">Linked: {linkedTablet.name}</span>
+                            : <span className="text-amber-600">Not linked to tablet — auto-pull inactive</span>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                          d.is_connected ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
+                          {d.is_connected ? "Online" : "Offline"}
+                        </span>
+                        <button onClick={() => startEdit(d)} title="Edit device"
+                          className="p-1.5 rounded-md hover:bg-amber-50 hover:text-amber-600 text-muted-foreground border border-border">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => void handleDelete(d)} className="p-1.5 rounded-md hover:bg-rose-50 hover:text-rose-600 text-muted-foreground">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold",
-                      d.is_connected ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
-                      {d.is_connected ? "Online" : "Offline"}
-                    </span>
-                    <button onClick={() => void handleDelete(d)} className="p-1.5 rounded-md hover:bg-rose-50 hover:text-rose-600 text-muted-foreground">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  )}
                 </div>
               );
             })}

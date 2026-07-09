@@ -2,7 +2,7 @@ import { ReactNode, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   Globe, School as SchoolIcon, UsersRound,
-  BarChart3, Megaphone, Headphones, Settings, ClipboardList,
+  BarChart3, Mail, Megaphone, Headphones, ClipboardList,
   LogOut, X, Menu, Receipt, TrendingUp, Repeat, Cpu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,7 @@ const NAV: NavSection[] = [
   {
     label: "Operations",
     items: [
+      { to: "/super-admin/manage-sms", label: "Manage SMS", icon: Mail },
       { to: "/super-admin/analytics", label: "Platform Analytics", icon: BarChart3, hidden: true },
       { to: "/super-admin/hardware", label: "Hardware Assignment", icon: Cpu, hidden: true },
       { to: "/super-admin/announcements", label: "Announcements", icon: Megaphone, hidden: true },
@@ -37,13 +38,6 @@ const NAV: NavSection[] = [
       { to: "/super-admin/billing", label: "Billing", icon: Receipt, hidden: true },
       { to: "/super-admin/revenue", label: "Revenue", icon: TrendingUp, hidden: true },
       { to: "/super-admin/subscriptions", label: "Subscriptions", icon: Repeat, hidden: true },
-    ],
-  },
-  {
-    label: "System",
-    items: [
-      { to: "/super-admin/system", label: "System Settings", icon: Settings, hidden: true },
-      { to: "/super-admin/audit", label: "Audit Logs", icon: ClipboardList, hidden: true },
     ],
   },
 ];

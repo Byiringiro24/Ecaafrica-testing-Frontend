@@ -259,9 +259,6 @@ function SuperAdminOverview() {
                     </li>
                   ))}
                 </ul>
-                <Link to="/super-admin/system" className="mt-3 inline-block text-xs font-semibold text-primary hover:underline">
-                  View System Status →
-                </Link>
               </div>
 
               <div className="rounded-xl border border-border bg-card p-5 shadow-sm">

@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, RefreshCw, Download, Clock } from "lucide-react";
+import { RefreshCw, Download, Clock } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { DeviceCard } from "../../components/device-management/DeviceCard";
 import { DeviceStatusPanel } from "../../components/device-management/DeviceStatusPanel";
-import { AddTabletModal } from "../../components/device-management/AddTabletModal";
-import { DEFAULT_FK623_CONFIG, tabletApi, Tablet, DeviceStatus } from "../../lib/tabletApi";
-import { apiRequest } from "../../lib/api";
+import { tabletApi, Tablet, DeviceStatus } from "../../lib/tabletApi";
 import { toast } from "sonner";
 
 export default function DeviceManagement() {
@@ -14,40 +12,26 @@ export default function DeviceManagement() {
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editingTablet, setEditingTablet] = useState<Tablet | null>(null);
   const [deviceUsers, setDeviceUsers] = useState<any[]>([]);
-  const [readMark, setReadMark] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const statusRequestInFlight = useRef(false);
 
-  // Load tablets on mount
-  useEffect(() => {
-    loadTablets();
-  }, []);
+  useEffect(() => { loadTablets(); }, []);
 
-  // Auto-select first tablet when tablets load
   useEffect(() => {
-    if (tablets.length > 0 && !selectedTablet) {
-      setSelectedTablet(tablets[0]);
-    }
+    if (tablets.length > 0 && !selectedTablet) setSelectedTablet(tablets[0]);
   }, [tablets]);
 
-  // Reload device status when selected tablet changes
   useEffect(() => {
-    if (selectedTablet) {
-      loadDeviceStatus(selectedTablet.id);
-    }
+    if (selectedTablet) loadDeviceStatus(selectedTablet.id);
   }, [selectedTablet]);
 
-  // Poll live status. The backend attempts reconnect when the FK623 is disconnected.
+  // Poll device status every 15 seconds
   useEffect(() => {
     if (!selectedTablet) return;
-    
     const interval = setInterval(() => {
-      loadDeviceStatus(selectedTablet.id, true); // silent reload
-    }, 60000);
-
+      loadDeviceStatus(selectedTablet.id, true);
+    }, 15_000);
     return () => clearInterval(interval);
   }, [selectedTablet]);
 
@@ -72,10 +56,10 @@ export default function DeviceManagement() {
       setDeviceStatus(response.data);
       setStatusMessage(response.data?.message || null);
       setTablets((current) =>
-        current.map((tablet) =>
-          tablet.id === tabletId
-            ? { ...tablet, status: response.data?.connected ? "online" : "offline" }
-            : tablet
+        current.map((t) =>
+          t.id === tabletId
+            ? { ...t, status: response.data?.connected ? "online" : "offline" }
+            : t
         )
       );
     } catch (error: any) {
@@ -89,91 +73,15 @@ export default function DeviceManagement() {
   };
 
   const handleRefresh = async () => {
-    if (selectedTablet) {
-      await loadDeviceStatus(selectedTablet.id);
-    }
+    if (selectedTablet) await loadDeviceStatus(selectedTablet.id);
     await loadTablets(true);
-  };
-
-  const handleSaveTablet = async (data: any) => {
-    if (editingTablet) {
-      await tabletApi.update(editingTablet.id, data);
-      toast.success("Tablet updated successfully");
-    } else {
-      await tabletApi.create(data);
-      toast.success("Tablet added successfully");
-    }
-    setEditingTablet(null);
-    await loadTablets();
-  };
-
-  const handleConnect = async (tablet: Tablet) => {
-    try {
-      const response = await tabletApi.connect({
-        tabletId: tablet.id,
-        ...DEFAULT_FK623_CONFIG,
-      });
-      setDeviceStatus(response.data);
-      setStatusMessage(response.data?.message || null);
-      toast.success("Connected to device successfully");
-      await loadTablets();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to connect to device");
-    }
-  };
-
-  const handleDisconnect = async (tablet: Tablet) => {
-    try {
-      await tabletApi.disconnect(tablet.id);
-      setDeviceStatus(null);
-      toast.success("Disconnected from device");
-      await loadTablets();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to disconnect");
-    }
-  };
-
-  const handleSync = async (tablet: Tablet) => {
-    try {
-      await tabletApi.syncTime(tablet.id);
-      toast.success("Time synced successfully");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to sync time");
-    }
-  };
-
-  const handleEdit = (tablet: Tablet) => {
-    setEditingTablet(tablet);
-    setShowAddModal(true);
-  };
-
-  const handleDelete = async (tablet: Tablet) => {
-    if (!confirm(`Are you sure you want to delete ${tablet.name}?`)) return;
-    
-    try {
-      await tabletApi.delete(tablet.id);
-      toast.success("Tablet deleted successfully");
-      await loadTablets();
-      if (selectedTablet?.id === tablet.id) {
-        setSelectedTablet(null);
-        setDeviceStatus(null);
-      }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to delete tablet");
-    }
   };
 
   const handlePullLogs = async () => {
     if (!selectedTablet) return;
-    
     try {
-      const response = await tabletApi.pullLogs({
-        tabletId: selectedTablet.id,
-        readMark,
-      });
-      toast.success(
-        `Pulled ${response.data.savedCount} logs (${response.data.duplicateCount} duplicates)`
-      );
+      const response = await tabletApi.pullLogs({ tabletId: selectedTablet.id, readMark: 0 });
+      toast.success(`Pulled ${response.data.savedCount} logs (${response.data.duplicateCount} duplicates)`);
       await loadDeviceStatus(selectedTablet.id);
     } catch (error: any) {
       toast.error(error.message || "Failed to pull logs");
@@ -182,7 +90,6 @@ export default function DeviceManagement() {
 
   const handlePullUsers = async () => {
     if (!selectedTablet) return;
-    
     try {
       const response = await tabletApi.getUsers(selectedTablet.id);
       setDeviceUsers(response.data.users || []);
@@ -194,7 +101,6 @@ export default function DeviceManagement() {
 
   const handleSyncTime = async () => {
     if (!selectedTablet) return;
-    
     try {
       await tabletApi.syncTime(selectedTablet.id);
       toast.success("Device time synced successfully");
@@ -210,34 +116,28 @@ export default function DeviceManagement() {
         <div>
           <h1 className="text-3xl font-bold">Device Management</h1>
           <p className="text-gray-600 mt-1">
-            Manage biometric attendance devices and synchronize data
+            View assigned biometric devices and their connection status
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={handleRefresh} disabled={loading || statusLoading} variant="outline">
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-          <Button onClick={() => setShowAddModal(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Tablet
-          </Button>
-        </div>
+        <Button onClick={handleRefresh} disabled={loading || statusLoading} variant="outline">
+          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
       </div>
 
-      {/* Tablets Grid */}
+      {/* Info banner — registration is super admin only */}
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
+        Tablets and biometric devices are registered and assigned by the platform admin.
+        Contact your platform admin to add or change devices for your school.
+      </div>
+
+      {/* Tablets Grid — view only */}
       {tablets.length === 0 ? (
         <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
-          <div className="mx-auto max-w-md">
-            <h3 className="text-lg font-semibold mb-2">No tablets registered</h3>
-            <p className="text-gray-600 mb-4">
-              Add your first tablet device to start managing biometric attendance
-            </p>
-            <Button onClick={() => setShowAddModal(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add First Tablet
-            </Button>
-          </div>
+          <h3 className="text-lg font-semibold mb-2">No tablets assigned</h3>
+          <p className="text-gray-600">
+            No tablets have been assigned to your school yet. Contact the platform administrator.
+          </p>
         </div>
       ) : (
         <>
@@ -246,19 +146,18 @@ export default function DeviceManagement() {
               <DeviceCard
                 key={tablet.id}
                 tablet={tablet}
-                onConnect={handleConnect}
-                onDisconnect={handleDisconnect}
-                onSync={handleSync}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
+                onConnect={undefined}
+                onDisconnect={undefined}
+                onSync={undefined}
+                onEdit={undefined}
+                onDelete={undefined}
               />
             ))}
           </div>
 
-          {/* Device Status Section */}
           {selectedTablet && (
             <>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-3">
                 <h2 className="text-2xl font-bold">
                   Device Status: {selectedTablet.name}
                 </h2>
@@ -283,7 +182,6 @@ export default function DeviceManagement() {
 
               <DeviceStatusPanel status={deviceStatus} loading={statusLoading} />
 
-              {/* Device Users Section */}
               {deviceUsers.length > 0 && (
                 <div className="rounded-lg border border-gray-200 bg-white p-6">
                   <h3 className="text-lg font-semibold mb-4">
@@ -291,22 +189,9 @@ export default function DeviceManagement() {
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {deviceUsers.map((user) => (
-                      <div
-                        key={user.userId}
-                        className="rounded-lg border border-gray-100 bg-gray-50 p-4"
-                      >
+                      <div key={user.userId} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
                         <div className="font-semibold">{user.name}</div>
                         <div className="text-sm text-gray-600">ID: {user.userId}</div>
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {(user.biometricMethods || []).map((method: string) => (
-                            <span
-                              key={method}
-                              className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full"
-                            >
-                              {method}
-                            </span>
-                          ))}
-                        </div>
                       </div>
                     ))}
                   </div>
@@ -316,20 +201,6 @@ export default function DeviceManagement() {
           )}
         </>
       )}
-
-      <AddTabletModal
-        open={showAddModal}
-        onClose={() => {
-          setShowAddModal(false);
-          setEditingTablet(null);
-        }}
-        mode={editingTablet ? "edit" : "create"}
-        initialData={editingTablet}
-        onSubmit={handleSaveTablet}
-      />
     </div>
   );
 }
-
-
-

@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Building2, LockKeyhole, Plus, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, API_BASE_URL } from "@/lib/api";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 export const Route = createFileRoute("/settings")({ component: SettingsPage });
@@ -102,7 +102,16 @@ function SchoolTab() {
   ]
     .filter(Boolean)
     .join(", ");
-  const logoSrc = logoPreview || schoolProfile?.school_logo_url || "";
+  const getAbsoluteLogoUrl = (logoUrl?: string | null) => {
+    if (!logoUrl) return "";
+    if (logoUrl.startsWith("http://") || logoUrl.startsWith("https://")) return logoUrl;
+    if (logoUrl.startsWith("/")) {
+      return `${API_BASE_URL.replace(/\/api\/v1$/, "")}${logoUrl}`;
+    }
+    return `${API_BASE_URL.replace(/\/api\/v1$/, "")}/${logoUrl}`;
+  };
+
+  const logoSrc = logoPreview || getAbsoluteLogoUrl(schoolProfile?.school_logo_url);
 
   const currentYear = useMemo(() => academicYears.find((year) => year.isCurrent), [academicYears]);
 
@@ -132,16 +141,38 @@ function SchoolTab() {
     void loadData();
   }, []);
 
-  const handleLogoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setLogoPreview(String(reader.result ?? ""));
-      toast.success("Logo loaded");
-    };
-    reader.readAsDataURL(file);
+    const objectUrl = URL.createObjectURL(file);
+    setLogoPreview(objectUrl);
+
+    const formData = new FormData();
+    formData.append("logo", file);
+
+    try {
+      const updatedSchool = await apiRequest<{ logo_url?: string | null }>(
+        "/school/logo",
+        {
+          method: "PATCH",
+          body: formData,
+          auth: "school",
+        }
+      );
+
+      setSchoolProfile((prev) => ({
+        ...(prev ?? {}),
+        school_logo_url: updatedSchool.logo_url ?? prev?.school_logo_url ?? null,
+      }));
+      setLogoPreview("");
+      toast.success("School logo uploaded");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to upload school logo");
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+      event.target.value = "";
+    }
   };
 
   const handleAddYear = async () => {

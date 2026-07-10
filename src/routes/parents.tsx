@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search, Send, History, Megaphone, Download, X, Loader2 } from "lucide-react";
+import { Search, Edit, Megaphone, Download, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Avatar } from "@/components/ui-kit/Avatar";
@@ -55,6 +55,7 @@ type ParentRecord = {
   phone: string;
   phone_alt?: string | null;
   email?: string | null;
+  national_id?: string | null;
   address?: string | null;
 };
 
@@ -102,6 +103,16 @@ function ParentsPage() {
   const [smsStatus, setSmsStatus] = useState("All");
   const [composeFor, setComposeFor] = useState<string | null>(null);
   const [historyFor, setHistoryFor] = useState<ParentRow | null>(null);
+  const [editingParent, setEditingParent] = useState<ParentRecord | null>(null);
+  const [editForm, setEditForm] = useState({
+    first_name: "",
+    last_name: "",
+    phone: "",
+    email: "",
+    national_id: "",
+    district: ""
+  });
+  const [editSaving, setEditSaving] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [parents, setParents] = useState<ParentRecord[]>([]);
   const [students, setStudents] = useState<StudentRecord[]>([]);
@@ -161,6 +172,57 @@ function ParentsPage() {
       };
     });
   }, [parents, studentViews, notificationLogs]);
+
+  const openEditParent = (parent: ParentRecord) => {
+    setEditingParent(parent);
+    setEditForm({
+      first_name: parent.first_name ?? "",
+      last_name: parent.last_name ?? "",
+      phone: parent.phone ?? "",
+      email: parent.email ?? "",
+      national_id: parent.national_id ?? "",
+      district: extractDistrict(parent.address)
+    });
+  };
+
+  const closeEditModal = () => {
+    setEditingParent(null);
+    setEditForm({ first_name: "", last_name: "", phone: "", email: "", national_id: "", district: "" });
+  };
+
+  const buildAddressFromDistrict = (original: string | null | undefined, district: string) => {
+    if (!original || !original.trim()) return district;
+    const parts = original.split(",").map((part) => part.trim()).filter(Boolean);
+    if (parts.length <= 1) return district;
+    return [...parts.slice(0, -1), district].join(", ");
+  };
+
+  const saveParent = async () => {
+    if (!editingParent) return;
+    setEditSaving(true);
+    try {
+      const payload = {
+        first_name: editForm.first_name,
+        last_name: editForm.last_name,
+        phone: editForm.phone,
+        email: editForm.email || undefined,
+        national_id: editForm.national_id || undefined,
+        address: buildAddressFromDistrict(editingParent.address, editForm.district)
+      };
+      const updated = await apiRequest<ParentRecord>(`/parents/${editingParent.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+        auth: "school"
+      });
+      setParents((current) => current.map((parent) => parent.id === updated.id ? updated : parent));
+      toast.success("Parent updated successfully");
+      closeEditModal();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to update parent");
+    } finally {
+      setEditSaving(false);
+    }
+  };
 
   const todaySmsLogs = useMemo(
     () => notificationLogs.filter((log) => isSameDay(log.created_at)),
@@ -268,12 +330,12 @@ function ParentsPage() {
         <select value={smsStatus} onChange={e => setSmsStatus(e.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm">
           <option>All</option><option>Sent</option><option>Failed</option><option>Pending</option>
         </select>
-        <button onClick={() => setBulkOpen(true)} className="h-10 inline-flex items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
+        {/* <button onClick={() => setBulkOpen(true)} className="h-10 inline-flex items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
           <Megaphone className="h-4 w-4" /> Bulk SMS
-        </button>
-        <button onClick={() => toast.success("Contacts exported (CSV)")} className="h-10 inline-flex items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted">
+        </button> */}
+        {/* <button onClick={() => toast.success("Contacts exported (CSV)")} className="h-10 inline-flex items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted">
           <Download className="h-4 w-4" /> Export
-        </button>
+        </button> */}
       </div>
 
       <div className="mt-5 rounded-xl border border-border bg-card overflow-hidden">
@@ -325,11 +387,14 @@ function ParentsPage() {
                       <td className="px-4 py-3 text-xs text-muted-foreground">{parent.lastSMSSent}</td>
                       <td className="px-4 py-3">{parent.totalSMSCount}</td>
                       <td className="px-4 py-3 space-x-2 whitespace-nowrap">
-                        <button onClick={() => setComposeFor(parent.id)} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
-                          <Send className="h-3 w-3" /> Send SMS
-                        </button>
-                        <button onClick={() => setHistoryFor(parent)} className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:underline">
-                          <History className="h-3 w-3" /> History
+                        <button
+                          onClick={() => {
+                            const record = parents.find((p) => p.id === parent.id);
+                            if (record) openEditParent(record);
+                          }}
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                        >
+                          <Edit className="h-3 w-3" /> Edit
                         </button>
                       </td>
                     </tr>
@@ -348,6 +413,17 @@ function ParentsPage() {
         students={smsStudents}
         onClose={() => setComposeFor(null)}
       />
+      {editingParent && (
+        <ParentEditModal
+          open={!!editingParent}
+          parent={editingParent}
+          form={editForm}
+          setForm={setEditForm}
+          saving={editSaving}
+          onSave={saveParent}
+          onClose={closeEditModal}
+        />
+      )}
       {historyFor && <HistoryDrawer parent={historyFor} logs={notificationLogs} onClose={() => setHistoryFor(null)} />}
       {bulkOpen && (
         <BulkSMSModal
@@ -358,6 +434,84 @@ function ParentsPage() {
         />
       )}
     </AppLayout>
+  );
+}
+
+function ParentEditModal({
+  open,
+  parent,
+  form,
+  setForm,
+  saving,
+  onSave,
+  onClose
+}: {
+  open: boolean;
+  parent: ParentRecord;
+  form: typeof editForm;
+  setForm: React.Dispatch<React.SetStateAction<typeof editForm>>;
+  saving: boolean;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[55] grid place-items-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="w-full max-w-xl rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div>
+            <h3 className="font-display font-bold">Edit Parent</h3>
+            <p className="text-sm text-muted-foreground">Update parent contact and district details.</p>
+          </div>
+          <button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="space-y-4 px-6 py-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm font-medium text-foreground">
+              First Name
+              <input value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
+                className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+            </label>
+            <label className="block text-sm font-medium text-foreground">
+              Last Name
+              <input value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))}
+                className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm font-medium text-foreground">
+              Phone
+              <input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+            </label>
+            <label className="block text-sm font-medium text-foreground">
+              Email
+              <input value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm font-medium text-foreground">
+              National ID
+              <input value={form.national_id} onChange={(e) => setForm((f) => ({ ...f, national_id: e.target.value }))}
+                className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+            </label>
+            <label className="block text-sm font-medium text-foreground">
+              District
+              <input value={form.district} onChange={(e) => setForm((f) => ({ ...f, district: e.target.value }))}
+                className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+            </label>
+          </div>
+        </div>
+        <div className="flex flex-col gap-3 border-t border-border px-6 py-4 sm:flex-row sm:justify-end">
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
+          <button onClick={onSave} disabled={saving}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -230,10 +230,7 @@ function NotificationsPage() {
         </div>
       </div>
 
-      <div className="mt-5 rounded-xl border border-dashed border-border bg-card p-5 text-sm">
-        Configure the Uganda SMS provider in <Link to="/settings" className="text-primary font-semibold hover:underline">Settings →</Link>
-      </div>
-
+    
       {view && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onClick={() => setView(null)}>
           <div className="bg-card rounded-2xl shadow-2xl max-w-md w-full" onClick={e => e.stopPropagation()}>

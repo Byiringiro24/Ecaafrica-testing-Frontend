@@ -391,7 +391,7 @@ function DashboardPage() {
             </div>
           </div>
 
-          <div className="mt-6">
+          <div className="mt-6 hidden">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <h3 className="font-display font-bold text-lg">Device Status</h3>

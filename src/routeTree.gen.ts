@@ -83,15 +83,19 @@ import { Route as ExamsAnalyticsRouteImport } from './routes/exams.analytics'
 import { Route as BoardingDevicesRouteImport } from './routes/boarding.devices'
 import { Route as BoardingDeviceStudentsRouteImport } from './routes/boarding.device-students'
 import { Route as BoardingDeviceSessionsRouteImport } from './routes/boarding.device-sessions'
-import { Route as BoardingDeviceLogsRouteImport } from './routes/boarding.device-logs'
 import { Route as BoardingOfficerReportsRouteImport } from './routes/boarding-officer.reports'
 import { Route as BoardingOfficerLeavesRouteImport } from './routes/boarding-officer.leaves'
 import { Route as BoardingOfficerDormitoryRouteImport } from './routes/boarding-officer.dormitory'
 import { Route as BoardingOfficerDashboardRouteImport } from './routes/boarding-officer.dashboard'
 import { Route as BoardingOfficerAttendanceRouteImport } from './routes/boarding-officer.attendance'
 import { Route as SuperAdminSchoolsIndexRouteImport } from './routes/super-admin.schools.index'
+import { Route as SuperAdminManageSmsIndexRouteImport } from './routes/super-admin.manage-sms.index'
 import { Route as GateKeeperAttendanceIndexRouteImport } from './routes/gate-keeper.attendance.index'
 import { Route as SuperAdminSchoolsIdRouteImport } from './routes/super-admin.schools.$id'
+import { Route as SuperAdminManageSmsSchoolExitRouteImport } from './routes/super-admin.manage-sms.school-exit'
+import { Route as SuperAdminManageSmsSchoolEntryRouteImport } from './routes/super-admin.manage-sms.school-entry'
+import { Route as SuperAdminManageSmsClassEntryRouteImport } from './routes/super-admin.manage-sms.class-entry'
+import { Route as SuperAdminManageSmsClassAbsentRouteImport } from './routes/super-admin.manage-sms.class-absent'
 import { Route as GateKeeperAttendanceMakeAttendanceRouteImport } from './routes/gate-keeper.attendance.make-attendance'
 import { Route as GateKeeperAttendanceHistoryRouteImport } from './routes/gate-keeper.attendance.history'
 import { Route as GateKeeperAttendanceDeviceAttendanceRouteImport } from './routes/gate-keeper.attendance.device-attendance'
@@ -466,11 +470,6 @@ const BoardingDeviceSessionsRoute = BoardingDeviceSessionsRouteImport.update({
   path: '/device-sessions',
   getParentRoute: () => BoardingRoute,
 } as any)
-const BoardingDeviceLogsRoute = BoardingDeviceLogsRouteImport.update({
-  id: '/device-logs',
-  path: '/device-logs',
-  getParentRoute: () => BoardingRoute,
-} as any)
 const BoardingOfficerReportsRoute = BoardingOfficerReportsRouteImport.update({
   id: '/boarding-officer/reports',
   path: '/boarding-officer/reports',
@@ -504,6 +503,12 @@ const SuperAdminSchoolsIndexRoute = SuperAdminSchoolsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SuperAdminSchoolsRoute,
 } as any)
+const SuperAdminManageSmsIndexRoute =
+  SuperAdminManageSmsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => SuperAdminManageSmsRoute,
+  } as any)
 const GateKeeperAttendanceIndexRoute =
   GateKeeperAttendanceIndexRouteImport.update({
     id: '/',
@@ -515,6 +520,30 @@ const SuperAdminSchoolsIdRoute = SuperAdminSchoolsIdRouteImport.update({
   path: '/$id',
   getParentRoute: () => SuperAdminSchoolsRoute,
 } as any)
+const SuperAdminManageSmsSchoolExitRoute =
+  SuperAdminManageSmsSchoolExitRouteImport.update({
+    id: '/school-exit',
+    path: '/school-exit',
+    getParentRoute: () => SuperAdminManageSmsRoute,
+  } as any)
+const SuperAdminManageSmsSchoolEntryRoute =
+  SuperAdminManageSmsSchoolEntryRouteImport.update({
+    id: '/school-entry',
+    path: '/school-entry',
+    getParentRoute: () => SuperAdminManageSmsRoute,
+  } as any)
+const SuperAdminManageSmsClassEntryRoute =
+  SuperAdminManageSmsClassEntryRouteImport.update({
+    id: '/class-entry',
+    path: '/class-entry',
+    getParentRoute: () => SuperAdminManageSmsRoute,
+  } as any)
+const SuperAdminManageSmsClassAbsentRoute =
+  SuperAdminManageSmsClassAbsentRouteImport.update({
+    id: '/class-absent',
+    path: '/class-absent',
+    getParentRoute: () => SuperAdminManageSmsRoute,
+  } as any)
 const GateKeeperAttendanceMakeAttendanceRoute =
   GateKeeperAttendanceMakeAttendanceRouteImport.update({
     id: '/make-attendance',
@@ -568,7 +597,6 @@ export interface FileRoutesByFullPath {
   '/boarding-officer/dormitory': typeof BoardingOfficerDormitoryRoute
   '/boarding-officer/leaves': typeof BoardingOfficerLeavesRoute
   '/boarding-officer/reports': typeof BoardingOfficerReportsRoute
-  '/boarding/device-logs': typeof BoardingDeviceLogsRoute
   '/boarding/device-sessions': typeof BoardingDeviceSessionsRoute
   '/boarding/device-students': typeof BoardingDeviceStudentsRoute
   '/boarding/devices': typeof BoardingDevicesRoute
@@ -595,7 +623,7 @@ export interface FileRoutesByFullPath {
   '/super-admin/audit': typeof SuperAdminAuditRoute
   '/super-admin/billing': typeof SuperAdminBillingRoute
   '/super-admin/hardware': typeof SuperAdminHardwareRoute
-  '/super-admin/manage-sms': typeof SuperAdminManageSmsRoute
+  '/super-admin/manage-sms': typeof SuperAdminManageSmsRouteWithChildren
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
   '/super-admin/schools': typeof SuperAdminSchoolsRouteWithChildren
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
@@ -618,8 +646,13 @@ export interface FileRoutesByFullPath {
   '/gate-keeper/attendance/device-attendance': typeof GateKeeperAttendanceDeviceAttendanceRoute
   '/gate-keeper/attendance/history': typeof GateKeeperAttendanceHistoryRoute
   '/gate-keeper/attendance/make-attendance': typeof GateKeeperAttendanceMakeAttendanceRoute
+  '/super-admin/manage-sms/class-absent': typeof SuperAdminManageSmsClassAbsentRoute
+  '/super-admin/manage-sms/class-entry': typeof SuperAdminManageSmsClassEntryRoute
+  '/super-admin/manage-sms/school-entry': typeof SuperAdminManageSmsSchoolEntryRoute
+  '/super-admin/manage-sms/school-exit': typeof SuperAdminManageSmsSchoolExitRoute
   '/super-admin/schools/$id': typeof SuperAdminSchoolsIdRoute
   '/gate-keeper/attendance/': typeof GateKeeperAttendanceIndexRoute
+  '/super-admin/manage-sms/': typeof SuperAdminManageSmsIndexRoute
   '/super-admin/schools/': typeof SuperAdminSchoolsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -652,7 +685,6 @@ export interface FileRoutesByTo {
   '/boarding-officer/dormitory': typeof BoardingOfficerDormitoryRoute
   '/boarding-officer/leaves': typeof BoardingOfficerLeavesRoute
   '/boarding-officer/reports': typeof BoardingOfficerReportsRoute
-  '/boarding/device-logs': typeof BoardingDeviceLogsRoute
   '/boarding/device-sessions': typeof BoardingDeviceSessionsRoute
   '/boarding/device-students': typeof BoardingDeviceStudentsRoute
   '/boarding/devices': typeof BoardingDevicesRoute
@@ -678,7 +710,6 @@ export interface FileRoutesByTo {
   '/super-admin/audit': typeof SuperAdminAuditRoute
   '/super-admin/billing': typeof SuperAdminBillingRoute
   '/super-admin/hardware': typeof SuperAdminHardwareRoute
-  '/super-admin/manage-sms': typeof SuperAdminManageSmsRoute
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
   '/super-admin/support': typeof SuperAdminSupportRoute
@@ -700,8 +731,13 @@ export interface FileRoutesByTo {
   '/gate-keeper/attendance/device-attendance': typeof GateKeeperAttendanceDeviceAttendanceRoute
   '/gate-keeper/attendance/history': typeof GateKeeperAttendanceHistoryRoute
   '/gate-keeper/attendance/make-attendance': typeof GateKeeperAttendanceMakeAttendanceRoute
+  '/super-admin/manage-sms/class-absent': typeof SuperAdminManageSmsClassAbsentRoute
+  '/super-admin/manage-sms/class-entry': typeof SuperAdminManageSmsClassEntryRoute
+  '/super-admin/manage-sms/school-entry': typeof SuperAdminManageSmsSchoolEntryRoute
+  '/super-admin/manage-sms/school-exit': typeof SuperAdminManageSmsSchoolExitRoute
   '/super-admin/schools/$id': typeof SuperAdminSchoolsIdRoute
   '/gate-keeper/attendance': typeof GateKeeperAttendanceIndexRoute
+  '/super-admin/manage-sms': typeof SuperAdminManageSmsIndexRoute
   '/super-admin/schools': typeof SuperAdminSchoolsIndexRoute
 }
 export interface FileRoutesById {
@@ -739,7 +775,6 @@ export interface FileRoutesById {
   '/boarding-officer/dormitory': typeof BoardingOfficerDormitoryRoute
   '/boarding-officer/leaves': typeof BoardingOfficerLeavesRoute
   '/boarding-officer/reports': typeof BoardingOfficerReportsRoute
-  '/boarding/device-logs': typeof BoardingDeviceLogsRoute
   '/boarding/device-sessions': typeof BoardingDeviceSessionsRoute
   '/boarding/device-students': typeof BoardingDeviceStudentsRoute
   '/boarding/devices': typeof BoardingDevicesRoute
@@ -766,7 +801,7 @@ export interface FileRoutesById {
   '/super-admin/audit': typeof SuperAdminAuditRoute
   '/super-admin/billing': typeof SuperAdminBillingRoute
   '/super-admin/hardware': typeof SuperAdminHardwareRoute
-  '/super-admin/manage-sms': typeof SuperAdminManageSmsRoute
+  '/super-admin/manage-sms': typeof SuperAdminManageSmsRouteWithChildren
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
   '/super-admin/schools': typeof SuperAdminSchoolsRouteWithChildren
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
@@ -789,8 +824,13 @@ export interface FileRoutesById {
   '/gate-keeper/attendance/device-attendance': typeof GateKeeperAttendanceDeviceAttendanceRoute
   '/gate-keeper/attendance/history': typeof GateKeeperAttendanceHistoryRoute
   '/gate-keeper/attendance/make-attendance': typeof GateKeeperAttendanceMakeAttendanceRoute
+  '/super-admin/manage-sms/class-absent': typeof SuperAdminManageSmsClassAbsentRoute
+  '/super-admin/manage-sms/class-entry': typeof SuperAdminManageSmsClassEntryRoute
+  '/super-admin/manage-sms/school-entry': typeof SuperAdminManageSmsSchoolEntryRoute
+  '/super-admin/manage-sms/school-exit': typeof SuperAdminManageSmsSchoolExitRoute
   '/super-admin/schools/$id': typeof SuperAdminSchoolsIdRoute
   '/gate-keeper/attendance/': typeof GateKeeperAttendanceIndexRoute
+  '/super-admin/manage-sms/': typeof SuperAdminManageSmsIndexRoute
   '/super-admin/schools/': typeof SuperAdminSchoolsIndexRoute
 }
 export interface FileRouteTypes {
@@ -829,7 +869,6 @@ export interface FileRouteTypes {
     | '/boarding-officer/dormitory'
     | '/boarding-officer/leaves'
     | '/boarding-officer/reports'
-    | '/boarding/device-logs'
     | '/boarding/device-sessions'
     | '/boarding/device-students'
     | '/boarding/devices'
@@ -879,8 +918,13 @@ export interface FileRouteTypes {
     | '/gate-keeper/attendance/device-attendance'
     | '/gate-keeper/attendance/history'
     | '/gate-keeper/attendance/make-attendance'
+    | '/super-admin/manage-sms/class-absent'
+    | '/super-admin/manage-sms/class-entry'
+    | '/super-admin/manage-sms/school-entry'
+    | '/super-admin/manage-sms/school-exit'
     | '/super-admin/schools/$id'
     | '/gate-keeper/attendance/'
+    | '/super-admin/manage-sms/'
     | '/super-admin/schools/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -913,7 +957,6 @@ export interface FileRouteTypes {
     | '/boarding-officer/dormitory'
     | '/boarding-officer/leaves'
     | '/boarding-officer/reports'
-    | '/boarding/device-logs'
     | '/boarding/device-sessions'
     | '/boarding/device-students'
     | '/boarding/devices'
@@ -939,7 +982,6 @@ export interface FileRouteTypes {
     | '/super-admin/audit'
     | '/super-admin/billing'
     | '/super-admin/hardware'
-    | '/super-admin/manage-sms'
     | '/super-admin/revenue'
     | '/super-admin/subscriptions'
     | '/super-admin/support'
@@ -961,8 +1003,13 @@ export interface FileRouteTypes {
     | '/gate-keeper/attendance/device-attendance'
     | '/gate-keeper/attendance/history'
     | '/gate-keeper/attendance/make-attendance'
+    | '/super-admin/manage-sms/class-absent'
+    | '/super-admin/manage-sms/class-entry'
+    | '/super-admin/manage-sms/school-entry'
+    | '/super-admin/manage-sms/school-exit'
     | '/super-admin/schools/$id'
     | '/gate-keeper/attendance'
+    | '/super-admin/manage-sms'
     | '/super-admin/schools'
   id:
     | '__root__'
@@ -999,7 +1046,6 @@ export interface FileRouteTypes {
     | '/boarding-officer/dormitory'
     | '/boarding-officer/leaves'
     | '/boarding-officer/reports'
-    | '/boarding/device-logs'
     | '/boarding/device-sessions'
     | '/boarding/device-students'
     | '/boarding/devices'
@@ -1049,8 +1095,13 @@ export interface FileRouteTypes {
     | '/gate-keeper/attendance/device-attendance'
     | '/gate-keeper/attendance/history'
     | '/gate-keeper/attendance/make-attendance'
+    | '/super-admin/manage-sms/class-absent'
+    | '/super-admin/manage-sms/class-entry'
+    | '/super-admin/manage-sms/school-entry'
+    | '/super-admin/manage-sms/school-exit'
     | '/super-admin/schools/$id'
     | '/gate-keeper/attendance/'
+    | '/super-admin/manage-sms/'
     | '/super-admin/schools/'
   fileRoutesById: FileRoutesById
 }
@@ -1624,13 +1675,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BoardingDeviceSessionsRouteImport
       parentRoute: typeof BoardingRoute
     }
-    '/boarding/device-logs': {
-      id: '/boarding/device-logs'
-      path: '/device-logs'
-      fullPath: '/boarding/device-logs'
-      preLoaderRoute: typeof BoardingDeviceLogsRouteImport
-      parentRoute: typeof BoardingRoute
-    }
     '/boarding-officer/reports': {
       id: '/boarding-officer/reports'
       path: '/boarding-officer/reports'
@@ -1673,6 +1717,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SuperAdminSchoolsIndexRouteImport
       parentRoute: typeof SuperAdminSchoolsRoute
     }
+    '/super-admin/manage-sms/': {
+      id: '/super-admin/manage-sms/'
+      path: '/'
+      fullPath: '/super-admin/manage-sms/'
+      preLoaderRoute: typeof SuperAdminManageSmsIndexRouteImport
+      parentRoute: typeof SuperAdminManageSmsRoute
+    }
     '/gate-keeper/attendance/': {
       id: '/gate-keeper/attendance/'
       path: '/'
@@ -1686,6 +1737,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/super-admin/schools/$id'
       preLoaderRoute: typeof SuperAdminSchoolsIdRouteImport
       parentRoute: typeof SuperAdminSchoolsRoute
+    }
+    '/super-admin/manage-sms/school-exit': {
+      id: '/super-admin/manage-sms/school-exit'
+      path: '/school-exit'
+      fullPath: '/super-admin/manage-sms/school-exit'
+      preLoaderRoute: typeof SuperAdminManageSmsSchoolExitRouteImport
+      parentRoute: typeof SuperAdminManageSmsRoute
+    }
+    '/super-admin/manage-sms/school-entry': {
+      id: '/super-admin/manage-sms/school-entry'
+      path: '/school-entry'
+      fullPath: '/super-admin/manage-sms/school-entry'
+      preLoaderRoute: typeof SuperAdminManageSmsSchoolEntryRouteImport
+      parentRoute: typeof SuperAdminManageSmsRoute
+    }
+    '/super-admin/manage-sms/class-entry': {
+      id: '/super-admin/manage-sms/class-entry'
+      path: '/class-entry'
+      fullPath: '/super-admin/manage-sms/class-entry'
+      preLoaderRoute: typeof SuperAdminManageSmsClassEntryRouteImport
+      parentRoute: typeof SuperAdminManageSmsRoute
+    }
+    '/super-admin/manage-sms/class-absent': {
+      id: '/super-admin/manage-sms/class-absent'
+      path: '/class-absent'
+      fullPath: '/super-admin/manage-sms/class-absent'
+      preLoaderRoute: typeof SuperAdminManageSmsClassAbsentRouteImport
+      parentRoute: typeof SuperAdminManageSmsRoute
     }
     '/gate-keeper/attendance/make-attendance': {
       id: '/gate-keeper/attendance/make-attendance'
@@ -1712,7 +1791,6 @@ declare module '@tanstack/react-router' {
 }
 
 interface BoardingRouteChildren {
-  BoardingDeviceLogsRoute: typeof BoardingDeviceLogsRoute
   BoardingDeviceSessionsRoute: typeof BoardingDeviceSessionsRoute
   BoardingDeviceStudentsRoute: typeof BoardingDeviceStudentsRoute
   BoardingDevicesRoute: typeof BoardingDevicesRoute
@@ -1720,7 +1798,6 @@ interface BoardingRouteChildren {
 }
 
 const BoardingRouteChildren: BoardingRouteChildren = {
-  BoardingDeviceLogsRoute: BoardingDeviceLogsRoute,
   BoardingDeviceSessionsRoute: BoardingDeviceSessionsRoute,
   BoardingDeviceStudentsRoute: BoardingDeviceStudentsRoute,
   BoardingDevicesRoute: BoardingDevicesRoute,
@@ -1777,6 +1854,25 @@ const StaffRouteChildren: StaffRouteChildren = {
 
 const StaffRouteWithChildren = StaffRoute._addFileChildren(StaffRouteChildren)
 
+interface SuperAdminManageSmsRouteChildren {
+  SuperAdminManageSmsClassAbsentRoute: typeof SuperAdminManageSmsClassAbsentRoute
+  SuperAdminManageSmsClassEntryRoute: typeof SuperAdminManageSmsClassEntryRoute
+  SuperAdminManageSmsSchoolEntryRoute: typeof SuperAdminManageSmsSchoolEntryRoute
+  SuperAdminManageSmsSchoolExitRoute: typeof SuperAdminManageSmsSchoolExitRoute
+  SuperAdminManageSmsIndexRoute: typeof SuperAdminManageSmsIndexRoute
+}
+
+const SuperAdminManageSmsRouteChildren: SuperAdminManageSmsRouteChildren = {
+  SuperAdminManageSmsClassAbsentRoute: SuperAdminManageSmsClassAbsentRoute,
+  SuperAdminManageSmsClassEntryRoute: SuperAdminManageSmsClassEntryRoute,
+  SuperAdminManageSmsSchoolEntryRoute: SuperAdminManageSmsSchoolEntryRoute,
+  SuperAdminManageSmsSchoolExitRoute: SuperAdminManageSmsSchoolExitRoute,
+  SuperAdminManageSmsIndexRoute: SuperAdminManageSmsIndexRoute,
+}
+
+const SuperAdminManageSmsRouteWithChildren =
+  SuperAdminManageSmsRoute._addFileChildren(SuperAdminManageSmsRouteChildren)
+
 interface SuperAdminSchoolsRouteChildren {
   SuperAdminSchoolsIdRoute: typeof SuperAdminSchoolsIdRoute
   SuperAdminSchoolsIndexRoute: typeof SuperAdminSchoolsIndexRoute
@@ -1796,7 +1892,7 @@ interface SuperAdminRouteChildren {
   SuperAdminAuditRoute: typeof SuperAdminAuditRoute
   SuperAdminBillingRoute: typeof SuperAdminBillingRoute
   SuperAdminHardwareRoute: typeof SuperAdminHardwareRoute
-  SuperAdminManageSmsRoute: typeof SuperAdminManageSmsRoute
+  SuperAdminManageSmsRoute: typeof SuperAdminManageSmsRouteWithChildren
   SuperAdminRevenueRoute: typeof SuperAdminRevenueRoute
   SuperAdminSchoolsRoute: typeof SuperAdminSchoolsRouteWithChildren
   SuperAdminSubscriptionsRoute: typeof SuperAdminSubscriptionsRoute
@@ -1812,7 +1908,7 @@ const SuperAdminRouteChildren: SuperAdminRouteChildren = {
   SuperAdminAuditRoute: SuperAdminAuditRoute,
   SuperAdminBillingRoute: SuperAdminBillingRoute,
   SuperAdminHardwareRoute: SuperAdminHardwareRoute,
-  SuperAdminManageSmsRoute: SuperAdminManageSmsRoute,
+  SuperAdminManageSmsRoute: SuperAdminManageSmsRouteWithChildren,
   SuperAdminRevenueRoute: SuperAdminRevenueRoute,
   SuperAdminSchoolsRoute: SuperAdminSchoolsRouteWithChildren,
   SuperAdminSubscriptionsRoute: SuperAdminSubscriptionsRoute,

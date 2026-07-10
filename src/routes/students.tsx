@@ -670,14 +670,7 @@ function EditStudentModal({
                   {YEARS.map(y => <option key={y}>{y}</option>)}
                 </select>
               </EField>
-              <EField label="Combination (optional)">
-                <select value={form.combination} onChange={e => set("combination", e.target.value)} className={eCls()}>
-                  <option value="">None</option>
-                  {["PCM", "PCB", "MCB", "HEG", "MEG", "MPC", "HGL"].map(c => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
-              </EField>
+            
               <EField label="Blood Group">
                 <select value={form.bloodGroup} onChange={e => set("bloodGroup", e.target.value)} className={eCls()}>
                   <option value="">Select…</option>

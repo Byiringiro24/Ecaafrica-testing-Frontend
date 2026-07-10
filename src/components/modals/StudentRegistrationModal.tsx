@@ -108,10 +108,13 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
   const validateStep = () => {
     const e: typeof errors = {};
     if (step === 0) {
+      if (!data.studentIdNumber.trim()) e.studentIdNumber = true;
       if (!data.firstName.trim()) e.firstName = true;
       if (!data.lastName.trim()) e.lastName = true;
       if (!data.residency) e.residency = true;
       if (!data.dob) e.dob = true;
+      if (!data.sectionId) e.sectionId = true;
+      if (!data.year) e.year = true;
     }
     if (step === 1) {
       if (!data.parentName.trim()) e.parentName = true;
@@ -247,9 +250,9 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
         <div className="px-6 py-5 overflow-y-auto flex-1">
           {step === 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Student ID Number">
+              <Field label="Student ID Number *" error={errors.studentIdNumber}>
                 <input value={data.studentIdNumber} onChange={e => set("studentIdNumber", e.target.value)}
-                  className={inputCls()} placeholder="e.g. 2024001" />
+                  className={inputCls(errors.studentIdNumber)} placeholder="e.g. 2024001" />
               </Field>
               <Field label="First Name *" error={errors.firstName}>
                 <input value={data.firstName} onChange={e => set("firstName", e.target.value)}
@@ -272,9 +275,9 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
                   ))}
                 </div>
               </Field>
-              <Field label="Boarding / Day Student *" error={errors.residency}>
+              <Field label="Boarding / Day scholar *" error={errors.residency}>
                 <select value={data.residency} onChange={e => set("residency", e.target.value)} className={inputCls(errors.residency)}>
-                  <option value="Day">Day Student</option>
+                  <option value="Day">Day scholar</option>
                   <option value="Boarding">Boarding Student</option>
                 </select>
               </Field>
@@ -295,11 +298,11 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
                   ))}
                 </select>
               </Field>
-              <Field label="Class">
+              <Field label="Class *" error={errors.sectionId}>
                 <select
                   value={data.sectionId}
                   onChange={e => handleSectionChange(e.target.value)}
-                  className={inputCls()}
+                  className={inputCls(errors.sectionId)}
                   disabled={refDataLoading}
                 >
                   <option value="">
@@ -320,8 +323,8 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
                   </select>
                 </Field>
               )}
-              <Field label="Year of Enrollment">
-                <select value={data.year} onChange={e => set("year", e.target.value)} className={inputCls()}>
+              <Field label="Year of Enrollment *" error={errors.year}>
+                <select value={data.year} onChange={e => set("year", e.target.value)} className={inputCls(errors.year)}>
                   {["2022", "2023", "2024", "2025", "2026"].map(y => <option key={y}>{y}</option>)}
                 </select>
               </Field>

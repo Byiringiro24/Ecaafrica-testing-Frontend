@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { LineChart, Line, ResponsiveContainer, Tooltip } from "recharts";
 import { toast } from "sonner";
@@ -458,15 +458,17 @@ function SchoolDetailPage() {
 
   const handleUpdateSchool = async () => {
     if (!editForm) return;
+
     const errors: Partial<Record<keyof SchoolFormState, boolean>> = {};
     if (!editForm.name.trim()) errors.name = true;
     if (!editForm.country.trim()) errors.country = true;
     if (!editForm.province.trim()) errors.province = true;
     if (!editForm.district.trim()) errors.district = true;
     if (!editForm.school_email?.trim()) errors.school_email = true;
-    if (parsePhoneValue(editForm.school_phone).nationalNumber.length !== 9) errors.school_phone = true;
-      const [editForm, setEditForm] = useState<SchoolFormState | null>(null);
-      const [editFormErrors, setEditFormErrors] = useState<Partial<Record<keyof SchoolFormState, boolean>>>({});
+
+    const phoneValue = parsePhoneValue(editForm.school_phone);
+    if (phoneValue.nationalNumber.length !== 9) errors.school_phone = true;
+
     if (Object.keys(errors).length > 0) {
       setEditFormErrors(errors);
       toast.error("Please fill all required fields.");
@@ -927,7 +929,10 @@ function SchoolDetailPage() {
             <SaPhoneInput
               label="School Phone"
               value={editForm.school_phone}
-              onChange={v => setEditForm(s => s ? { ...s, school_phone: v } : s)}
+              onChange={(value: string | ChangeEvent<HTMLInputElement>) => {
+                const nextValue = typeof value === "string" ? value : value.target.value;
+                setEditForm((s) => (s ? { ...s, school_phone: nextValue } : s));
+              }}
               defaultCountryName={editForm.country}
               required
               error={Boolean(editFormErrors.school_phone)}

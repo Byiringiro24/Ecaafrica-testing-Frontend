@@ -159,20 +159,40 @@
 }
 
 @layer base {
-  * {
+  *, *::before, *::after {
+    box-sizing: border-box;
     border-color: var(--color-border);
+  }
+  html,
+  body,
+  #root {
+    width: 100%;
   }
   html {
     font-family: var(--font-sans);
+    min-height: 100%;
+    overflow-x: hidden;
   }
   body {
     background: var(--color-background);
     color: var(--color-foreground);
-    min-height: 100vh;
+    min-height: 100%;
+    overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
     font-family: var(--font-sans);
     font-size: 16px;
     line-height: 1.5;
+  }
+  img,
+  svg,
+  video,
+  canvas,
+  iframe {
+    max-width: 100%;
+    height: auto;
+  }
+  #root {
+    min-height: 100%;
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);

@@ -202,7 +202,7 @@ export default function Home() {
               </p>
               <div className="pt-4 flex flex-wrap gap-4 justify-center">
                 <Button size="lg" className="bg-[#42A5F5] hover:bg-[#42A5F5]/90 text-white font-bold rounded-xl px-8 h-12 shadow-lg transition-all hover:scale-[1.02]" asChild>
-                  <Link to="/contact">Book a Demo</Link>
+                  <Link to="/book-demo">Book a Demo</Link>
                 </Button>
               </div>
             </div>

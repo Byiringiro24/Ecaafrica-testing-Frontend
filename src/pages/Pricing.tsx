@@ -1,5 +1,6 @@
 import Layout from "./Layout";
 import { Link } from "@tanstack/react-router";
+import pricingBg from "@/assets/pricing.jpg";
 
 const conditions = [
   {
@@ -126,13 +127,19 @@ const plans = [
   },
 ];
 
-const whyItems = [
-  { icon: "", color: "blue", title: "All-in-one platform", desc: "Every tool your school needs in one place." },
-  { icon: "", color: "green", title: "Real-time smart insights", desc: "Live dashboards with actionable analytics." },
-  { icon: "", color: "purple", title: "Secure cloud infrastructure", desc: "Your data protected, always available." },
-  { icon: "", color: "amber", title: "Scalable for every institution", desc: "Grows from a single school to a district." },
-  { icon: "", color: "teal", title: "Trusted by schools", desc: "Proven reliability across African schools." },
-  { icon: "", color: "coral", title: "Built for Africa", desc: "Designed for local needs and growth." },
+const experienceHighlights = [
+  {
+    title: "Purpose-built for schools",
+    desc: "Every workflow is designed around attendance, parents, staff, and leadership needs.",
+  },
+  {
+    title: "Reliable at scale",
+    desc: "The platform stays dependable for single schools, growing campuses, and multi-site groups.",
+  },
+  {
+    title: "Secure by design",
+    desc: "Access controls, audit trails, and backups help your institution stay protected and compliant.",
+  },
 ];
 
 const condIconBg = {
@@ -327,20 +334,16 @@ export default function Pricing() {
     <Layout>
       <div className="w-full">
         {/* HERO */}
-        <div className="relative overflow-hidden text-center py-20 md:py-28 text-white w-full"
-          style={{ background: "linear-gradient(135deg, #063970 0%, #0a5aad 55%, #1a7a3c 100%)" }}>
+        <div className="relative overflow-hidden text-center py-20 md:py-28 text-white w-full bg-cover bg-center"
+          style={{ backgroundImage: `linear-gradient(110deg, rgba(6,57,112,0.9) 0%, rgba(6,57,112,0.76) 50%, rgba(6,57,112,0.84) 100%), url(${pricingBg})` }}>
           <div className="absolute top-0 right-0 w-48 h-48 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/2" />
           <div className="absolute bottom-0 left-0 w-36 h-36 rounded-full bg-white/5 translate-y-1/2 -translate-x-1/2" />
           <div className="relative z-10 max-w-2xl mx-auto px-6">
-            <span className="inline-block bg-white/15 text-white text-[10px] font-bold uppercase tracking-[2.5px] px-4 py-1.5 rounded-full mb-5">
-              Subscription Plans
-            </span>
             <h1 className="font-display text-4xl md:text-5xl font-extrabold leading-tight mb-4 drop-shadow-md">
-              One Platform.{" "}
-              <span className="text-yellow-300">Every Solution.</span>
+              One Platform.<span className="text-yellow-300"> Every Solution.</span>
             </h1>
-            <p className="text-white/75 text-sm md:text-base leading-relaxed max-w-lg mx-auto">
-              Complete School Management Ecosystem — built for African institutions.
+            <p className="text-white/80 text-sm md:text-base leading-relaxed max-w-lg mx-auto">
+              Flexible pricing for schools that want a premium digital experience with clarity, control, and confidence.
             </p>
           </div>
         </div>
@@ -387,22 +390,24 @@ export default function Pricing() {
             </div>
           </section>
 
-          {/* WHY SECTION */}
-          <section>
-            <div className="mb-5">
-              <h2 className="font-display text-xl font-bold text-slate-800">Why choose Education Care Africa?</h2>
-              <p className="text-slate-400 text-sm">Built for Africa, designed for growth.</p>
+          {/* EXPERIENCE SECTION */}
+          <section className="rounded-3xl border border-slate-200 bg-white/80 p-6 md:p-8 shadow-sm">
+            <div className="mb-6 max-w-2xl">
+              <h2 className="font-display text-xl font-bold text-slate-800">A platform that feels as polished as your school brand</h2>
+              <p className="text-slate-500 text-sm mt-2 leading-relaxed">
+                From the first onboarding call to daily use across campus, the experience is built to be simple, elegant, and dependable.
+              </p>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {whyItems.map((w) => (
-                <div key={w.title} className="flex items-start gap-3 bg-slate-50 rounded-xl p-3.5">
-                  <div className="w-9 h-9 min-w-[36px] rounded-lg bg-white shadow-sm flex items-center justify-center text-base">
-                    {w.icon}
+            <div className="grid md:grid-cols-3 gap-4">
+              {experienceHighlights.map((item) => (
+                <div key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="h-9 w-9 rounded-full bg-[#0A3D91]/10 text-[#0A3D91] flex items-center justify-center mb-3">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2">
+                      <path d="M5 12.5 9.5 17 19 7.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
                   </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-800 leading-snug mb-0.5">{w.title}</p>
-                    <p className="text-[11px] text-slate-500 leading-snug">{w.desc}</p>
-                  </div>
+                  <h3 className="text-sm font-semibold text-slate-800">{item.title}</h3>
+                  <p className="text-sm text-slate-500 mt-1 leading-relaxed">{item.desc}</p>
                 </div>
               ))}
             </div>

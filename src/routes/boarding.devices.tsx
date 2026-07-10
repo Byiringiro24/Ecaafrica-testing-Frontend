@@ -11,14 +11,12 @@ import {
   Database,
   DownloadCloud,
   FileSpreadsheet,
-  Globe2,
   HardDrive,
   KeyRound,
   LayoutDashboard,
   Loader2,
   Network,
   Plus,
-  Power,
   RefreshCw,
   Search,
   Settings,
@@ -29,7 +27,6 @@ import {
   Wifi,
   WifiOff,
   Radio,
-  CalendarDays,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -90,6 +87,8 @@ type Device = {
   device_logs_count?: number | null;
   last_sync_at?: string | null;
   last_sync_status?: string | null;
+  last_seen_at?: string | null;       // updated every 10s by auto-pull job
+  last_connection_at?: string | null; // updated on connect/disconnect
 };
 
 type Tablet = {
@@ -173,8 +172,18 @@ type DeviceUser = {
 
 type PushMode = "selected" | "class" | "all";
 
-const STATUS_POLL_MS = 60_000;
-const SLOW_REFRESH_MS = 20 * 60_000;
+const STATUS_POLL_MS = 15_000;   // check device status every 15 seconds
+const SLOW_REFRESH_MS = 5 * 60_000; // refresh page data every 5 minutes
+
+// A device is "live-online" if last_seen_at was within the last 90 seconds.
+// The auto-pull job updates last_seen_at on every successful pull (every 10s).
+const isDeviceLiveOnline = (device: Device): boolean => {
+  if (device.last_seen_at) {
+    const age = Date.now() - new Date(device.last_seen_at).getTime();
+    if (age < 90_000) return true;
+  }
+  return Boolean(device.is_connected || device.status === "online");
+};
 
 const emptyStats: Stats = {
   totalStudents: 0,
@@ -381,7 +390,7 @@ function ServerCommandCenter() {
             cardCount: nextLogs.filter((log) => log.scan_method === "nfc").length,
             passwordCount: nextLogs.filter((log) => log.scan_method === "manual").length,
             totalDevices: nextDevices.length,
-            onlineDevices: nextDevices.filter((device) => device.status === "online" || device.is_connected).length,
+            onlineDevices: nextDevices.filter(isDeviceLiveOnline).length,
           });
         }
         if (sessionsResult.status === "fulfilled") setSessions(sessionsResult.value.sessions ?? []);
@@ -391,7 +400,7 @@ function ServerCommandCenter() {
         ...current,
         totalStudents: nextStudents.length,
         totalDevices: nextDevices.length,
-        onlineDevices: nextDevices.filter((device) => device.status === "online" || device.is_connected).length,
+        onlineDevices: nextDevices.filter(isDeviceLiveOnline).length,
         attendanceToday: current.totalLogs ? current.attendanceToday : logs.filter((log) => log.scanned_at?.startsWith(today)).length,
       }));
     } catch (error: any) {
@@ -561,21 +570,23 @@ function ServerCommandCenter() {
     }
   }
 
-  async function checkTabletHealth() {
-    if (!selectedTablet?.id) {
-      toast.error("Select a tablet first");
+  async function checkTabletHealth(tabletOverride?: string) {
+    const tid = tabletOverride ?? selectedTablet?.id;
+    if (!tid) {
+      toast.error("No tablet assigned to this school yet");
       return;
     }
     setBusy(true);
     try {
-      const result = await apiRequest<any>(`/tablets/${selectedTablet.id}/health`, { auth: "school" });
+      const result = await apiRequest<any>(`/tablets/${tid}/health`, { auth: "school" });
       const healthy = Boolean(result?.healthy ?? result?.data?.healthy);
+      const tabletName = tablets.find(t => t.id === tid)?.name ?? "Tablet";
       toast[healthy ? "success" : "warning"](
-        healthy ? `${selectedTablet.name} bridge is reachable` : result?.error || "Tablet bridge is offline"
+        healthy ? `${tabletName} bridge is reachable` : result?.error || "Tablet bridge is offline"
       );
       setTablets((items) =>
         items.map((tablet) =>
-          tablet.id === selectedTablet.id ? { ...tablet, status: healthy ? "online" : "offline" } : tablet
+          tablet.id === tid ? { ...tablet, status: healthy ? "online" : "offline" } : tablet
         )
       );
     } catch (error: any) {
@@ -585,14 +596,15 @@ function ServerCommandCenter() {
     }
   }
 
-  async function checkLiveDeviceStatus() {
-    if (!selectedTablet?.id) {
-      toast.error("Select a tablet first");
+  async function checkLiveDeviceStatus(deviceOverride?: string) {
+    const tid = selectedTablet?.id ?? tablets[0]?.id;
+    if (!tid) {
+      toast.error("No tablet assigned to this school yet");
       return;
     }
     setBusy(true);
     try {
-      const result = await apiRequest<any>(`/tablets/${selectedTablet.id}/device/status`, { auth: "school" });
+      const result = await apiRequest<any>(`/tablets/${tid}/device/status`, { auth: "school" });
       const status = result?.data ?? result;
       toast[status?.connected ? "success" : "warning"](
         status?.connected
@@ -600,9 +612,10 @@ function ServerCommandCenter() {
           : status?.message || "FK623 is not connected"
       );
       const connected = Boolean(status?.connected);
+      const targetDeviceId = deviceOverride ?? selectedDevice?.id;
       setDevices((items) =>
         items.map((device) =>
-          device.id === selectedDevice?.id
+          device.id === targetDeviceId
             ? {
                 ...device,
                 status: connected ? "online" : "offline",
@@ -615,7 +628,7 @@ function ServerCommandCenter() {
       );
       setTablets((items) =>
         items.map((tablet) =>
-          tablet.id === selectedTablet.id ? { ...tablet, status: connected ? "online" : "offline" } : tablet
+          tablet.id === tid ? { ...tablet, status: connected ? "online" : "offline" } : tablet
         )
       );
     } catch (error: any) {
@@ -761,7 +774,15 @@ function ServerCommandCenter() {
         auth: "school",
         body: JSON.stringify(body),
       });
-      toast.success(`Pushed ${result.pushed_count ?? 0}/${result.selected_count ?? 0} student(s)`);
+      const pushed = result.pushed_count ?? result.data?.pushed_count ?? 0;
+      const selected = result.selected_count ?? result.data?.selected_count ?? 0;
+      const failed = result.failed_count ?? result.data?.failed_count ?? 0;
+      const errors: string[] = result.errors ?? result.data?.errors ?? [];
+      if (failed > 0) {
+        toast.warning(`Pushed ${pushed}/${selected} student(s). ${failed} failed: ${errors.slice(0, 2).join("; ")}`);
+      } else {
+        toast.success(`Pushed ${pushed}/${selected} student(s) to the device`);
+      }
       setSelectedStudentIds(new Set());
       await refreshAll(false);
     } catch (error: any) {
@@ -773,24 +794,37 @@ function ServerCommandCenter() {
 
   async function addSingleStudentToDevice(student: Student) {
     if (!selectedDevice?.id && !selectedTablet?.id) {
-      toast.error("Select a device or tablet first");
+      toast.error("No device assigned to your school yet");
       return;
     }
     try {
+      let result: any;
       if (selectedDevice?.id) {
-        await apiRequest(`/devices/${selectedDevice.id}/push-students`, {
+        result = await apiRequest<any>(`/devices/${selectedDevice.id}/push-students`, {
           method: "POST",
           auth: "school",
           body: JSON.stringify({ mode: "selected", student_ids: [student.id] }),
         });
+        const pushed = result?.pushed_count ?? result?.data?.pushed_count ?? 0;
+        const failed = result?.failed_count ?? result?.data?.failed_count ?? 0;
+        const errors: string[] = result?.errors ?? result?.data?.errors ?? [];
+        if (failed > 0 || errors.length > 0) {
+          toast.warning(`${studentName(student)}: push failed — ${errors[0] ?? "device rejected"}`);
+        } else {
+          toast.success(`${studentName(student)} pushed to device (${pushed} enrolled)`);
+        }
       } else {
-        await apiRequest(`/tablets/${selectedTablet!.id}/device/users`, {
+        result = await apiRequest<any>(`/tablets/${selectedTablet!.id}/device/users`, {
           method: "POST",
           auth: "school",
           body: JSON.stringify({ userId: buildDeviceUserId(student), name: studentName(student) }),
         });
+        if (result?.success === false) {
+          toast.warning(`${studentName(student)}: device rejected — ${result.error ?? "unknown error"}`);
+        } else {
+          toast.success(`${studentName(student)} pushed to device`);
+        }
       }
-      toast.success(`${studentName(student)} pushed to device`);
       await refreshDeviceConnection();
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to push student");
@@ -960,7 +994,7 @@ function ServerCommandCenter() {
     }
   }
 
-  const connected = Boolean(selectedDevice?.is_connected || selectedDevice?.status === "online");
+  const connected = isDeviceLiveOnline(selectedDevice ?? {} as Device);
 
   // ── Socket-backed live monitor ──────────────────────────────────────────
   const handleGateEvent = useCallback((event: GateSocketEvent) => {
@@ -1259,122 +1293,108 @@ function ServerCommandCenter() {
         )}
 
         {activeTab === "devices" && (
-          <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="grid gap-4 xl:grid-cols-[0.9fr_1.2fr]">
-            <div className="space-y-4">
-              <Panel title="Register Tablet" icon={Network}>
-                <form onSubmit={registerTablet} className="grid gap-3">
-                  <Field label="Tablet Name" value={tabletForm.name} onChange={(value) => setTabletForm({ ...tabletForm, name: value })} required />
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Tablet IP" value={tabletForm.ip} onChange={(value) => setTabletForm({ ...tabletForm, ip: value })} required />
-                    <Field label="Tablet API Port" type="number" value={tabletForm.port} onChange={(value) => setTabletForm({ ...tabletForm, port: Number(value) })} required />
-                  </div>
-                  <Field label="Location" value={tabletForm.location} onChange={(value) => setTabletForm({ ...tabletForm, location: value })} />
-                  <button disabled={busy} className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"><Globe2 size={16} /> Register Tablet</button>
-                </form>
-              </Panel>
-              <Panel title="Connect FK623" icon={Cpu}>
-                <form onSubmit={connectDevice} className="grid gap-3">
-                  <select value={selectedTablet?.id ?? ""} onChange={(event) => setSelectedTabletId(event.target.value)} className="form-field rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 shadow-sm backdrop-blur-md focus:border-primary focus:ring-2 focus:ring-primary/20">
-                    {tablets.map((tablet) => <option key={tablet.id} value={tablet.id}>{tablet.name} - {tablet.ip}:{tablet.port}</option>)}
-                  </select>
-                  <Field label="Device UID" value={deviceForm.deviceId} onChange={(value) => setDeviceForm({ ...deviceForm, deviceId: value })} />
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <Field label="Device IP" value={deviceForm.ipAddress} onChange={(value) => setDeviceForm({ ...deviceForm, ipAddress: value })} />
-                    <Field label="Device Port" type="number" value={deviceForm.port} onChange={(value) => setDeviceForm({ ...deviceForm, port: Number(value) })} />
-                    <Field label="License" type="number" value={deviceForm.license} onChange={(value) => setDeviceForm({ ...deviceForm, license: Number(value) })} />
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <button disabled={busy} className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"><Wifi size={16} /> Connect</button>
-                    <button type="button" onClick={syncTime} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900"><Clock size={16} /> Sync</button>
-                    <button type="button" onClick={disconnectDevice} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-300/40 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-700 shadow-md backdrop-blur-md transition-colors hover:bg-rose-500/20"><Power size={16} /> Disconnect</button>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <button type="button" onClick={checkTabletHealth} disabled={busy} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
-                      <Network size={16} /> Bridge Health
-                    </button>
-                    <button type="button" onClick={checkLiveDeviceStatus} disabled={busy} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
-                      <Activity size={16} /> Live Status
-                    </button>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-                    <Field
-                      label="Manual Device Time"
-                      type="datetime-local"
-                      value={manualDeviceTime}
-                      onChange={setManualDeviceTime}
-                    />
-                    <button type="button" onClick={setDeviceTime} disabled={busy || !manualDeviceTime} className="secondary-action self-end inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
-                      <Clock size={16} /> Set Time
-                    </button>
-                    <button type="button" onClick={powerOffDevice} disabled={busy} className="secondary-action self-end inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-300/40 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-700 shadow-md backdrop-blur-md transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
-                      <Power size={16} /> Power Off
-                    </button>
-                  </div>
-                  <label className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                    <input
-                      type="checkbox"
-                      checked={autoReconnect}
-                      onChange={(event) => setAutoReconnect(event.target.checked)}
-                    />
-                    Auto reconnect and status poll
-                  </label>
-                </form>
-              </Panel>
+          <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+            {/* Info banner — tablet/device setup is super-admin only */}
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
+              Tablets and biometric devices are registered and assigned by the platform admin. Contact your platform admin to add or change devices for your school.
             </div>
-            <div className="space-y-4">
-              <Panel title="Device Fleet" icon={HardDrive}>
-                <div className="space-y-3">
+
+            {/* Tablets */}
+            <Panel title="Assigned Tablets" icon={HardDrive}
+              action={
+                <button type="button" onClick={() => void checkTabletHealth()} disabled={busy}
+                  className="secondary-action inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50">
+                  <RefreshCw size={14} className={busy ? "animate-spin" : ""} /> Check Health
+                </button>
+              }
+            >
+              {tablets.length === 0 ? (
+                <EmptyState text="No tablets assigned to your school yet." />
+              ) : (
+                <div className="space-y-2">
+                  {tablets.map((tablet) => (
+                    <button key={tablet.id} type="button" onClick={() => setSelectedTabletId(tablet.id)}
+                      className={cn("w-full rounded-2xl border p-4 text-left transition-all hover:shadow-sm",
+                        selectedTabletId === tablet.id ? "border-primary/30 bg-primary/5" : "border-border bg-background hover:border-primary/20"
+                      )}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-foreground">{tablet.name}</div>
+                          <div className="text-xs text-muted-foreground">{tablet.location ?? "No location"}</div>
+                        </div>
+                        <StatusPill value={tablet.status ?? "offline"} />
+                      </div>
+                      {tablet.last_health_check && (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Last checked: {new Date(tablet.last_health_check).toLocaleString()}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Panel>
+
+            {/* Devices */}
+            <Panel title="Assigned Biometric Devices" icon={Cpu}
+              action={
+                <button type="button" onClick={() => void checkLiveDeviceStatus()} disabled={busy}
+                  className="secondary-action inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50">
+                  <Activity size={14} /> Live Status
+                </button>
+              }
+            >
+              {devices.length === 0 ? (
+                <EmptyState text="No biometric devices assigned to your school yet." />
+              ) : (
+                <div className="space-y-2">
                   {devices.map((device) => (
-                    <button
-                      key={device.id}
-                      type="button"
-                      onClick={() => setSelectedDeviceId(device.id)}
-                      className={cn("group w-full rounded-2xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md", selectedDeviceId === device.id ? "border-primary/30 bg-primary/5 shadow-[0_12px_30px_-22px_rgba(33,65,127,0.45)]" : "border-border bg-background hover:border-primary/20 hover:bg-muted/50")}
-                    >
+                    <button key={device.id} type="button" onClick={() => setSelectedDeviceId(device.id)}
+                      className={cn("w-full rounded-2xl border p-4 text-left transition-all hover:shadow-sm",
+                        selectedDeviceId === device.id ? "border-primary/30 bg-primary/5" : "border-border bg-background hover:border-primary/20"
+                      )}>
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="font-semibold text-foreground">{device.name}</div>
-                          <div className="text-xs text-muted-foreground">{device.device_uid ?? device.id} - {device.location ?? "No location"}</div>
+                          <div className="text-xs text-muted-foreground">{device.location ?? "No location"}</div>
                         </div>
-                        <StatusPill value={device.is_connected || device.status === "online" ? "online" : "offline"} />
+                        <StatusPill value={isDeviceLiveOnline(device) ? "online" : "offline"} />
                       </div>
-                      <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
-                        <span>Users: {device.device_users_count ?? 0}</span>
-                        <span>Logs: {device.device_logs_count ?? 0}</span>
-                        <span>Sync: {device.last_sync_status ?? "none"}</span>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                        <span>Users on device: {device.device_users_count ?? 0}</span>
+                        <span>Logs on device: {device.device_logs_count ?? 0}</span>
+                        <span>Last seen: {device.last_seen_at ? new Date(device.last_seen_at).toLocaleTimeString() : "never"}</span>
                       </div>
                     </button>
                   ))}
-                  {!devices.length && <EmptyState text="No devices yet. Register a tablet and connect a biometric device." />}
                 </div>
-              </Panel>
-              <Panel
-                title="Live Device Users"
-                icon={Users}
-                action={
-                  <button type="button" onClick={pullDeviceUsers} disabled={busy} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
-                    <RefreshCw size={16} /> Refresh Users
-                  </button>
-                }
-              >
-                <div className="mb-4 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => clearDeviceData("logs")} disabled={busy} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
-                    <Trash2 size={16} /> Clear Logs
-                  </button>
-                  <button type="button" onClick={() => clearDeviceData("all")} disabled={busy} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-300/40 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-700 shadow-md backdrop-blur-md transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
-                    <Trash2 size={16} /> Reset Device
-                  </button>
-                </div>
-                <div className="overflow-x-auto">
+              )}
+            </Panel>
+
+            {/* Live device users — read from the physical device */}
+            <Panel title="Users on Device" icon={Users}
+              action={
+                <button type="button" onClick={pullDeviceUsers} disabled={busy}
+                  className="secondary-action inline-flex items-center justify-center gap-2 rounded-xl border border-slate-700/60 bg-slate-950/75 px-3 py-2 text-sm font-semibold text-slate-100 backdrop-blur-md hover:bg-slate-900 disabled:opacity-50">
+                  <RefreshCw size={14} /> Load from Device
+                </button>
+              }
+            >
+              <p className="mb-3 text-xs text-muted-foreground">
+                These are users currently stored on the physical FK623 device. Click "Load from Device" to fetch them live.
+              </p>
+              {deviceUsers.length === 0 ? (
+                <EmptyState text="Click 'Load from Device' to see who is enrolled on the biometric reader." />
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-border/70">
                   <table className="data-table">
                     <thead>
                       <tr>
                         <th>User ID</th>
                         <th>Name</th>
                         <th>Privilege</th>
-                        <th>Status</th>
                         <th>Methods</th>
-                        <th>Action</th>
+                        <th>Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1385,22 +1405,16 @@ function ServerCommandCenter() {
                             <td className="font-mono">{userId || "-"}</td>
                             <td>{user.name || "-"}</td>
                             <td>{user.privilege === 1 ? "Admin" : "User"}</td>
-                            <td><StatusPill value={user.enabled === false ? "disabled" : "enabled"} /></td>
                             <td>{user.biometricMethods?.length ? user.biometricMethods.join(", ") : "-"}</td>
-                            <td>
-                              <button type="button" onClick={() => deleteDeviceUser(userId)} disabled={busy || !userId} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-300/40 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-700 shadow-md backdrop-blur-md transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60">
-                                <Trash2 size={14} /> Delete
-                              </button>
-                            </td>
+                            <td><StatusPill value={user.enabled === false ? "disabled" : "enabled"} /></td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
-                  {!deviceUsers.length && <EmptyState text="No live device users loaded." />}
                 </div>
-              </Panel>
-            </div>
+              )}
+            </Panel>
           </motion.section>
         )}
 

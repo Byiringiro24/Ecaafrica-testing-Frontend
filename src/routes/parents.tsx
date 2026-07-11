@@ -425,31 +425,72 @@ function BulkSMSModal({
 }) {
   const [target, setTarget] = useState<"all"|"absent"|"risk"|"class">("absent");
   const [cls, setCls] = useState("S1A");
-  const [message, setMessage] = useState("Mubyeyi, umwana wanyu yagombye kuza ku ishuri uyu munsi. Murakoze. — SmartAttend");
+  const [message, setMessage] = useState("Mubyeyi, umwana wanyu yagombye kuza ku ishuri uyu munsi. Murakoze. — EcareAfrica");
   const [confirm, setConfirm] = useState(false);
-  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{ current: number; total: number; sent: number; failed: number } | null>(null);
 
-  const targetCount = useMemo(() => {
-    if (target === "all") return parentCount;
-    if (target === "absent") return attendanceLogs.filter((a) => (a.status ?? "").toLowerCase() === "absent").length;
-    if (target === "risk") return 0;
-    return students.filter(s => s.class === cls).length;
-  }, [target, cls, parentCount, students, attendanceLogs]);
+  // Build the list of parents to contact based on selected target
+  const targetParents = useMemo(() => {
+    if (target === "all") {
+      return students
+        .filter(s => s.parentPhone)
+        .map(s => ({ name: s.parentName ?? s.name, phone: s.parentPhone!, studentName: s.name, id: s.id }));
+    }
+    if (target === "absent") {
+      const absentIds = new Set(
+        attendanceLogs
+          .filter(a => (a.status ?? "").toLowerCase() === "absent")
+          .map(a => a.student_id)
+      );
+      return students
+        .filter(s => absentIds.has(s.id) && s.parentPhone)
+        .map(s => ({ name: s.parentName ?? s.name, phone: s.parentPhone!, studentName: s.name, id: s.id }));
+    }
+    if (target === "class") {
+      return students
+        .filter(s => s.class === cls && s.parentPhone)
+        .map(s => ({ name: s.parentName ?? s.name, phone: s.parentPhone!, studentName: s.name, id: s.id }));
+    }
+    return [];
+  }, [target, cls, students, attendanceLogs]);
 
-  const start = () => {
-    setProgress({ current: 0, total: targetCount });
-    let i = 0;
-    const interval = setInterval(() => {
-      i++;
-      setProgress({ current: i, total: targetCount });
-      if (i >= targetCount) {
-        clearInterval(interval);
-        setTimeout(() => {
-          toast.success(`Bulk SMS complete — ${targetCount} parents notified`);
-          onClose();
-        }, 400);
+  const targetCount = targetParents.length;
+
+  const start = async () => {
+    if (targetCount === 0) { toast.error("No recipients to send to"); return; }
+    setProgress({ current: 0, total: targetCount, sent: 0, failed: 0 });
+
+    let sent = 0;
+    let failed = 0;
+
+    for (let i = 0; i < targetParents.length; i++) {
+      const recipient = targetParents[i];
+      try {
+        await apiRequest("/notifications/send", {
+          method: "POST",
+          auth: "school",
+          body: JSON.stringify({
+            channel: "sms",
+            recipient_phone: recipient.phone,
+            recipient_type: "parent",
+            message: message.replace("{parentName}", recipient.name).replace("{studentName}", recipient.studentName),
+          }),
+        });
+        sent++;
+      } catch {
+        failed++;
       }
-    }, 60);
+      setProgress({ current: i + 1, total: targetCount, sent, failed });
+    }
+
+    setTimeout(() => {
+      if (failed === 0) {
+        toast.success(`Bulk SMS complete — ${sent} parents notified`);
+      } else {
+        toast.warning(`Sent ${sent}, failed ${failed}`);
+      }
+      onClose();
+    }, 500);
   };
 
   return (
@@ -463,8 +504,11 @@ function BulkSMSModal({
           <div className="p-8 text-center">
             <Loader2 className="h-10 w-10 mx-auto text-primary animate-spin" />
             <p className="mt-4 font-semibold">Sending {progress.current} of {progress.total}…</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              ✅ {progress.sent} sent &nbsp;·&nbsp; ❌ {progress.failed} failed
+            </p>
             <div className="mt-4 h-2 bg-muted rounded-full overflow-hidden">
-              <div className="h-full bg-primary transition-all" style={{ width: `${(progress.current/progress.total)*100}%` }} />
+              <div className="h-full bg-primary transition-all" style={{ width: `${(progress.current / progress.total) * 100}%` }} />
             </div>
           </div>
         ) : (
@@ -476,7 +520,6 @@ function BulkSMSModal({
                   {([
                     ["all", "All Parents"],
                     ["absent", "Parents of Absent Students Today"],
-                    ["risk", "Parents of At-Risk Students (<70%)"],
                     ["class", "Specific Class"],
                   ] as const).map(([k, l]) => (
                     <label key={k} className="flex items-center gap-2 text-sm">
@@ -491,16 +534,22 @@ function BulkSMSModal({
                   </select>
                 )}
               </div>
-              <div className="rounded-lg bg-muted/40 p-3 text-sm">This will send to <b>{targetCount}</b> parents.</div>
+              <div className="rounded-lg bg-muted/40 p-3 text-sm">
+                This will send to <b>{targetCount}</b> parents with registered phone numbers.
+              </div>
               <div>
                 <div className="text-xs font-semibold mb-1.5">Message</div>
                 <textarea rows={4} value={message} onChange={e => setMessage(e.target.value)}
                   className="w-full rounded-lg border border-border bg-background p-3 text-sm" />
+                <div className="text-xs text-muted-foreground mt-1">
+                  Use <code className="bg-muted px-1 rounded">{"{parentName}"}</code> and <code className="bg-muted px-1 rounded">{"{studentName}"}</code> as variables.
+                </div>
               </div>
             </div>
             <div className="flex justify-end gap-2 px-6 py-4 border-t border-border">
               <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button onClick={() => setConfirm(true)} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">
+              <button onClick={() => setConfirm(true)} disabled={targetCount === 0}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
                 Send to {targetCount} Parents
               </button>
             </div>
@@ -508,7 +557,7 @@ function BulkSMSModal({
         )}
       </div>
       <ConfirmModal open={confirm} title="Confirm Bulk SMS" message={`Send this SMS to ${targetCount} parents?`} confirmLabel="Send"
-        onConfirm={start} onClose={() => setConfirm(false)} />
+        onConfirm={() => { setConfirm(false); void start(); }} onClose={() => setConfirm(false)} />
     </div>
   );
 }

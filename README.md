@@ -1,6 +1,6 @@
 # ecareafrica — Student Attendance Tracking System
 
-A production-grade React + Tailwind CSS frontend MVP for Rwandan secondary schools. ecareafrica records attendance via student ID cards (NFC/QR), face, and fingerprint scans, sends SMS notifications to parents, manages boarding, fees, staff, and gate access, and provides rich analytics for administrators.
+A production-grade React + Tailwind CSS frontend MVP for Rwandan secondary schools. ecareafrica records attendance via student ID cards (NFC/QR), face, and fingerprint scans, sends SMS notifications to parents, manages boarding, fees, staff, and gate access, and provides rich analytics for administrators.  
 
 Built with **React 19**, **TanStack Start / Router**, **Tailwind CSS v4**, **Recharts**, **Lucide React**, and **Plus Jakarta Sans / DM Sans** typography. All data is mocked with realistic Rwandan content (names, schools, RWF amounts, Kinyarwanda SMS templates).
 
@@ -253,6 +253,5 @@ bun run dev
 The app runs at `http://localhost:5173`. All data is mocked — no backend required for the MVP.
 
 scp-rdist/*user@ip:/var/www/ecare_africa/frontend/
-
 
 npm run dev -- --host 127.0.0.1 --port 5173

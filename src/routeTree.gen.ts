@@ -40,6 +40,7 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SuperAdminIndexRouteImport } from './routes/super-admin.index'
 import { Route as StaffIndexRouteImport } from './routes/staff.index'
+import { Route as FinanceIndexRouteImport } from './routes/finance.index'
 import { Route as ExamsIndexRouteImport } from './routes/exams.index'
 import { Route as BoardingIndexRouteImport } from './routes/boarding.index'
 import { Route as TeacherScheduleRouteImport } from './routes/teacher.schedule'
@@ -55,6 +56,7 @@ import { Route as SuperAdminUsersRouteImport } from './routes/super-admin.users'
 import { Route as SuperAdminSystemRouteImport } from './routes/super-admin.system'
 import { Route as SuperAdminSupportRouteImport } from './routes/super-admin.support'
 import { Route as SuperAdminSubscriptionsRouteImport } from './routes/super-admin.subscriptions'
+import { Route as SuperAdminSmsUsageRouteImport } from './routes/super-admin.sms-usage'
 import { Route as SuperAdminSchoolsRouteImport } from './routes/super-admin.schools'
 import { Route as SuperAdminRevenueRouteImport } from './routes/super-admin.revenue'
 import { Route as SuperAdminManageSmsRouteImport } from './routes/super-admin.manage-sms'
@@ -78,6 +80,14 @@ import { Route as GateKeeperDeviceStatusRouteImport } from './routes/gate-keeper
 import { Route as GateKeeperDashboardRouteImport } from './routes/gate-keeper.dashboard'
 import { Route as GateKeeperBoardingLeaveRouteImport } from './routes/gate-keeper.boarding-leave'
 import { Route as GateKeeperAttendanceRouteImport } from './routes/gate-keeper.attendance'
+import { Route as FinanceReportsRouteImport } from './routes/finance.reports'
+import { Route as FinancePayrollRouteImport } from './routes/finance.payroll'
+import { Route as FinancePaymentsRouteImport } from './routes/finance.payments'
+import { Route as FinanceInvoicesRouteImport } from './routes/finance.invoices'
+import { Route as FinanceInventoryRouteImport } from './routes/finance.inventory'
+import { Route as FinanceFeeStructureRouteImport } from './routes/finance.fee-structure'
+import { Route as FinanceExpensesRouteImport } from './routes/finance.expenses'
+import { Route as FinanceAuditRouteImport } from './routes/finance.audit'
 import { Route as ExamsScheduleRouteImport } from './routes/exams.schedule'
 import { Route as ExamsReviewRouteImport } from './routes/exams.review'
 import { Route as ExamsPublishedRouteImport } from './routes/exams.published'
@@ -257,6 +267,11 @@ const StaffIndexRoute = StaffIndexRouteImport.update({
   path: '/',
   getParentRoute: () => StaffRoute,
 } as any)
+const FinanceIndexRoute = FinanceIndexRouteImport.update({
+  id: '/finance/',
+  path: '/finance/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ExamsIndexRoute = ExamsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -330,6 +345,11 @@ const SuperAdminSupportRoute = SuperAdminSupportRouteImport.update({
 const SuperAdminSubscriptionsRoute = SuperAdminSubscriptionsRouteImport.update({
   id: '/subscriptions',
   path: '/subscriptions',
+  getParentRoute: () => SuperAdminRoute,
+} as any)
+const SuperAdminSmsUsageRoute = SuperAdminSmsUsageRouteImport.update({
+  id: '/sms-usage',
+  path: '/sms-usage',
   getParentRoute: () => SuperAdminRoute,
 } as any)
 const SuperAdminSchoolsRoute = SuperAdminSchoolsRouteImport.update({
@@ -445,6 +465,46 @@ const GateKeeperBoardingLeaveRoute = GateKeeperBoardingLeaveRouteImport.update({
 const GateKeeperAttendanceRoute = GateKeeperAttendanceRouteImport.update({
   id: '/gate-keeper/attendance',
   path: '/gate-keeper/attendance',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinanceReportsRoute = FinanceReportsRouteImport.update({
+  id: '/finance/reports',
+  path: '/finance/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinancePayrollRoute = FinancePayrollRouteImport.update({
+  id: '/finance/payroll',
+  path: '/finance/payroll',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinancePaymentsRoute = FinancePaymentsRouteImport.update({
+  id: '/finance/payments',
+  path: '/finance/payments',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinanceInvoicesRoute = FinanceInvoicesRouteImport.update({
+  id: '/finance/invoices',
+  path: '/finance/invoices',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinanceInventoryRoute = FinanceInventoryRouteImport.update({
+  id: '/finance/inventory',
+  path: '/finance/inventory',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinanceFeeStructureRoute = FinanceFeeStructureRouteImport.update({
+  id: '/finance/fee-structure',
+  path: '/finance/fee-structure',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinanceExpensesRoute = FinanceExpensesRouteImport.update({
+  id: '/finance/expenses',
+  path: '/finance/expenses',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinanceAuditRoute = FinanceAuditRouteImport.update({
+  id: '/finance/audit',
+  path: '/finance/audit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExamsScheduleRoute = ExamsScheduleRouteImport.update({
@@ -617,6 +677,14 @@ export interface FileRoutesByFullPath {
   '/exams/published': typeof ExamsPublishedRoute
   '/exams/review': typeof ExamsReviewRoute
   '/exams/schedule': typeof ExamsScheduleRoute
+  '/finance/audit': typeof FinanceAuditRoute
+  '/finance/expenses': typeof FinanceExpensesRoute
+  '/finance/fee-structure': typeof FinanceFeeStructureRoute
+  '/finance/inventory': typeof FinanceInventoryRoute
+  '/finance/invoices': typeof FinanceInvoicesRoute
+  '/finance/payments': typeof FinancePaymentsRoute
+  '/finance/payroll': typeof FinancePayrollRoute
+  '/finance/reports': typeof FinanceReportsRoute
   '/gate-keeper/attendance': typeof GateKeeperAttendanceRouteWithChildren
   '/gate-keeper/boarding-leave': typeof GateKeeperBoardingLeaveRoute
   '/gate-keeper/dashboard': typeof GateKeeperDashboardRoute
@@ -640,6 +708,7 @@ export interface FileRoutesByFullPath {
   '/super-admin/manage-sms': typeof SuperAdminManageSmsRouteWithChildren
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
   '/super-admin/schools': typeof SuperAdminSchoolsRouteWithChildren
+  '/super-admin/sms-usage': typeof SuperAdminSmsUsageRoute
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
   '/super-admin/support': typeof SuperAdminSupportRoute
   '/super-admin/system': typeof SuperAdminSystemRoute
@@ -655,6 +724,7 @@ export interface FileRoutesByFullPath {
   '/teacher/schedule': typeof TeacherScheduleRoute
   '/boarding/': typeof BoardingIndexRoute
   '/exams/': typeof ExamsIndexRoute
+  '/finance/': typeof FinanceIndexRoute
   '/staff/': typeof StaffIndexRoute
   '/super-admin/': typeof SuperAdminIndexRoute
   '/gate-keeper/attendance/device-attendance': typeof GateKeeperAttendanceDeviceAttendanceRoute
@@ -707,6 +777,14 @@ export interface FileRoutesByTo {
   '/exams/published': typeof ExamsPublishedRoute
   '/exams/review': typeof ExamsReviewRoute
   '/exams/schedule': typeof ExamsScheduleRoute
+  '/finance/audit': typeof FinanceAuditRoute
+  '/finance/expenses': typeof FinanceExpensesRoute
+  '/finance/fee-structure': typeof FinanceFeeStructureRoute
+  '/finance/inventory': typeof FinanceInventoryRoute
+  '/finance/invoices': typeof FinanceInvoicesRoute
+  '/finance/payments': typeof FinancePaymentsRoute
+  '/finance/payroll': typeof FinancePayrollRoute
+  '/finance/reports': typeof FinanceReportsRoute
   '/gate-keeper/boarding-leave': typeof GateKeeperBoardingLeaveRoute
   '/gate-keeper/dashboard': typeof GateKeeperDashboardRoute
   '/gate-keeper/device-status': typeof GateKeeperDeviceStatusRoute
@@ -727,6 +805,7 @@ export interface FileRoutesByTo {
   '/super-admin/demo-requests': typeof SuperAdminDemoRequestsRoute
   '/super-admin/hardware': typeof SuperAdminHardwareRoute
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
+  '/super-admin/sms-usage': typeof SuperAdminSmsUsageRoute
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
   '/super-admin/support': typeof SuperAdminSupportRoute
   '/super-admin/system': typeof SuperAdminSystemRoute
@@ -742,6 +821,7 @@ export interface FileRoutesByTo {
   '/teacher/schedule': typeof TeacherScheduleRoute
   '/boarding': typeof BoardingIndexRoute
   '/exams': typeof ExamsIndexRoute
+  '/finance': typeof FinanceIndexRoute
   '/staff': typeof StaffIndexRoute
   '/super-admin': typeof SuperAdminIndexRoute
   '/gate-keeper/attendance/device-attendance': typeof GateKeeperAttendanceDeviceAttendanceRoute
@@ -799,6 +879,14 @@ export interface FileRoutesById {
   '/exams/published': typeof ExamsPublishedRoute
   '/exams/review': typeof ExamsReviewRoute
   '/exams/schedule': typeof ExamsScheduleRoute
+  '/finance/audit': typeof FinanceAuditRoute
+  '/finance/expenses': typeof FinanceExpensesRoute
+  '/finance/fee-structure': typeof FinanceFeeStructureRoute
+  '/finance/inventory': typeof FinanceInventoryRoute
+  '/finance/invoices': typeof FinanceInvoicesRoute
+  '/finance/payments': typeof FinancePaymentsRoute
+  '/finance/payroll': typeof FinancePayrollRoute
+  '/finance/reports': typeof FinanceReportsRoute
   '/gate-keeper/attendance': typeof GateKeeperAttendanceRouteWithChildren
   '/gate-keeper/boarding-leave': typeof GateKeeperBoardingLeaveRoute
   '/gate-keeper/dashboard': typeof GateKeeperDashboardRoute
@@ -822,6 +910,7 @@ export interface FileRoutesById {
   '/super-admin/manage-sms': typeof SuperAdminManageSmsRouteWithChildren
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
   '/super-admin/schools': typeof SuperAdminSchoolsRouteWithChildren
+  '/super-admin/sms-usage': typeof SuperAdminSmsUsageRoute
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
   '/super-admin/support': typeof SuperAdminSupportRoute
   '/super-admin/system': typeof SuperAdminSystemRoute
@@ -837,6 +926,7 @@ export interface FileRoutesById {
   '/teacher/schedule': typeof TeacherScheduleRoute
   '/boarding/': typeof BoardingIndexRoute
   '/exams/': typeof ExamsIndexRoute
+  '/finance/': typeof FinanceIndexRoute
   '/staff/': typeof StaffIndexRoute
   '/super-admin/': typeof SuperAdminIndexRoute
   '/gate-keeper/attendance/device-attendance': typeof GateKeeperAttendanceDeviceAttendanceRoute
@@ -895,6 +985,14 @@ export interface FileRouteTypes {
     | '/exams/published'
     | '/exams/review'
     | '/exams/schedule'
+    | '/finance/audit'
+    | '/finance/expenses'
+    | '/finance/fee-structure'
+    | '/finance/inventory'
+    | '/finance/invoices'
+    | '/finance/payments'
+    | '/finance/payroll'
+    | '/finance/reports'
     | '/gate-keeper/attendance'
     | '/gate-keeper/boarding-leave'
     | '/gate-keeper/dashboard'
@@ -918,6 +1016,7 @@ export interface FileRouteTypes {
     | '/super-admin/manage-sms'
     | '/super-admin/revenue'
     | '/super-admin/schools'
+    | '/super-admin/sms-usage'
     | '/super-admin/subscriptions'
     | '/super-admin/support'
     | '/super-admin/system'
@@ -933,6 +1032,7 @@ export interface FileRouteTypes {
     | '/teacher/schedule'
     | '/boarding/'
     | '/exams/'
+    | '/finance/'
     | '/staff/'
     | '/super-admin/'
     | '/gate-keeper/attendance/device-attendance'
@@ -985,6 +1085,14 @@ export interface FileRouteTypes {
     | '/exams/published'
     | '/exams/review'
     | '/exams/schedule'
+    | '/finance/audit'
+    | '/finance/expenses'
+    | '/finance/fee-structure'
+    | '/finance/inventory'
+    | '/finance/invoices'
+    | '/finance/payments'
+    | '/finance/payroll'
+    | '/finance/reports'
     | '/gate-keeper/boarding-leave'
     | '/gate-keeper/dashboard'
     | '/gate-keeper/device-status'
@@ -1005,6 +1113,7 @@ export interface FileRouteTypes {
     | '/super-admin/demo-requests'
     | '/super-admin/hardware'
     | '/super-admin/revenue'
+    | '/super-admin/sms-usage'
     | '/super-admin/subscriptions'
     | '/super-admin/support'
     | '/super-admin/system'
@@ -1020,6 +1129,7 @@ export interface FileRouteTypes {
     | '/teacher/schedule'
     | '/boarding'
     | '/exams'
+    | '/finance'
     | '/staff'
     | '/super-admin'
     | '/gate-keeper/attendance/device-attendance'
@@ -1076,6 +1186,14 @@ export interface FileRouteTypes {
     | '/exams/published'
     | '/exams/review'
     | '/exams/schedule'
+    | '/finance/audit'
+    | '/finance/expenses'
+    | '/finance/fee-structure'
+    | '/finance/inventory'
+    | '/finance/invoices'
+    | '/finance/payments'
+    | '/finance/payroll'
+    | '/finance/reports'
     | '/gate-keeper/attendance'
     | '/gate-keeper/boarding-leave'
     | '/gate-keeper/dashboard'
@@ -1099,6 +1217,7 @@ export interface FileRouteTypes {
     | '/super-admin/manage-sms'
     | '/super-admin/revenue'
     | '/super-admin/schools'
+    | '/super-admin/sms-usage'
     | '/super-admin/subscriptions'
     | '/super-admin/support'
     | '/super-admin/system'
@@ -1114,6 +1233,7 @@ export interface FileRouteTypes {
     | '/teacher/schedule'
     | '/boarding/'
     | '/exams/'
+    | '/finance/'
     | '/staff/'
     | '/super-admin/'
     | '/gate-keeper/attendance/device-attendance'
@@ -1164,6 +1284,14 @@ export interface RootRouteChildren {
   BoardingOfficerDormitoryRoute: typeof BoardingOfficerDormitoryRoute
   BoardingOfficerLeavesRoute: typeof BoardingOfficerLeavesRoute
   BoardingOfficerReportsRoute: typeof BoardingOfficerReportsRoute
+  FinanceAuditRoute: typeof FinanceAuditRoute
+  FinanceExpensesRoute: typeof FinanceExpensesRoute
+  FinanceFeeStructureRoute: typeof FinanceFeeStructureRoute
+  FinanceInventoryRoute: typeof FinanceInventoryRoute
+  FinanceInvoicesRoute: typeof FinanceInvoicesRoute
+  FinancePaymentsRoute: typeof FinancePaymentsRoute
+  FinancePayrollRoute: typeof FinancePayrollRoute
+  FinanceReportsRoute: typeof FinanceReportsRoute
   GateKeeperAttendanceRoute: typeof GateKeeperAttendanceRouteWithChildren
   GateKeeperBoardingLeaveRoute: typeof GateKeeperBoardingLeaveRoute
   GateKeeperDashboardRoute: typeof GateKeeperDashboardRoute
@@ -1178,6 +1306,7 @@ export interface RootRouteChildren {
   TeacherProfileRoute: typeof TeacherProfileRoute
   TeacherProgressRoute: typeof TeacherProgressRoute
   TeacherScheduleRoute: typeof TeacherScheduleRoute
+  FinanceIndexRoute: typeof FinanceIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1399,6 +1528,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StaffIndexRouteImport
       parentRoute: typeof StaffRoute
     }
+    '/finance/': {
+      id: '/finance/'
+      path: '/finance'
+      fullPath: '/finance/'
+      preLoaderRoute: typeof FinanceIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/exams/': {
       id: '/exams/'
       path: '/'
@@ -1502,6 +1638,13 @@ declare module '@tanstack/react-router' {
       path: '/subscriptions'
       fullPath: '/super-admin/subscriptions'
       preLoaderRoute: typeof SuperAdminSubscriptionsRouteImport
+      parentRoute: typeof SuperAdminRoute
+    }
+    '/super-admin/sms-usage': {
+      id: '/super-admin/sms-usage'
+      path: '/sms-usage'
+      fullPath: '/super-admin/sms-usage'
+      preLoaderRoute: typeof SuperAdminSmsUsageRouteImport
       parentRoute: typeof SuperAdminRoute
     }
     '/super-admin/schools': {
@@ -1663,6 +1806,62 @@ declare module '@tanstack/react-router' {
       path: '/gate-keeper/attendance'
       fullPath: '/gate-keeper/attendance'
       preLoaderRoute: typeof GateKeeperAttendanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance/reports': {
+      id: '/finance/reports'
+      path: '/finance/reports'
+      fullPath: '/finance/reports'
+      preLoaderRoute: typeof FinanceReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance/payroll': {
+      id: '/finance/payroll'
+      path: '/finance/payroll'
+      fullPath: '/finance/payroll'
+      preLoaderRoute: typeof FinancePayrollRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance/payments': {
+      id: '/finance/payments'
+      path: '/finance/payments'
+      fullPath: '/finance/payments'
+      preLoaderRoute: typeof FinancePaymentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance/invoices': {
+      id: '/finance/invoices'
+      path: '/finance/invoices'
+      fullPath: '/finance/invoices'
+      preLoaderRoute: typeof FinanceInvoicesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance/inventory': {
+      id: '/finance/inventory'
+      path: '/finance/inventory'
+      fullPath: '/finance/inventory'
+      preLoaderRoute: typeof FinanceInventoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance/fee-structure': {
+      id: '/finance/fee-structure'
+      path: '/finance/fee-structure'
+      fullPath: '/finance/fee-structure'
+      preLoaderRoute: typeof FinanceFeeStructureRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance/expenses': {
+      id: '/finance/expenses'
+      path: '/finance/expenses'
+      fullPath: '/finance/expenses'
+      preLoaderRoute: typeof FinanceExpensesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance/audit': {
+      id: '/finance/audit'
+      path: '/finance/audit'
+      fullPath: '/finance/audit'
+      preLoaderRoute: typeof FinanceAuditRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/exams/schedule': {
@@ -1935,6 +2134,7 @@ interface SuperAdminRouteChildren {
   SuperAdminManageSmsRoute: typeof SuperAdminManageSmsRouteWithChildren
   SuperAdminRevenueRoute: typeof SuperAdminRevenueRoute
   SuperAdminSchoolsRoute: typeof SuperAdminSchoolsRouteWithChildren
+  SuperAdminSmsUsageRoute: typeof SuperAdminSmsUsageRoute
   SuperAdminSubscriptionsRoute: typeof SuperAdminSubscriptionsRoute
   SuperAdminSupportRoute: typeof SuperAdminSupportRoute
   SuperAdminSystemRoute: typeof SuperAdminSystemRoute
@@ -1952,6 +2152,7 @@ const SuperAdminRouteChildren: SuperAdminRouteChildren = {
   SuperAdminManageSmsRoute: SuperAdminManageSmsRouteWithChildren,
   SuperAdminRevenueRoute: SuperAdminRevenueRoute,
   SuperAdminSchoolsRoute: SuperAdminSchoolsRouteWithChildren,
+  SuperAdminSmsUsageRoute: SuperAdminSmsUsageRoute,
   SuperAdminSubscriptionsRoute: SuperAdminSubscriptionsRoute,
   SuperAdminSupportRoute: SuperAdminSupportRoute,
   SuperAdminSystemRoute: SuperAdminSystemRoute,
@@ -2017,6 +2218,14 @@ const rootRouteChildren: RootRouteChildren = {
   BoardingOfficerDormitoryRoute: BoardingOfficerDormitoryRoute,
   BoardingOfficerLeavesRoute: BoardingOfficerLeavesRoute,
   BoardingOfficerReportsRoute: BoardingOfficerReportsRoute,
+  FinanceAuditRoute: FinanceAuditRoute,
+  FinanceExpensesRoute: FinanceExpensesRoute,
+  FinanceFeeStructureRoute: FinanceFeeStructureRoute,
+  FinanceInventoryRoute: FinanceInventoryRoute,
+  FinanceInvoicesRoute: FinanceInvoicesRoute,
+  FinancePaymentsRoute: FinancePaymentsRoute,
+  FinancePayrollRoute: FinancePayrollRoute,
+  FinanceReportsRoute: FinanceReportsRoute,
   GateKeeperAttendanceRoute: GateKeeperAttendanceRouteWithChildren,
   GateKeeperBoardingLeaveRoute: GateKeeperBoardingLeaveRoute,
   GateKeeperDashboardRoute: GateKeeperDashboardRoute,
@@ -2031,6 +2240,7 @@ const rootRouteChildren: RootRouteChildren = {
   TeacherProfileRoute: TeacherProfileRoute,
   TeacherProgressRoute: TeacherProgressRoute,
   TeacherScheduleRoute: TeacherScheduleRoute,
+  FinanceIndexRoute: FinanceIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -33,6 +33,7 @@ import { Route as DevicesRouteImport } from './routes/devices'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ContactRouteImport } from './routes/contact'
 import { Route as ClassesRouteImport } from './routes/classes'
+import { Route as BookDemoRouteImport } from './routes/book-demo'
 import { Route as BoardingRouteImport } from './routes/boarding'
 import { Route as AttendanceRouteImport } from './routes/attendance'
 import { Route as AboutRouteImport } from './routes/about'
@@ -58,6 +59,7 @@ import { Route as SuperAdminSchoolsRouteImport } from './routes/super-admin.scho
 import { Route as SuperAdminRevenueRouteImport } from './routes/super-admin.revenue'
 import { Route as SuperAdminManageSmsRouteImport } from './routes/super-admin.manage-sms'
 import { Route as SuperAdminHardwareRouteImport } from './routes/super-admin.hardware'
+import { Route as SuperAdminDemoRequestsRouteImport } from './routes/super-admin.demo-requests'
 import { Route as SuperAdminBillingRouteImport } from './routes/super-admin.billing'
 import { Route as SuperAdminAuditRouteImport } from './routes/super-admin.audit'
 import { Route as SuperAdminAnnouncementsRouteImport } from './routes/super-admin.announcements'
@@ -220,6 +222,11 @@ const ClassesRoute = ClassesRouteImport.update({
   path: '/classes',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BookDemoRoute = BookDemoRouteImport.update({
+  id: '/book-demo',
+  path: '/book-demo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BoardingRoute = BoardingRouteImport.update({
   id: '/boarding',
   path: '/boarding',
@@ -343,6 +350,11 @@ const SuperAdminManageSmsRoute = SuperAdminManageSmsRouteImport.update({
 const SuperAdminHardwareRoute = SuperAdminHardwareRouteImport.update({
   id: '/hardware',
   path: '/hardware',
+  getParentRoute: () => SuperAdminRoute,
+} as any)
+const SuperAdminDemoRequestsRoute = SuperAdminDemoRequestsRouteImport.update({
+  id: '/demo-requests',
+  path: '/demo-requests',
   getParentRoute: () => SuperAdminRoute,
 } as any)
 const SuperAdminBillingRoute = SuperAdminBillingRouteImport.update({
@@ -568,6 +580,7 @@ export interface FileRoutesByFullPath {
   '/about': typeof AboutRoute
   '/attendance': typeof AttendanceRoute
   '/boarding': typeof BoardingRouteWithChildren
+  '/book-demo': typeof BookDemoRoute
   '/classes': typeof ClassesRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
@@ -622,6 +635,7 @@ export interface FileRoutesByFullPath {
   '/super-admin/announcements': typeof SuperAdminAnnouncementsRoute
   '/super-admin/audit': typeof SuperAdminAuditRoute
   '/super-admin/billing': typeof SuperAdminBillingRoute
+  '/super-admin/demo-requests': typeof SuperAdminDemoRequestsRoute
   '/super-admin/hardware': typeof SuperAdminHardwareRoute
   '/super-admin/manage-sms': typeof SuperAdminManageSmsRouteWithChildren
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
@@ -659,6 +673,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/attendance': typeof AttendanceRoute
+  '/book-demo': typeof BookDemoRoute
   '/classes': typeof ClassesRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
@@ -709,6 +724,7 @@ export interface FileRoutesByTo {
   '/super-admin/announcements': typeof SuperAdminAnnouncementsRoute
   '/super-admin/audit': typeof SuperAdminAuditRoute
   '/super-admin/billing': typeof SuperAdminBillingRoute
+  '/super-admin/demo-requests': typeof SuperAdminDemoRequestsRoute
   '/super-admin/hardware': typeof SuperAdminHardwareRoute
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
@@ -746,6 +762,7 @@ export interface FileRoutesById {
   '/about': typeof AboutRoute
   '/attendance': typeof AttendanceRoute
   '/boarding': typeof BoardingRouteWithChildren
+  '/book-demo': typeof BookDemoRoute
   '/classes': typeof ClassesRoute
   '/contact': typeof ContactRoute
   '/dashboard': typeof DashboardRoute
@@ -800,6 +817,7 @@ export interface FileRoutesById {
   '/super-admin/announcements': typeof SuperAdminAnnouncementsRoute
   '/super-admin/audit': typeof SuperAdminAuditRoute
   '/super-admin/billing': typeof SuperAdminBillingRoute
+  '/super-admin/demo-requests': typeof SuperAdminDemoRequestsRoute
   '/super-admin/hardware': typeof SuperAdminHardwareRoute
   '/super-admin/manage-sms': typeof SuperAdminManageSmsRouteWithChildren
   '/super-admin/revenue': typeof SuperAdminRevenueRoute
@@ -840,6 +858,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/attendance'
     | '/boarding'
+    | '/book-demo'
     | '/classes'
     | '/contact'
     | '/dashboard'
@@ -894,6 +913,7 @@ export interface FileRouteTypes {
     | '/super-admin/announcements'
     | '/super-admin/audit'
     | '/super-admin/billing'
+    | '/super-admin/demo-requests'
     | '/super-admin/hardware'
     | '/super-admin/manage-sms'
     | '/super-admin/revenue'
@@ -931,6 +951,7 @@ export interface FileRouteTypes {
     | '/'
     | '/about'
     | '/attendance'
+    | '/book-demo'
     | '/classes'
     | '/contact'
     | '/dashboard'
@@ -981,6 +1002,7 @@ export interface FileRouteTypes {
     | '/super-admin/announcements'
     | '/super-admin/audit'
     | '/super-admin/billing'
+    | '/super-admin/demo-requests'
     | '/super-admin/hardware'
     | '/super-admin/revenue'
     | '/super-admin/subscriptions'
@@ -1017,6 +1039,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/attendance'
     | '/boarding'
+    | '/book-demo'
     | '/classes'
     | '/contact'
     | '/dashboard'
@@ -1071,6 +1094,7 @@ export interface FileRouteTypes {
     | '/super-admin/announcements'
     | '/super-admin/audit'
     | '/super-admin/billing'
+    | '/super-admin/demo-requests'
     | '/super-admin/hardware'
     | '/super-admin/manage-sms'
     | '/super-admin/revenue'
@@ -1110,6 +1134,7 @@ export interface RootRouteChildren {
   AboutRoute: typeof AboutRoute
   AttendanceRoute: typeof AttendanceRoute
   BoardingRoute: typeof BoardingRouteWithChildren
+  BookDemoRoute: typeof BookDemoRoute
   ClassesRoute: typeof ClassesRoute
   ContactRoute: typeof ContactRoute
   DashboardRoute: typeof DashboardRoute
@@ -1325,6 +1350,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClassesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/book-demo': {
+      id: '/book-demo'
+      path: '/book-demo'
+      fullPath: '/book-demo'
+      preLoaderRoute: typeof BookDemoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/boarding': {
       id: '/boarding'
       path: '/boarding'
@@ -1498,6 +1530,13 @@ declare module '@tanstack/react-router' {
       path: '/hardware'
       fullPath: '/super-admin/hardware'
       preLoaderRoute: typeof SuperAdminHardwareRouteImport
+      parentRoute: typeof SuperAdminRoute
+    }
+    '/super-admin/demo-requests': {
+      id: '/super-admin/demo-requests'
+      path: '/demo-requests'
+      fullPath: '/super-admin/demo-requests'
+      preLoaderRoute: typeof SuperAdminDemoRequestsRouteImport
       parentRoute: typeof SuperAdminRoute
     }
     '/super-admin/billing': {
@@ -1891,6 +1930,7 @@ interface SuperAdminRouteChildren {
   SuperAdminAnnouncementsRoute: typeof SuperAdminAnnouncementsRoute
   SuperAdminAuditRoute: typeof SuperAdminAuditRoute
   SuperAdminBillingRoute: typeof SuperAdminBillingRoute
+  SuperAdminDemoRequestsRoute: typeof SuperAdminDemoRequestsRoute
   SuperAdminHardwareRoute: typeof SuperAdminHardwareRoute
   SuperAdminManageSmsRoute: typeof SuperAdminManageSmsRouteWithChildren
   SuperAdminRevenueRoute: typeof SuperAdminRevenueRoute
@@ -1907,6 +1947,7 @@ const SuperAdminRouteChildren: SuperAdminRouteChildren = {
   SuperAdminAnnouncementsRoute: SuperAdminAnnouncementsRoute,
   SuperAdminAuditRoute: SuperAdminAuditRoute,
   SuperAdminBillingRoute: SuperAdminBillingRoute,
+  SuperAdminDemoRequestsRoute: SuperAdminDemoRequestsRoute,
   SuperAdminHardwareRoute: SuperAdminHardwareRoute,
   SuperAdminManageSmsRoute: SuperAdminManageSmsRouteWithChildren,
   SuperAdminRevenueRoute: SuperAdminRevenueRoute,
@@ -1946,6 +1987,7 @@ const rootRouteChildren: RootRouteChildren = {
   AboutRoute: AboutRoute,
   AttendanceRoute: AttendanceRoute,
   BoardingRoute: BoardingRouteWithChildren,
+  BookDemoRoute: BookDemoRoute,
   ClassesRoute: ClassesRoute,
   ContactRoute: ContactRoute,
   DashboardRoute: DashboardRoute,

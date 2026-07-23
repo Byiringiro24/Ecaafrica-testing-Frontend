@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Loader2, ArrowLeft, Eye, EyeOff,
+  Loader2, Eye, EyeOff,
 } from "lucide-react";
 import logo from "@/assets/netrack-logo.png";
 import { toast } from "sonner";
@@ -101,25 +101,17 @@ function LoginPage() {
       <div className="absolute top-0 right-0 w-75 h-75 bg-linear-to-br from-[#42A5F5]/5 to-transparent rounded-full blur-[80px] pointer-events-none"></div>
       <div className="absolute bottom-0 left-0 w-75 h-75 bg-linear-to-tr from-[#0A3D91]/5 to-transparent rounded-full blur-[80px] pointer-events-none"></div>
 
-      <div className="max-w-7xl mx-auto w-full flex items-center justify-between z-10">
-        <Link to="/" className="inline-flex items-center gap-2 text-sm font-semibold text-[#5F6B7A] hover:text-[#0A3D91] transition-all group">
-          <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
-          Return Home
-        </Link>
-        <Link to="/" className="flex items-center gap-2">
-          <img src={logo} alt="ECA System" className="h-8 w-8 object-contain" />
-          <span className="font-display font-bold text-sm text-[#0A3D91] tracking-tight">ECA System</span>
-        </Link>
-      </div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md z-10 my-auto">
         <div className="bg-white border border-[#EEF4FF] p-8 sm:p-10 rounded-2xl shadow-[0_10px_30px_-5px_rgba(10,61,145,0.05)]">
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-[#0A3D91]/5 rounded-2xl mx-auto flex items-center justify-center mb-4 text-[#0A3D91]">
-              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.0" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></svg>
-            </div>
+            <Link to="/" className="w-16 h-16 mx-auto mb-4 block rounded-2xl bg-[#0A3D91]/5 shadow-sm transition hover:scale-[1.02]">
+              <div className="h-full w-full flex items-center justify-center text-[#0A3D91]">
+                <img src={logo} alt="Netrack logo" className="h-9 w-9 object-contain" />
+              </div>
+            </Link>
             <h1 className="font-display text-2xl font-bold text-[#0A3D91] mb-2">
-              {isPlatform ? "Platform Login" : "School Login"}
+              Welcome back
             </h1>
             <p className="text-xs text-[#5F6B7A]">
               {isPlatform

@@ -34,6 +34,7 @@ const NAV: NavSection[] = [
       { to: "/super-admin/manage-sms", label: "Manage SMS", icon: Mail },
       { to: "/super-admin/analytics", label: "Platform Analytics", icon: BarChart3, hidden: true },
       { to: "/super-admin/announcements", label: "Announcements", icon: Megaphone, hidden: true },
+      { to: "/super-admin/demo-requests", label: "Demo Requests", icon: ClipboardList },
       { to: "/super-admin/support", label: "Support Tickets", icon: Headphones, hidden: true },
     ],
   },

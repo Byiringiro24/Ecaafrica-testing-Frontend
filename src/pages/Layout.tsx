@@ -1,6 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Button } from "@/components/ui/button";
-import { Menu, X, Phone, Instagram, Facebook, Linkedin, Twitter, MessageSquare } from "lucide-react";
+import { Menu, X, Phone, Instagram, Facebook, Linkedin, Twitter, Mail, Circle } from "lucide-react";
 import { useState, ReactNode } from "react";
 import { NavLink } from "./NavLink";
 import logo from "@/assets/netrack-logo.png";
@@ -9,6 +8,7 @@ const nav = [
   { to: "/", label: "Home" },
   { to: "/about", label: "About" },
   { to: "/features", label: "Features" },
+  { to: "/book-demo", label: "Book Demo" },
   { to: "/pricing", label: "Pricing" },
   { to: "/contact", label: "Contact" },
   { to: "/login", label: "Login" },
@@ -91,9 +91,12 @@ export default function Layout({ children }: LayoutProps) {
               href="https://wa.me/250786402913"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-full border border-[#0A3D91]/15 bg-[#DCFCE7] px-3 py-2 text-sm font-semibold text-[#0A3D91] hover:bg-[#C8F6D8] transition-colors"
+              className="inline-flex items-center gap-2 rounded-full border border-[#0A3D91]/15 bg-[#DCFCE7] p-2 text-sm font-semibold text-[#128C7E] hover:bg-[#C8F6D8] transition-colors"
+              title="Contact us on WhatsApp"
             >
-              <MessageSquare className="h-4 w-4" /> WhatsApp
+              <svg viewBox="0 0 448 512" width="20" height="20" className="h-5 w-5" fill="currentColor" aria-hidden="true">
+                <path d="M380.9 97.1C339.3 55.5 286.2 32 230.8 32 112.1 32 16 128.1 16 246.8c0 43.4 11.4 85.7 32.9 122.9L0 480l112.5-29.6c35.5 19.4 75.7 29.7 117.5 29.7 118.7 0 214.8-96.1 214.8-214.8 0-55.4-23.5-108.5-65.4-150.2zM230.8 429.4c-36.2 0-71.2-9.7-101.6-28.1l-7.3-4.3-66.7 17.6 17.8-64.9-4.7-7.6c-19.8-31.7-30.1-68.5-30.1-106.7 0-103.2 84-187.2 187.2-187.2 50 0 97 19.5 132.4 55 35.5 35.6 55 82.7 55 132.4-.1 103.2-84.1 187.2-187.3 187.2zm101.8-138.4c-5.6-2.8-33.1-16.4-38.2-18.2-5.1-1.7-8.8-2.8-12.5 2.8-3.7 5.6-14.4 18.2-17.7 22-3.3 3.7-6.6 4.2-12.2 1.4-33.3-16.7-55.1-29.8-77.2-67.8-5.8-10-6.1-14.5-1.7-18.8 4.4-4.4 9.8-11.3 14.7-17 1.6-1.9 2.2-3.3 3.3-5.5 1.1-2.2.6-4.2-.3-5.9-1-1.7-12.5-30.1-17.1-41.2-4.5-10.9-9.1-9.4-12.5-9.6-3.3-.2-7.1-.2-10.8-.2-3.7 0-9.7 1.4-14.8 7-5.1 5.6-19.4 18.9-19.4 46.1 0 27.2 19.8 53.5 22.6 57.2 2.8 3.7 38.9 59.4 94.3 83.5 13.2 5.7 23.5 9.1 31.5 11.7 13.2 4.4 25.2 3.8 34.7 2.3 10.6-1.6 33.1-13.5 37.7-26.5 4.7-13 4.7-24.1 3.3-26.5-1.4-2.4-5.1-3.7-10.7-6.5z" />
+              </svg>
             </a>
           </div>
 
@@ -137,16 +140,14 @@ export default function Layout({ children }: LayoutProps) {
       </header>
 
       {/* Page content */}
-      <main className="flex-1 relative z-10 w-full">
+      <main className="flex-1 relative z-10 w-full min-w-0">
         {children}
       </main>
 
       {/* Footer */}
-      <footer className="bg-[#082B66] text-white mt-16 relative z-10 border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 grid md:grid-cols-4 gap-12">
-
-          {/* Brand Info */}
-          <div className="md:col-span-2 space-y-6">
+      <footer className="bg-[#082B66] text-white relative z-10 border-t border-white/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 grid gap-10 lg:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr]">
+          <div className="space-y-5">
             <div className="flex items-center gap-3.5">
               <div className="bg-white p-2.5 rounded-xl border border-white/10 shadow-sm">
                 <img src={logo} alt="Education Care System Africa" className="h-12 w-12 object-contain" />
@@ -157,49 +158,41 @@ export default function Layout({ children }: LayoutProps) {
               </div>
             </div>
             <p className="text-sm text-white/80 max-w-md leading-relaxed">
-              A premium, configurable multi-tenant SaaS platform built to power African schools from attendance, boarding, fee tracking, to parent communication.
+              A premium, configurable SaaS platform built to power African schools from attendance and boarding to fee tracking and parent communication.
             </p>
-            <Button className="bg-[#42A5F5] hover:bg-[#42A5F5]/90 text-white rounded-xl shadow-md h-10 px-5 font-semibold text-xs transition-all hover:scale-[1.02]" asChild>
-              <Link to="/contact">Request a Demo</Link>
-            </Button>
           </div>
 
-          {/* Navigation Links */}
           <div className="space-y-4">
             <h4 className="font-display font-semibold text-[#42A5F5] tracking-wider uppercase text-xs">Quick Navigation</h4>
             <ul className="space-y-2.5 text-sm">
-              {nav.map((n) => (
-                <li key={n.to}>
-                  <Link to={n.to} className="text-white/70 hover:text-white hover:underline transition-all block">
-                    {n.label}
-                  </Link>
-                </li>
-              ))}
+              <li><Link to="/" className="text-white/70 hover:text-white transition-colors block">Home</Link></li>
+              <li><Link to="/features" className="text-white/70 hover:text-white transition-colors block">Features</Link></li>
+              <li><Link to="/pricing" className="text-white/70 hover:text-white transition-colors block">Pricing</Link></li>
+              <li><Link to="/contact" className="text-white/70 hover:text-white transition-colors block">Contact</Link></li>
             </ul>
           </div>
 
-          {/* Contact Info */}
           <div className="space-y-4">
-            <h4 className="font-display font-semibold text-[#42A5F5] tracking-wider uppercase text-xs">Contact Us</h4>
+            <h4 className="font-display font-semibold text-[#42A5F5] tracking-wider uppercase text-xs">Contact</h4>
             <ul className="space-y-3 text-sm text-white/70">
-              <li><a href="tel:+250786402913" className="hover:text-white transition-colors">+250 786 402 913</a></li>
-              <li><a href="tel:+256773666640" className="hover:text-white transition-colors">+256 773 666 640</a></li>
-              <li>Netrackdevelopement@gmail.com</li>
+              <li className="flex items-center gap-2.5">
+                <Phone className="h-4 w-4 text-[#42A5F5]" />
+                <a href="tel:+250786402913" className="hover:text-white transition-colors">+250 786 402 913</a>
+              </li>
+              <li className="flex items-center gap-2.5">
+                <Phone className="h-4 w-4 text-[#42A5F5]" />
+                <a href="tel:+256773666640" className="hover:text-white transition-colors">+256 773 666 640</a>
+              </li>
+              <li className="flex items-center gap-2.5">
+                <Mail className="h-4 w-4 text-[#42A5F5]" />
+                <a href="mailto:Netrackdevelopement@gmail.com" className="hover:text-white transition-colors">Netrackdevelopement@gmail.com</a>
+              </li>
             </ul>
           </div>
-        </div>
 
-        {/* Copyright bar */}
-        <div className="border-t border-white/10 py-6 bg-[#06204D]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 sm:grid-cols-3 items-center gap-4 text-xs text-white/60">
-            <span className="text-center sm:text-left">© 2026 ECA – Education Care Africa. All rights reserved.</span>
-            <span className="text-center order-first sm:order-none font-medium">
-              Powered by{" "}
-              <a href="https://www.netrackgroup.com/" target="_blank" rel="noreferrer" className="text-[#42A5F5] font-semibold hover:underline">
-                Netrack
-              </a>
-            </span>
-            <div className="flex items-center gap-3 justify-center sm:justify-end">
+          <div className="space-y-4">
+            <h4 className="font-display font-semibold text-[#42A5F5] tracking-wider uppercase text-xs">Follow Us</h4>
+            <div className="flex flex-wrap items-center gap-3">
               {[
                 { Icon: Instagram, href: "https://www.instagram.com/netrack2022", label: "Instagram" },
                 { Icon: Facebook, href: "https://www.facebook.com/profile.php?id=100080133396900", label: "Facebook" },
@@ -212,11 +205,30 @@ export default function Layout({ children }: LayoutProps) {
                   target="_blank"
                   rel="noreferrer"
                   aria-label={label}
-                  className="h-8 w-8 rounded-full border border-white/15 flex items-center justify-center hover:bg-[#42A5F5] hover:text-white hover:border-[#42A5F5] transition-colors"
+                  className="h-9 w-9 rounded-full border border-white/15 flex items-center justify-center hover:bg-[#42A5F5] hover:text-white hover:border-[#42A5F5] transition-colors"
                 >
                   <Icon className="h-4 w-4" />
                 </a>
               ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-white/10 py-6 bg-[#06204D]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-xs text-white/60">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-center sm:text-left sm:flex-1">
+                <span>© 2026 ECA – Education Care Africa. All rights reserved</span>
+              </div>
+              <div className="text-center sm:flex-1">
+                <a href="https://www.netrackgroup.com/" target="_blank" rel="noreferrer" className="text-[#42A5F5] font-semibold hover:underline">
+                  Powered by Netrack
+                </a>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-4 sm:flex-1 sm:justify-end">
+                <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
+                <a href="#" className="hover:text-white transition-colors">Terms & Conditions</a>
+              </div>
             </div>
           </div>
         </div>

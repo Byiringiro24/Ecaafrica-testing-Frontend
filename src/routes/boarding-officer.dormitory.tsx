@@ -19,6 +19,7 @@ type ApiStudent = {
   first_name: string;
   last_name: string;
   student_id_number?: string | null;
+  gender?: string | null;
   current_section?: {
     id?: string;
     name?: string;
@@ -35,11 +36,21 @@ type DormitoryRecord = {
   description?: string | null;
 };
 
+type DormRoomRecord = {
+  id: string;
+  dormitory_id: string;
+  room_number: string;
+  capacity?: number | null;
+};
+
 type DormAssignment = {
   id: string;
   student_id: string;
   dormitory_id: string;
+  room_id?: string | null;
+  bed_number?: string | null;
   dormitory?: { name?: string | null } | null;
+  room?: { room_number?: string | null } | null;
 };
 
 type LeaveRecord = {
@@ -73,6 +84,8 @@ type StudentRow = {
   name: string;
   className: string;
   dormName: string;
+  roomLabel: string;
+  assignmentId: string | null;
   status: "Present" | "On Leave" | "Absent";
 };
 
@@ -89,6 +102,7 @@ function BoardingOfficerDormitoryPage() {
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [students, setStudents] = useState<ApiStudent[]>([]);
   const [dormitories, setDormitories] = useState<DormitoryRecord[]>([]);
+  const [rooms, setRooms] = useState<DormRoomRecord[]>([]);
   const [assignments, setAssignments] = useState<DormAssignment[]>([]);
   const [classRecords, setClassRecords] = useState<{ id: string; name: string }[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYearRecord[]>([]);
@@ -108,9 +122,13 @@ function BoardingOfficerDormitoryPage() {
     classId: "",
     studentId: "",
     dormitoryId: "",
+    roomId: "",
+    bedNumber: "",
     academicYearId: "",
     assignedAt: today,
   });
+  const [rowBusyId, setRowBusyId] = useState<string | null>(null);
+  const [transferTarget, setTransferTarget] = useState<StudentRow | null>(null);
 
   const classLabel = useCallback(
     (student: ApiStudent) =>
@@ -172,6 +190,28 @@ function BoardingOfficerDormitoryPage() {
     return map;
   }, [assignments]);
 
+  const roomOccupancy = useMemo(() => {
+    const map = new Map<string, number>();
+    assignments.forEach((assignment) => {
+      if (!assignment.room_id) return;
+      map.set(assignment.room_id, (map.get(assignment.room_id) ?? 0) + 1);
+    });
+    return map;
+  }, [assignments]);
+
+  // A student can only go into a dormitory matching their gender; "other" and
+  // missing genders are unconstrained, matching the backend rule.
+  const compatibleDormitories = useMemo(() => {
+    const gender = activeAssignmentStudent?.gender;
+    if (gender !== "male" && gender !== "female") return dormitories;
+    return dormitories.filter((dormitory) => !dormitory.gender || dormitory.gender === gender);
+  }, [dormitories, activeAssignmentStudent]);
+
+  const availableRooms = useMemo(
+    () => rooms.filter((room) => room.dormitory_id === assignmentForm.dormitoryId),
+    [rooms, assignmentForm.dormitoryId]
+  );
+
   const dormitoryStats = useMemo(
     () =>
       dormitories.map((dormitory) => ({
@@ -198,6 +238,10 @@ function BoardingOfficerDormitoryPage() {
         name: `${student.first_name} ${student.last_name}`.trim(),
         className: classLabel(student),
         dormName,
+        roomLabel: assignment?.room?.room_number
+          ? `${assignment.room.room_number}${assignment.bed_number ? ` / Bed ${assignment.bed_number}` : ""}`
+          : "—",
+        assignmentId: assignment?.id ?? null,
         status,
       };
     });
@@ -228,12 +272,13 @@ function BoardingOfficerDormitoryPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [studentList, dormList, assignmentList, classes, years, leaves, sessions, records] =
+      const [studentList, dormList, roomList, assignmentList, classes, years, leaves, sessions, records] =
         await Promise.all([
           apiRequest<ApiStudent[]>("/students?student_type=boarding&limit=2000", {
             auth: "school",
           }),
           apiRequest<DormitoryRecord[]>("/boarding/dormitories?limit=100", { auth: "school" }),
+          apiRequest<DormRoomRecord[]>("/boarding/rooms?limit=1000", { auth: "school" }),
           apiRequest<DormAssignment[]>("/boarding/assignments?is_active=true&limit=2000", {
             auth: "school",
           }),
@@ -250,6 +295,7 @@ function BoardingOfficerDormitoryPage() {
 
       setStudents(Array.isArray(studentList) ? studentList : []);
       setDormitories(Array.isArray(dormList) ? dormList : []);
+      setRooms(Array.isArray(roomList) ? roomList : []);
       setAssignments(Array.isArray(assignmentList) ? assignmentList : []);
       setClassRecords(Array.isArray(classes) ? classes : []);
       setAcademicYears(Array.isArray(years) ? years : []);
@@ -328,16 +374,26 @@ function BoardingOfficerDormitoryPage() {
   }, [assignmentForm.classId, boardingStudents]);
 
   useEffect(() => {
-    if (dormitories.length === 0) return;
+    if (compatibleDormitories.length === 0) return;
 
     setAssignmentForm((prev) => {
-      if (prev.dormitoryId && dormitories.some((dormitory) => dormitory.id === prev.dormitoryId)) {
+      if (prev.dormitoryId && compatibleDormitories.some((d) => d.id === prev.dormitoryId)) {
         return prev;
       }
 
-      return { ...prev, dormitoryId: dormitories[0].id };
+      return { ...prev, dormitoryId: compatibleDormitories[0].id, roomId: "", bedNumber: "" };
     });
-  }, [dormitories]);
+  }, [compatibleDormitories]);
+
+  useEffect(() => {
+    setAssignmentForm((prev) => {
+      if (!prev.roomId || availableRooms.some((room) => room.id === prev.roomId)) {
+        return prev;
+      }
+
+      return { ...prev, roomId: "", bedNumber: "" };
+    });
+  }, [availableRooms]);
 
   useEffect(() => {
     if (academicYears.length === 0) return;
@@ -406,16 +462,60 @@ function BoardingOfficerDormitoryPage() {
         body: JSON.stringify({
           student_id: assignmentForm.studentId,
           dormitory_id: assignmentForm.dormitoryId,
+          room_id: assignmentForm.roomId || undefined,
+          bed_number: assignmentForm.bedNumber.trim() || undefined,
           academic_year_id: assignmentForm.academicYearId,
           assigned_at: assignmentForm.assignedAt,
         }),
       });
       toast.success("Student assigned to dormitory");
+      setAssignmentForm((prev) => ({ ...prev, roomId: "", bedNumber: "" }));
       await loadData();
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to assign student");
     } finally {
       setSavingAssignment(false);
+    }
+  };
+
+  const transferStudent = async (row: StudentRow, dormitoryId: string) => {
+    if (!row.assignmentId) return;
+
+    setRowBusyId(row.id);
+    try {
+      await apiRequest(`/boarding/assignments/${row.assignmentId}`, {
+        method: "PATCH",
+        auth: "school",
+        body: JSON.stringify({ dormitory_id: dormitoryId, room_id: null, bed_number: null }),
+      });
+      toast.success(`${row.name} transferred`);
+      setTransferTarget(null);
+      await loadData();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to transfer student");
+    } finally {
+      setRowBusyId(null);
+    }
+  };
+
+  const unassignStudent = async (row: StudentRow) => {
+    if (!row.assignmentId) return;
+    if (!window.confirm(`Remove ${row.name} from ${row.dormName}?`)) return;
+
+    setRowBusyId(row.id);
+    try {
+      // Set left_at rather than deleting so the placement history is retained.
+      await apiRequest(`/boarding/assignments/${row.assignmentId}`, {
+        method: "PATCH",
+        auth: "school",
+        body: JSON.stringify({ left_at: today }),
+      });
+      toast.success(`${row.name} unassigned`);
+      await loadData();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to unassign student");
+    } finally {
+      setRowBusyId(null);
     }
   };
 
@@ -564,17 +664,73 @@ function BoardingOfficerDormitoryPage() {
               <select
                 value={assignmentForm.dormitoryId}
                 onChange={(e) =>
-                  setAssignmentForm((prev) => ({ ...prev, dormitoryId: e.target.value }))
+                  setAssignmentForm((prev) => ({
+                    ...prev,
+                    dormitoryId: e.target.value,
+                    roomId: "",
+                    bedNumber: "",
+                  }))
                 }
                 className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
               >
                 <option value="">Select dormitory</option>
-                {dormitories.map((dormitory) => (
-                  <option key={dormitory.id} value={dormitory.id}>
-                    {dormitory.name}
-                  </option>
-                ))}
+                {compatibleDormitories.map((dormitory) => {
+                  const used = dormitoryOccupancy.get(dormitory.id) ?? 0;
+                  const full =
+                    typeof dormitory.capacity === "number" && used >= dormitory.capacity;
+                  return (
+                    <option key={dormitory.id} value={dormitory.id} disabled={full}>
+                      {dormitory.name}
+                      {typeof dormitory.capacity === "number"
+                        ? ` (${used}/${dormitory.capacity})${full ? " — full" : ""}`
+                        : ""}
+                    </option>
+                  );
+                })}
               </select>
+              {activeAssignmentStudent && compatibleDormitories.length === 0 ? (
+                <p className="mt-1 text-xs text-destructive">
+                  No {activeAssignmentStudent.gender ?? ""} dormitory available.
+                </p>
+              ) : null}
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">Room (optional)</label>
+              <select
+                value={assignmentForm.roomId}
+                onChange={(e) =>
+                  setAssignmentForm((prev) => ({ ...prev, roomId: e.target.value }))
+                }
+                className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                disabled={!assignmentForm.dormitoryId || availableRooms.length === 0}
+              >
+                <option value="">
+                  {availableRooms.length === 0 ? "No rooms in this dormitory" : "No specific room"}
+                </option>
+                {availableRooms.map((room) => {
+                  const used = roomOccupancy.get(room.id) ?? 0;
+                  const capacity = room.capacity ?? 0;
+                  const full = capacity > 0 && used >= capacity;
+                  return (
+                    <option key={room.id} value={room.id} disabled={full}>
+                      {room.room_number} ({used}/{capacity} beds){full ? " — full" : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">Bed number (optional)</label>
+              <input
+                value={assignmentForm.bedNumber}
+                onChange={(e) =>
+                  setAssignmentForm((prev) => ({ ...prev, bedNumber: e.target.value }))
+                }
+                placeholder="e.g. B4"
+                maxLength={10}
+                disabled={!assignmentForm.roomId}
+                className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60"
+              />
             </div>
             <div>
               <label className="text-xs font-semibold text-muted-foreground">Academic year</label>
@@ -725,7 +881,7 @@ function BoardingOfficerDormitoryPage() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
               <tr>
-                {["Student", "Class", "Dormitory", "Status"].map((h) => (
+                {["Student", "Class", "Dormitory", "Room / Bed", "Status", ""].map((h) => (
                   <th key={h} className="text-left px-4 py-3">
                     {h}
                   </th>
@@ -735,13 +891,13 @@ function BoardingOfficerDormitoryPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                     Loading dormitory status…
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                     No students match the selected filters.
                   </td>
                 </tr>
@@ -754,12 +910,37 @@ function BoardingOfficerDormitoryPage() {
                     <td className="px-4 py-3 font-medium">{row.name}</td>
                     <td className="px-4 py-3">{row.className}</td>
                     <td className="px-4 py-3">{row.dormName}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{row.roomLabel}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${STATUS_STYLES[row.status]}`}
                       >
                         {row.status}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {row.assignmentId ? (
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => setTransferTarget(row)}
+                            disabled={rowBusyId === row.id}
+                            className="rounded-md border border-border px-2.5 py-1 text-xs font-semibold hover:bg-muted disabled:opacity-60"
+                          >
+                            Transfer
+                          </button>
+                          <button
+                            onClick={() => unassignStudent(row)}
+                            disabled={rowBusyId === row.id}
+                            className="rounded-md border border-destructive/40 px-2.5 py-1 text-xs font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-60"
+                          >
+                            {rowBusyId === row.id ? "Working…" : "Unassign"}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="block text-right text-xs text-muted-foreground">
+                          Unassigned
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -768,6 +949,97 @@ function BoardingOfficerDormitoryPage() {
           </table>
         </div>
       </div>
+      {transferTarget ? (
+        <TransferDialog
+          row={transferTarget}
+          dormitories={dormitories}
+          students={students}
+          occupancy={dormitoryOccupancy}
+          busy={rowBusyId === transferTarget.id}
+          onCancel={() => setTransferTarget(null)}
+          onConfirm={(dormitoryId) => transferStudent(transferTarget, dormitoryId)}
+        />
+      ) : null}
     </BoardingOfficerLayout>
+  );
+}
+
+function TransferDialog({
+  row,
+  dormitories,
+  students,
+  occupancy,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  row: StudentRow;
+  dormitories: DormitoryRecord[];
+  students: ApiStudent[];
+  occupancy: Map<string, number>;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (dormitoryId: string) => void;
+}) {
+  const gender = students.find((student) => student.id === row.id)?.gender;
+  const options = useMemo(() => {
+    const compatible =
+      gender === "male" || gender === "female"
+        ? dormitories.filter((d) => !d.gender || d.gender === gender)
+        : dormitories;
+    return compatible.filter((d) => d.name !== row.dormName);
+  }, [dormitories, gender, row.dormName]);
+
+  const [dormitoryId, setDormitoryId] = useState(options[0]?.id ?? "");
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl">
+        <h3 className="font-semibold text-base">Transfer {row.name}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Currently in {row.dormName}. Room and bed will be cleared.
+        </p>
+
+        <label className="mt-4 block text-xs font-semibold text-muted-foreground">
+          New dormitory
+        </label>
+        <select
+          value={dormitoryId}
+          onChange={(e) => setDormitoryId(e.target.value)}
+          className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+        >
+          {options.length === 0 ? <option value="">No other dormitory available</option> : null}
+          {options.map((dormitory) => {
+            const used = occupancy.get(dormitory.id) ?? 0;
+            const full = typeof dormitory.capacity === "number" && used >= dormitory.capacity;
+            return (
+              <option key={dormitory.id} value={dormitory.id} disabled={full}>
+                {dormitory.name}
+                {typeof dormitory.capacity === "number"
+                  ? ` (${used}/${dormitory.capacity})${full ? " — full" : ""}`
+                  : ""}
+              </option>
+            );
+          })}
+        </select>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-md border border-border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(dormitoryId)}
+            disabled={busy || !dormitoryId}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+          >
+            {busy ? "Transferring…" : "Transfer"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

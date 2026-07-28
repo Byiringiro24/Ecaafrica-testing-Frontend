@@ -4,42 +4,24 @@ import { cn } from "@/lib/utils";
 
 // ============================================================================
 // Shared Finance UI: modal dialog, form fields, file upload + document viewer.
-// Frontend-only — uploaded files are kept in memory via object URLs so they can
-// be viewed in a new tab without any backend.
+// Uploads keep the underlying File so the caller can POST it to the backend;
+// documents already stored server-side are opened from their returned URL.
 // ============================================================================
 
 export interface UploadedDoc {
   name: string;
-  url?: string;      // object URL for a real uploaded file
+  url?: string;      // object URL for a pending upload, or the stored server URL
   size?: number;     // bytes
   type?: string;     // mime
-  seed?: boolean;    // true for mock/seed documents that have no real file
-  title?: string;    // used to render a placeholder for seed docs
+  file?: File;       // present until the document has been sent to the backend
 }
 
-// Open a document in a new tab. Real uploads open their object URL; seed docs
-// get a generated placeholder page so "view" works everywhere.
+// Open a document in a new tab. Pending uploads open their object URL; stored
+// documents open the URL the backend returned.
 export function openDocument(doc: UploadedDoc) {
   if (doc.url) {
     window.open(doc.url, "_blank", "noopener");
-    return;
   }
-  const title = doc.title || doc.name || "Document";
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
-    <style>body{font-family:system-ui,Segoe UI,Roboto,sans-serif;background:#f1f5f9;margin:0;padding:40px;color:#0f172a}
-    .sheet{max-width:720px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:48px;box-shadow:0 10px 30px rgba(0,0,0,.08)}
-    .badge{display:inline-block;background:#3b5998;color:#fff;font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;border-radius:999px}
-    h1{font-size:22px;margin:18px 0 6px}.muted{color:#64748b;font-size:13px}
-    .row{display:flex;justify-content:space-between;border-bottom:1px dashed #e2e8f0;padding:10px 0;font-size:14px}
-    .stamp{margin-top:40px;border:2px dashed #cbd5e1;border-radius:10px;text-align:center;color:#94a3b8;padding:22px;font-size:13px}</style></head>
-    <body><div class="sheet"><span class="badge">Education Care System · Finance</span>
-    <h1>${title}</h1><p class="muted">Sample supporting document (frontend preview — no file was attached to this seeded record).</p>
-    <div class="row"><span>Document</span><strong>${doc.name}</strong></div>
-    <div class="row"><span>Type</span><strong>${doc.type || "application/pdf"}</strong></div>
-    <div class="row"><span>Status</span><strong>Verified</strong></div>
-    <div class="stamp">School stamp &amp; authorised signature</div></div></body></html>`;
-  const blob = new Blob([html], { type: "text/html" });
-  window.open(URL.createObjectURL(blob), "_blank", "noopener");
 }
 
 function humanSize(bytes?: number) {
@@ -96,13 +78,14 @@ export function TextField({ label, value, onChange, placeholder, type = "text", 
   );
 }
 
-export function SelectField({ label, value, onChange, options, required }: {
-  label: string; value: string; onChange: (v: string) => void; options: readonly string[]; required?: boolean;
+export function SelectField({ label, value, onChange, options, optionLabels, required }: {
+  label: string; value: string; onChange: (v: string) => void; options: readonly string[];
+  optionLabels?: Record<string, string>; required?: boolean;
 }) {
   return (
     <FormField label={label} required={required}>
       <select value={value} onChange={(e) => onChange(e.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm">
-        {options.map((o) => <option key={o}>{o}</option>)}
+        {options.map((o) => <option key={o} value={o}>{optionLabels?.[o] ?? o}</option>)}
       </select>
     </FormField>
   );
@@ -130,11 +113,11 @@ export function FileInput({ label = "Attach Document", value, onChange, accept =
 
   const take = (file?: File | null) => {
     if (!file) return;
-    onChange({ name: file.name, url: URL.createObjectURL(file), size: file.size, type: file.type });
+    onChange({ name: file.name, url: URL.createObjectURL(file), size: file.size, type: file.type, file });
   };
 
   return (
-    <FormField label={label} hint="PDF, image or Office document. Stored locally for preview.">
+    <FormField label={label} hint="PDF, image or Office document, up to 5 MB.">
       {value ? (
         <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
           <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary shrink-0"><FileText className="h-4 w-4" /></div>
@@ -164,7 +147,7 @@ export function FileInput({ label = "Attach Document", value, onChange, accept =
   );
 }
 
-// Inline "view document" button for table rows (uploaded or seed docs)
+// Inline "view document" button for table rows
 export function DocButton({ doc, label = "View" }: { doc: UploadedDoc | null; label?: string }) {
   if (!doc) return <span className="text-muted-foreground">—</span>;
   return (

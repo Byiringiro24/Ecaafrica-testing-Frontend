@@ -7,6 +7,7 @@ import { SaPhoneInput } from "@/components/super-admin/ui";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { syncTeacherAssignments } from "@/lib/teacher-assignments";
 import { useSchoolCountryName } from "@/hooks/useSchoolCountry";
 
 export const Route = createFileRoute("/staff/")({ component: StaffPage });
@@ -109,9 +110,17 @@ type StaffRow = {
 };
 
 const TABS = ["All Staff", " ", "Departments"] as const;
-const DEFAULT_DEPARTMENTS = ["Teaching", "Administration", "Boarding"];
+const DEFAULT_DEPARTMENTS = ["Teaching", "Administration", "Boarding", "Security", "Finance"];
 const STAFF_DEPARTMENTS_KEY = "staff_departments";
-const STAFF_ROLES = ["teacher", "staff", "gate_keeper", "boarding_officer", "school_admin"] as const;
+const STAFF_ROLES = ["teacher", "staff", "gate_keeper", "boarding_officer", "finance_officer", "school_admin"] as const;
+const ROLE_DEPARTMENTS: Record<typeof STAFF_ROLES[number], string> = {
+  teacher: "Teaching",
+  staff: "Administration",
+  gate_keeper: "Security",
+  boarding_officer: "Boarding",
+  finance_officer: "Finance",
+  school_admin: "Administration",
+};
 const EMPTY_VALUE = "--";
 const STAFF_TABLE_HEADERS = ["Name", "Staff ID", "Role", "Department", "Phone", "Join Date", "Status", ""] as const;
 
@@ -558,7 +567,6 @@ function StaffPage() {
         <RegisterStaffModal
           onClose={() => setRegisterOpen(false)}
           onSuccess={() => loadStaffData()}
-          departments={departmentOptions}
           staffIdNumber={nextStaffIdNumber}
         />
       )}
@@ -770,12 +778,10 @@ function Row({ k, v }: { k: string; v: string }) {
 function RegisterStaffModal({
   onClose,
   onSuccess,
-  departments,
   staffIdNumber
 }: {
   onClose: () => void;
   onSuccess: () => void;
-  departments: string[];
   staffIdNumber: string;
 }) {
   const [step, setStep] = useState(1);
@@ -788,6 +794,7 @@ function RegisterStaffModal({
     { label: "Staff", value: "staff" },
     { label: "Gate Keeper", value: "gate_keeper" },
     { label: "Boarding Officer", value: "boarding_officer" },
+    { label: "Finance Officer", value: "finance_officer" },
     { label: "School Admin", value: "school_admin" },
   ];
 
@@ -799,14 +806,9 @@ function RegisterStaffModal({
     joinDate: "",
     address: "",
     role: roleOptions[0].value,
-    department: departments[0] ?? "",
   });
 
-  useEffect(() => {
-    if (departments.length && !data.department) {
-      setData((prev) => ({ ...prev, department: departments[0] }));
-    }
-  }, [departments, data.department]);
+  const department = ROLE_DEPARTMENTS[data.role as typeof STAFF_ROLES[number]];
 
   const update = (k: string, v: any) => {
     setData(p => ({ ...p, [k]: v }));
@@ -846,10 +848,15 @@ function RegisterStaffModal({
           user_id: user.id,
           staff_id_number: staffIdNumber,
           gender: data.gender.toLowerCase(),
-          department: data.department || undefined,
+          department,
           join_date: data.joinDate || undefined,
           employment_status: "active",
         })
+      }).catch(async (profileError) => {
+        // Roll back the user we just created, otherwise the orphaned account
+        // blocks retrying with the same email.
+        await apiRequest(`/users/${user.id}`, { method: "DELETE", auth: "school" }).catch(() => {});
+        throw profileError;
       });
 
       if (data.email.trim()) {
@@ -891,7 +898,8 @@ function RegisterStaffModal({
     { label: "Gender", value: data.gender },
     { label: "Email", value: data.email },
     { label: "Address", value: data.address },
-    { label: "Department", value: data.department },
+    { label: "Role", value: roleOptions.find((o) => o.value === data.role)?.label ?? data.role },
+    { label: "Department", value: department },
     { label: "Join Date", value: data.joinDate },
   ];
 
@@ -932,7 +940,11 @@ function RegisterStaffModal({
               <Field label="Join Date" type="date" value={data.joinDate} onChange={(v: any) => update("joinDate", v)} max={todayValue} />
               <Field label="Address" value={data.address} onChange={(v: any) => update("address", v)} className="md:col-span-2" />
               <Field label="Role" type="select" value={data.role} onChange={(v: any) => update("role", v)} options={roleOptions.map((o) => o.value)} optionLabels={roleOptions.reduce((acc, o) => ({ ...acc, [o.value]: o.label }), {} as Record<string, string>)} />
-              <Field label="Department" type="select" value={data.department} onChange={(v: any) => update("department", v)} options={departments} />
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Department</label>
+                <div className="flex h-10 w-full items-center rounded-lg border border-border bg-muted px-3 text-sm">{department}</div>
+                <div className="mt-1 text-xs text-muted-foreground">Set automatically from the selected role.</div>
+              </div>
             </div>
           )}
           {step === 2 && (
@@ -1081,43 +1093,11 @@ function EditStaffModal({
         ]);
 
         if (data.role === "teacher") {
-          const validAssignments = teachingAssignments.filter(
-            (item) => item.section_id && item.subject_id
+          await syncTeacherAssignments(
+            staff.userId,
+            initialTeachingAssignments,
+            teachingAssignments
           );
-          const assignmentKey = (sectionId: string, subjectId: string) => `${sectionId}:${subjectId}`;
-          const nextKeys = new Set(
-            validAssignments.map((item) => assignmentKey(item.section_id, item.subject_id))
-          );
-          const initialKeys = new Set(
-            initialTeachingAssignments.map((item) => assignmentKey(item.section_id, item.subject_id))
-          );
-
-          const toRemove = initialTeachingAssignments.filter(
-            (item) => !nextKeys.has(assignmentKey(item.section_id, item.subject_id))
-          );
-          const toAdd = validAssignments.filter(
-            (item) => !initialKeys.has(assignmentKey(item.section_id, item.subject_id))
-          );
-
-          await Promise.all([
-            ...toRemove.map((item) =>
-              apiRequest(`/teacher-section-subjects/${item.id}`, {
-                method: "DELETE",
-                auth: "school",
-              })
-            ),
-            ...toAdd.map((item) =>
-              apiRequest("/teacher-section-subjects", {
-                method: "POST",
-                auth: "school",
-                body: JSON.stringify({
-                  teacher_id: staff.userId,
-                  section_id: item.section_id,
-                  subject_id: item.subject_id,
-                }),
-              })
-            ),
-          ]);
         }
       }
 
@@ -1193,7 +1173,7 @@ function EditStaffModal({
           {error && <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</div>}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Field label="Full Name" value={data.name} onChange={(v: any) => setData((prev) => ({ ...prev, name: v }))} />
-            <Field label="Role" type="select" value={data.role} onChange={(v: any) => setData((prev) => ({ ...prev, role: v }))} options={["teacher", "staff", "gate_keeper", "boarding_officer", "school_admin"]} />
+            <Field label="Role" type="select" value={data.role} onChange={(v: any) => setData((prev) => ({ ...prev, role: v }))} options={[...STAFF_ROLES]} optionLabels={STAFF_ROLES.reduce((acc, r) => ({ ...acc, [r]: toTitleCase(r) }), {} as Record<string, string>)} />
             <Field label="Gender" type="select" value={data.gender} onChange={(v: any) => setData((prev) => ({ ...prev, gender: v }))} options={["Male", "Female", "Other"]} />
             <Field label="Department" type="select" value={data.department} onChange={(v: any) => setData((prev) => ({ ...prev, department: v }))} options={departments} />
             <SaPhoneInput label="Phone" value={data.phone} onChange={(v) => setData((prev) => ({ ...prev, phone: v }))} defaultCountryName={schoolCountry ?? undefined} className="md:col-span-2" />

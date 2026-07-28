@@ -6,6 +6,7 @@ const TABS = [
   { to: "/exams/review", label: "Review Submissions", match: "prefix" as const },
   { to: "/exams/schedule", label: "All Exams", match: "prefix" as const },
   { to: "/exams/published", label: "Published Results", match: "prefix" as const },
+  { to: "/exams/report-cards", label: "Report Cards", match: "prefix" as const },
   { to: "/exams/analytics", label: "Analytics", match: "prefix" as const },
 ] as const;
 

@@ -1,44 +1,108 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { FinanceLayout, StatusPill } from "@/components/layout/FinanceLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
-import { Modal, TextField, SelectField, FormField, PrimaryButton, GhostButton } from "@/components/finance/ui";
-import { FEE_CATEGORIES, formatRWF, ACADEMIC_SESSION, type FeeCategory, type FeeFrequency } from "@/lib/financeData";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Modal, TextField, PrimaryButton, GhostButton } from "@/components/finance/ui";
+import { apiRequest } from "@/lib/api";
+import { useAcademicSession } from "@/hooks/useAcademicSession";
+import {
+  formatRWF, toNum,
+  listFeeStructures, createFeeStructure, deleteFeeStructure,
+  type FeeStructure,
+} from "@/lib/financeApi";
 
 export const Route = createFileRoute("/finance/fee-structure")({ component: FeeStructurePage });
 
-const LEVELS = ["S1", "S2", "S3", "S4", "S5", "S6"];
-const FREQUENCIES: FeeFrequency[] = ["One Time", "Monthly", "Term", "Annual"];
+type ClassRecord = { id: string; name: string };
+
+// The backend stores one row per class; the page shows one row per fee name
+// with a column per class, so rows sharing a name are grouped together.
+type FeeGroup = {
+  name: string;
+  is_mandatory: boolean;
+  byClass: Record<string, FeeStructure>;
+  total: number;
+};
+
+const groupByName = (structures: FeeStructure[]): FeeGroup[] => {
+  const groups = new Map<string, FeeGroup>();
+
+  for (const s of structures) {
+    const group = groups.get(s.name) ?? {
+      name: s.name,
+      is_mandatory: s.is_mandatory,
+      byClass: {},
+      total: 0,
+    };
+    if (s.class_id) group.byClass[s.class_id] = s;
+    group.total += toNum(s.amount);
+    group.is_mandatory = group.is_mandatory || s.is_mandatory;
+    groups.set(s.name, group);
+  }
+
+  return [...groups.values()];
+};
 
 function FeeStructurePage() {
-  const [cats, setCats] = useState<FeeCategory[]>(FEE_CATEGORIES);
+  const session = useAcademicSession();
+  const [structures, setStructures] = useState<FeeStructure[]>([]);
+  const [classes, setClasses] = useState<ClassRecord[]>([]);
   const [q, setQ] = useState("");
   const [creating, setCreating] = useState(false);
-  const rows = cats.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
-  const activeCount = cats.filter((c) => c.active).length;
-  const mandatoryCount = cats.filter((c) => c.mandatory).length;
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const toggleActive = (id: string) => {
-    setCats((prev) => prev.map((c) => (c.id === id ? { ...c, active: !c.active } : c)));
-    const c = cats.find((x) => x.id === id);
-    toast.success(`${c?.name} ${c?.active ? "deactivated" : "activated"} (history preserved)`);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [structureRes, classList] = await Promise.all([
+        listFeeStructures({ limit: 500 }),
+        apiRequest<ClassRecord[]>("/classes?limit=100", { auth: "school" }),
+      ]);
+      setStructures(structureRes.data);
+      setClasses(classList);
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to load fee structures");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const groups = useMemo(() => groupByName(structures), [structures]);
+  const rows = groups.filter((g) => g.name.toLowerCase().includes(q.toLowerCase()));
+  const mandatoryCount = groups.filter((g) => g.is_mandatory).length;
+
+  const removeGroup = async (group: FeeGroup) => {
+    const ids = structures.filter((s) => s.name === group.name).map((s) => s.id);
+    try {
+      await Promise.all(ids.map((id) => deleteFeeStructure(id)));
+      toast.success(`"${group.name}" removed`);
+      await load();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to remove fee category — student assignments may exist");
+    }
   };
 
-  const addCategory = (c: FeeCategory) => {
-    setCats((prev) => [c, ...prev]);
-    setCreating(false);
-    toast.success(`Fee category "${c.name}" created & ${c.active ? "activated" : "saved as inactive"}`);
-  };
+  const headerCount = classes.length + 4;
 
   return (
-    <FinanceLayout title="Fee Structure" subtitle={`Fee categories for the ${ACADEMIC_SESSION} academic session`}>
+    <FinanceLayout
+      title="Fee Structure"
+      subtitle={session.academicYear ? `Fee categories for ${session.academicYear.name}` : "Fee categories"}
+    >
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <StatCard compact label="Fee Categories" value={cats.length} />
-        <StatCard compact label="Active" value={activeCount} tone="success" />
-        <StatCard compact label="Mandatory" value={mandatoryCount} tone="primary" />
-        <StatCard compact label="Discount Eligible" value={cats.filter((c) => c.discountEligible).length} tone="warning" />
+        <StatCard compact label="Fee Categories" value={groups.length} />
+        <StatCard compact label="Structure Rows" value={structures.length} tone="primary" />
+        <StatCard compact label="Mandatory" value={mandatoryCount} tone="success" />
+        <StatCard compact label="Classes Covered" value={classes.length} tone="warning" />
       </div>
 
       <div className="flex flex-wrap gap-2 items-center mb-4">
@@ -57,85 +121,143 @@ function FeeStructurePage() {
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
               <tr>
                 <th className="text-left px-4 py-3">Fee Category</th>
-                <th className="text-left px-4 py-3">Frequency</th>
-                {LEVELS.map((l) => <th key={l} className="text-right px-4 py-3">{l}</th>)}
+                {classes.map((c) => <th key={c.id} className="text-right px-4 py-3">{c.name}</th>)}
+                <th className="text-right px-4 py-3">Total</th>
                 <th className="text-center px-4 py-3">Mandatory</th>
-                <th className="text-center px-4 py-3">Status</th>
                 <th className="text-center px-4 py-3">Action</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((c) => (
-                <tr key={c.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
-                  <td className="px-4 py-3">
-                    <div className="font-medium">{c.name}</div>
-                    <div className="text-[11px] text-muted-foreground">{c.id} · eff. {c.effectiveDate}</div>
-                  </td>
-                  <td className="px-4 py-3"><StatusPill label={c.frequency} tone="muted" /></td>
-                  {LEVELS.map((l) => <td key={l} className="px-4 py-3 text-right font-mono text-xs">{c.amounts[l] ? formatRWF(c.amounts[l]) : "—"}</td>)}
-                  <td className="px-4 py-3 text-center">{c.mandatory ? "✅" : "—"}</td>
-                  <td className="px-4 py-3 text-center">{c.active ? <StatusPill label="Active" tone="success" /> : <StatusPill label="Inactive" tone="muted" />}</td>
-                  <td className="px-4 py-3 text-center">
-                    <button onClick={() => toggleActive(c.id)} className="text-xs font-semibold text-primary hover:underline">
-                      {c.active ? "Deactivate" : "Activate"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {loading ? (
+                Array.from({ length: 5 }, (_, i) => (
+                  <tr key={i} className="border-t border-border"><td colSpan={headerCount} className="px-4 py-3"><Skeleton className="h-5 w-full" /></td></tr>
+                ))
+              ) : error ? (
+                <tr><td colSpan={headerCount} className="px-4 py-10 text-center text-sm text-destructive">{error}</td></tr>
+              ) : rows.length === 0 ? (
+                <tr><td colSpan={headerCount} className="px-4 py-10 text-center text-sm text-muted-foreground">No fee categories defined yet.</td></tr>
+              ) : (
+                rows.map((g) => (
+                  <tr key={g.name} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
+                    <td className="px-4 py-3 font-medium">{g.name}</td>
+                    {classes.map((c) => (
+                      <td key={c.id} className="px-4 py-3 text-right font-mono text-xs">
+                        {g.byClass[c.id] ? formatRWF(g.byClass[c.id].amount) : "--"}
+                      </td>
+                    ))}
+                    <td className="px-4 py-3 text-right font-mono text-xs font-semibold">{formatRWF(g.total)}</td>
+                    <td className="px-4 py-3 text-center">{g.is_mandatory ? <StatusPill label="Yes" tone="success" /> : <StatusPill label="No" tone="muted" />}</td>
+                    <td className="px-4 py-3 text-center">
+                      <button onClick={() => removeGroup(g)} className="text-xs font-semibold text-destructive hover:underline">Remove</button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
       <p className="mt-3 text-xs text-muted-foreground">
-        Fees can be activated/deactivated without deleting history. Discounts, scholarships and late-fee configuration are supported per category.
+        A fee category spanning several classes is stored as one structure row per class. Removing a category deletes every row that shares its name; rows already assigned to students cannot be deleted.
       </p>
 
-      {creating && <CreateFeeModal nextId={cats.length + 1} onClose={() => setCreating(false)} onCreate={addCategory} />}
+      {creating && (
+        <CreateFeeModal
+          classes={classes}
+          academicYearId={session.academicYear?.id ?? null}
+          termId={session.term?.id ?? null}
+          onClose={() => setCreating(false)}
+          onCreated={async () => { setCreating(false); await load(); }}
+        />
+      )}
     </FinanceLayout>
   );
 }
 
-function CreateFeeModal({ nextId, onClose, onCreate }: { nextId: number; onClose: () => void; onCreate: (c: FeeCategory) => void }) {
+function CreateFeeModal({
+  classes,
+  academicYearId,
+  termId,
+  onClose,
+  onCreated,
+}: {
+  classes: ClassRecord[];
+  academicYearId: string | null;
+  termId: string | null;
+  onClose: () => void;
+  onCreated: () => Promise<void>;
+}) {
   const [name, setName] = useState("");
-  const [frequency, setFrequency] = useState<FeeFrequency>("Term");
   const [amount, setAmount] = useState("");
-  const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dueDate, setDueDate] = useState("");
   const [mandatory, setMandatory] = useState(true);
-  const [discountEligible, setDiscountEligible] = useState(false);
-  const [active, setActive] = useState(true);
+  const [selectedClasses, setSelectedClasses] = useState<Record<string, boolean>>(() =>
+    classes.reduce((acc, c) => ({ ...acc, [c.id]: true }), {} as Record<string, boolean>)
+  );
+  const [submitting, setSubmitting] = useState(false);
 
-  const submit = () => {
+  const targets = classes.filter((c) => selectedClasses[c.id]);
+
+  const submit = async () => {
+    if (!academicYearId) { toast.error("No academic year is set for this school"); return; }
     if (!name.trim()) { toast.error("Enter a fee category name"); return; }
-    const amt = parseInt(amount.replace(/\D/g, ""));
+    const amt = Number(amount.replace(/[^\d.]/g, ""));
     if (!amt || amt <= 0) { toast.error("Enter a valid base amount"); return; }
-    onCreate({
-      id: `FC-${String(nextId).padStart(2, "0")}`,
-      name: name.trim(),
-      frequency,
-      session: ACADEMIC_SESSION,
-      amounts: LEVELS.reduce((o, l) => ({ ...o, [l]: amt }), {}),
-      mandatory,
-      active,
-      effectiveDate,
-      discountEligible,
-    });
+    if (targets.length === 0) { toast.error("Select at least one class"); return; }
+
+    setSubmitting(true);
+    try {
+      await Promise.all(
+        targets.map((c) =>
+          createFeeStructure({
+            academic_year_id: academicYearId,
+            term_id: termId ?? undefined,
+            class_id: c.id,
+            name: name.trim(),
+            amount: amt,
+            is_mandatory: mandatory,
+            due_date: dueDate || undefined,
+          })
+        )
+      );
+      toast.success(`Fee category "${name.trim()}" created for ${targets.length} class(es)`);
+      await onCreated();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to create fee category");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <Modal title="Create Fee Category" subtitle="Applied across all class levels (editable later)" onClose={onClose}
-      footer={<><GhostButton onClick={onClose}>Cancel</GhostButton><PrimaryButton onClick={submit}>Create &amp; Activate</PrimaryButton></>}>
+    <Modal title="Create Fee Category" subtitle="One structure row is created per selected class" onClose={onClose} wide
+      footer={<><GhostButton onClick={onClose}>Cancel</GhostButton><PrimaryButton onClick={submit}>{submitting ? "Creating..." : `Create for ${targets.length} class(es)`}</PrimaryButton></>}>
       <TextField label="Fee Category Name" value={name} onChange={setName} placeholder="e.g. Examination Fee" required />
       <div className="grid grid-cols-2 gap-3">
-        <SelectField label="Frequency" value={frequency} onChange={(v) => setFrequency(v as FeeFrequency)} options={FREQUENCIES} required />
-        <TextField label="Base Amount (RWF)" value={amount} onChange={setAmount} placeholder="50000" required />
+        <TextField label="Amount per Class (RWF)" value={amount} onChange={setAmount} placeholder="50000" required />
+        <TextField label="Due Date" value={dueDate} onChange={setDueDate} type="date" />
       </div>
-      <TextField label="Effective Date" value={effectiveDate} onChange={setEffectiveDate} type="date" required />
-      <div className="flex flex-wrap gap-4 pt-1">
-        <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={mandatory} onChange={(e) => setMandatory(e.target.checked)} /> Mandatory</label>
-        <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={discountEligible} onChange={(e) => setDiscountEligible(e.target.checked)} /> Discount eligible</label>
-        <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Activate now</label>
+
+      <div>
+        <div className="text-xs font-bold text-muted-foreground mb-2">Apply To Classes</div>
+        {classes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No classes defined yet.</p>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {classes.map((c) => (
+              <label key={c.id} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm cursor-pointer hover:bg-muted/30">
+                <input type="checkbox" checked={!!selectedClasses[c.id]} onChange={(e) => setSelectedClasses((p) => ({ ...p, [c.id]: e.target.checked }))} />
+                {c.name}
+              </label>
+            ))}
+          </div>
+        )}
       </div>
+
+      <label className="inline-flex items-center gap-2 text-sm pt-1">
+        <input type="checkbox" checked={mandatory} onChange={(e) => setMandatory(e.target.checked)} /> Mandatory
+      </label>
     </Modal>
   );
 }

@@ -1,9 +1,19 @@
 import { apiRequest } from "./api";
 import type { Exam, ExamResult, ExamResultsResponse } from "./exams-api";
-import { getExamResults, publishExamResults, studentDisplayName } from "./exams-api";
+import {
+  getExamResults,
+  publishExamResults,
+  unpublishExamResults,
+  studentDisplayName,
+} from "./exams-api";
 
 export type { ExamResult };
-export { studentDisplayName, getExamResults, publishExamResults };
+export {
+  studentDisplayName,
+  getExamResults,
+  publishExamResults,
+  unpublishExamResults,
+};
 
 export interface AdminExam extends Exam {
   marked_count?: number;

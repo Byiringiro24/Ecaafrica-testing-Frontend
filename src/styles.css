@@ -122,6 +122,10 @@
 }
 
 @media print {
+  html,
+  body {
+    background: #fff !important;
+  }
   body * {
     visibility: hidden;
   }
@@ -135,6 +139,36 @@
     top: 0;
     width: 100%;
     border: none !important;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  .no-print {
+    display: none !important;
+  }
+  /* Report cards print on plain white with table borders preserved */
+  .report-card {
+    background: #fff !important;
+    color: #000 !important;
+    max-width: none !important;
+    padding: 0 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .report-card-page {
+    break-after: page;
+    page-break-after: always;
+  }
+  .report-card-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
   }
 }
 
@@ -177,7 +211,6 @@
     background: var(--color-background);
     color: var(--color-foreground);
     min-height: 100%;
-    overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
     font-family: var(--font-sans);
     font-size: 16px;

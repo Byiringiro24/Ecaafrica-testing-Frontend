@@ -17,7 +17,7 @@ const NAV = [
     { to: "/teacher/classes", label: "My Classes", icon: BookOpen },
     { to: "/teacher/attendance", label: "Attendance", icon: ClipboardCheck },
     { to: "/teacher/exams", label: "Record Marks", icon: BookOpen },
-    { to: "/teacher/messages", label: "Communicate with parents", icon: MessageSquare },
+    // { to: "/teacher/messages", label: "Communicate with parents", icon: MessageSquare },
   ]},
 ];
 

@@ -80,6 +80,8 @@ function LoginPage() {
         ? "/gate-keeper/dashboard"
         : role === "boarding_officer"
         ? "/boarding-officer/dashboard"
+        : role === "finance_officer"
+        ? "/finance"
         : role === "staff"
         ? "/staff/dashboard"
         : "/dashboard";

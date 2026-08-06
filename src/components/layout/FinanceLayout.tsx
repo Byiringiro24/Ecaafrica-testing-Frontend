@@ -5,8 +5,8 @@ import {
   Boxes, BarChart3, ShieldCheck, LogOut, Menu, X, Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { FINANCE_ME, ACADEMIC_SESSION, CURRENT_TERM } from "@/lib/financeData";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
+import { useAcademicSession } from "@/hooks/useAcademicSession";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import logo from "@/assets/logo.png";
 
@@ -53,10 +53,11 @@ export function FinanceLayout({ title, subtitle, children }: { title: string; su
   const profileRef = useRef<HTMLDivElement>(null);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const currentUser = useCurrentUser();
+  const session = useAcademicSession();
 
-  const displayName = currentUser?.name ?? FINANCE_ME.name;
-  const initials = currentUser?.name ? getInitials(currentUser.name) : FINANCE_ME.initials;
-  const role = currentUser?.role ? formatRole(currentUser.role) : FINANCE_ME.role;
+  const displayName = currentUser?.name ?? "Finance Officer";
+  const initials = currentUser?.name ? getInitials(currentUser.name) : "FO";
+  const role = currentUser?.role ? formatRole(currentUser.role) : "Finance Officer";
   const schoolName = currentUser?.school_name ?? null;
 
   useEffect(() => {
@@ -124,7 +125,7 @@ export function FinanceLayout({ title, subtitle, children }: { title: string; su
 
         <div className="border-t border-sidebar-border p-4 space-y-2">
           <div className="text-[11px] text-sidebar-foreground/60">
-            Session: <span className="text-sidebar-foreground font-semibold">{ACADEMIC_SESSION} · {CURRENT_TERM}</span>
+            Session: <span className="text-sidebar-foreground font-semibold">{session.label ?? "--"}</span>
           </div>
           <div className="flex items-center gap-3 pt-1">
             <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground font-semibold text-sm">

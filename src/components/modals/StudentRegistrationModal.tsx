@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
-import { X, Check, ChevronRight, ChevronLeft, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { X, Check, ChevronRight, ChevronLeft, Loader2, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, API_BASE_URL } from "@/lib/api";
 import { SaPhoneInput } from "@/components/super-admin/ui";
 import { useSchoolCountryName } from "@/hooks/useSchoolCountry";
 import { parsePhoneValue } from "@/lib/countries";
@@ -71,6 +71,9 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
   const [sections, setSections] = useState<Section[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
   const [refDataLoading, setRefDataLoading] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const schoolCountry = useSchoolCountryName();
 
   useEffect(() => {
@@ -130,6 +133,20 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
   const next = () => { if (validateStep()) setStep(s => Math.min(2, s + 1)); };
   const back = () => setStep(s => Math.max(0, s - 1));
 
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
+  const clearPhoto = () => {
+    setPhotoFile(null);
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoPreview(null);
+    if (photoInputRef.current) photoInputRef.current.value = "";
+  };
+
   const submit = async () => {
     setSubmitting(true);
     try {
@@ -152,7 +169,22 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
         }),
       });
 
-      // 2. Enroll in section (class) if both section and academic year are selected
+      // 2. Upload photo if provided
+      if (photoFile) {
+        try {
+          const fd = new FormData();
+          fd.append("photo", photoFile);
+          await apiRequest(`/students/${student.id}/photo`, {
+            method: "POST",
+            auth: "school",
+            body: fd,
+          });
+        } catch {
+          toast.warning("Student registered but photo upload failed");
+        }
+      }
+
+      // 3. Enroll in section (class) if both section and academic year are selected
       if (data.sectionId && data.academicYearId) {
         await apiRequest(`/students/${student.id}/enrollments`, {
           method: "POST",
@@ -165,7 +197,7 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
         });
       }
 
-      // 3. Create parent and link if info provided
+      // 4. Create parent and link if info provided
       if (data.parentName.trim() && data.parentPhone.trim()) {
         const { firstName: pFirst, lastName: pLast } = splitName(data.parentName);
 
@@ -195,6 +227,7 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
       toast.success(`${data.firstName} ${data.lastName}`.trim() + " registered successfully");
       setData(EMPTY);
       setStep(0);
+      clearPhoto();
       onSuccess?.();
       onClose();
     } catch (err: any) {
@@ -206,7 +239,7 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
 
   const close = () => {
     if (submitting) return;
-    setData(EMPTY); setStep(0); setErrors({}); onClose();
+    setData(EMPTY); setStep(0); setErrors({}); clearPhoto(); onClose();
   };
 
   const showCombination = ["S4", "S5", "S6"].some(l => data.sectionName.startsWith(l));
@@ -342,6 +375,51 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
                 <input value={data.previousSchool} onChange={e => set("previousSchool", e.target.value)}
                   className={inputCls()} placeholder="e.g. GS Kicukiro" />
               </Field>
+              {/* Photo upload — optional */}
+              <div className="sm:col-span-2">
+                <span className="text-xs font-semibold mb-1.5 block text-foreground">
+                  Student Photo <span className="font-normal text-muted-foreground">(optional)</span>
+                </span>
+                <div className="flex items-center gap-4">
+                  {photoPreview ? (
+                    <img
+                      src={photoPreview}
+                      alt="Preview"
+                      className="h-16 w-16 rounded-full object-cover border border-border shrink-0"
+                    />
+                  ) : (
+                    <div className="h-16 w-16 rounded-full bg-muted border border-dashed border-border grid place-items-center shrink-0">
+                      <Camera className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      className="h-9 px-4 rounded-lg border border-border text-sm font-semibold hover:bg-muted"
+                    >
+                      {photoPreview ? "Change photo" : "Upload photo"}
+                    </button>
+                    {photoPreview && (
+                      <button
+                        type="button"
+                        onClick={clearPhoto}
+                        className="text-xs text-destructive hover:underline text-left"
+                      >
+                        Remove
+                      </button>
+                    )}
+                    <p className="text-xs text-muted-foreground">JPG, PNG or WEBP — max 5 MB</p>
+                  </div>
+                </div>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handlePhotoChange}
+                />
+              </div>
             </div>
           )}
 

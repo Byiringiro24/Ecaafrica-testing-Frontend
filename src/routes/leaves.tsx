@@ -8,7 +8,7 @@ import { apiRequest } from "@/lib/api";
 
 export const Route = createFileRoute("/leaves")({ component: LeavesPage });
 
-const TABS = ["Pending","Approved","All History"] as const;
+const TABS = ["Pending","Approved","Rejected","All History"] as const;
 
 type ParentRecord = {
   id: string;
@@ -35,6 +35,7 @@ type LeaveRecord = {
   end_date: string;
   reason?: string | null;
   status: "pending" | "approved" | "rejected" | "cancelled";
+  rejection_reason?: string | null;
   approved_at?: string | null;
   returned_at?: string | null;
 };
@@ -52,6 +53,7 @@ type LeaveRow = {
   reason: string;
   status: "Pending" | "Approved" | "Rejected" | "Cancelled";
   statusValue: LeaveRecord["status"];
+  rejectionReason?: string | null;
   contactPerson: string;
   parentPhone: string;
   requestedBy: string;
@@ -112,6 +114,7 @@ function LeavesPage() {
   const [parents, setParents] = useState<ParentRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [approving, setApproving] = useState<LeaveRow | null>(null);
+  const [rejecting, setRejecting] = useState<LeaveRow | null>(null);
   const [newOpen, setNewOpen] = useState(false);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -184,6 +187,7 @@ function LeavesPage() {
         reason: request.reason ?? "—",
         status: STATUS_LABELS[request.status],
         statusValue: request.status,
+        rejectionReason: request.rejection_reason ?? null,
         contactPerson,
         parentPhone,
         requestedBy: contactPerson,
@@ -209,6 +213,7 @@ function LeavesPage() {
   const filtered = useMemo(() => {
     if (tab === "All History") return leaveRows;
     if (tab === "Approved") return leaveRows.filter((row) => row.statusValue === "approved");
+    if (tab === "Rejected") return leaveRows.filter((row) => row.statusValue === "rejected");
     return leaveRows.filter((row) => row.statusValue === "pending");
   }, [leaveRows, tab]);
 
@@ -281,11 +286,18 @@ function LeavesPage() {
                     <td className="px-4 py-3 text-xs">{r.type}</td>
                     <td className="px-4 py-3 text-xs">{r.departureDate}</td>
                     <td className="px-4 py-3 text-xs">{r.returnDate}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground max-w-45 truncate">{r.reason}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground max-w-45 truncate">
+                      {r.statusValue === "rejected" && r.rejectionReason
+                        ? `Rejected: ${r.rejectionReason}`
+                        : r.reason}
+                    </td>
                     <td className="px-4 py-3"><LeaveStatus v={r.status} /></td>
                     <td className="px-4 py-3 space-x-1.5 whitespace-nowrap">
                       {r.status === "Pending" ? (
-                        <button onClick={() => setApproving(r)} className="text-xs font-semibold text-success hover:underline">✅ Approve</button>
+                        <>
+                          <button onClick={() => setApproving(r)} className="text-xs font-semibold text-success hover:underline">✅ Approve</button>
+                          <button onClick={() => setRejecting(r)} className="text-xs font-semibold text-destructive hover:underline">✕ Reject</button>
+                        </>
                       ) : <span className="text-xs text-muted-foreground">—</span>}
                     </td>
                   </tr>
@@ -339,6 +351,27 @@ function LeavesPage() {
               toast.error(error?.message ?? "Failed to approve leave request");
             } finally {
               setApproving(null);
+            }
+          }}
+        />
+      )}
+      {rejecting && (
+        <RejectModal
+          req={rejecting}
+          onClose={() => setRejecting(null)}
+          onConfirm={async (reason) => {
+            try {
+              const updated = await apiRequest<LeaveRecord>(`/boarding/student-leaves/${rejecting.id}/reject`, {
+                method: "PATCH",
+                auth: "school",
+                body: JSON.stringify({ rejection_reason: reason })
+              });
+              setRequests((prev) => prev.map((item) => item.id === updated.id ? updated : item));
+              toast.success(`Leave rejected — ${rejecting.contactPerson} notified`);
+            } catch (error: any) {
+              toast.error(error?.message ?? "Failed to reject leave request");
+            } finally {
+              setRejecting(null);
             }
           }}
         />
@@ -410,6 +443,50 @@ function ApproveModal({ req, onClose, onConfirm }: { req: LeaveRow; onClose: () 
         <div className="px-6 py-4 border-t border-border flex justify-end gap-2">
           <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold">Cancel</button>
           <button onClick={onConfirm} className="inline-flex items-center gap-1.5 rounded-lg bg-success text-white px-4 py-2 text-sm font-semibold hover:bg-success/90"><Check className="h-4 w-4" /> Approve & Notify</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RejectModal({ req, onClose, onConfirm }: { req: LeaveRow; onClose: () => void; onConfirm: (reason: string) => void }) {
+  const [reason, setReason] = useState("");
+  const trimmed = reason.trim();
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onClick={onClose}>
+      <div className="bg-card rounded-2xl shadow-2xl max-w-lg w-full" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-border flex justify-between items-center"><h3 className="font-display font-bold">Reject Leave Request</h3><button onClick={onClose}><X className="h-4 w-4" /></button></div>
+        <div className="px-6 py-5 space-y-4">
+          <div className="rounded-lg bg-muted/40 p-3">
+            <div className="font-bold">{req.studentName}</div>
+            <div className="text-xs text-muted-foreground mt-1">{req.className} · {req.house}</div>
+            <div className="text-xs text-muted-foreground">Parent: {req.contactPerson} · {req.parentPhone}</div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div><span className="text-muted-foreground text-xs">Type:</span> <div className="font-semibold">{req.type}</div></div>
+            <div><span className="text-muted-foreground text-xs">Departure:</span> <div className="font-semibold">{req.departureDate}</div></div>
+          </div>
+          <div className="text-xs text-muted-foreground">Reason given: <span className="text-foreground">{req.reason}</span></div>
+          <div>
+            <label className="block text-xs font-semibold mb-1.5">Rejection Reason <span className="text-destructive">*</span></label>
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              rows={3}
+              placeholder="Explain why this request is declined — the parent sees this in the app."
+              className="w-full rounded-lg border border-border bg-background p-3 text-sm"
+            />
+          </div>
+        </div>
+        <div className="px-6 py-4 border-t border-border flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold">Cancel</button>
+          <button
+            onClick={() => onConfirm(trimmed)}
+            disabled={trimmed.length === 0}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-destructive text-white px-4 py-2 text-sm font-semibold hover:bg-destructive/90 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" /> Reject & Notify
+          </button>
         </div>
       </div>
     </div>

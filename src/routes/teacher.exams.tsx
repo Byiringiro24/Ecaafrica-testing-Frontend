@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { teacherRouteGuard } from "@/lib/schoolAuth";
-import { Plus, X, Award, Loader2, Send } from "lucide-react";
+import { Plus, X, Award, Loader2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { toast } from "sonner";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
@@ -352,8 +352,8 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl bg-background p-6 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-background p-6 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-display text-lg font-bold">Create Exam</h3>
           <button onClick={onClose} className="rounded-md p-1 hover:bg-muted">
@@ -426,6 +426,7 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
                 <input
                   type="date"
                   required
+                  min={new Date().toISOString().slice(0, 10)}
                   value={formData.exam_date}
                   onChange={(e) => setFormData({ ...formData, exam_date: e.target.value })}
                   className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -521,7 +522,14 @@ function EnterResults({
         section_id: sectionId || undefined,
         subject_id: subjectId || undefined,
       });
-      const eligible = data.filter((exam) => exam.status === "scheduled" || exam.status === "ongoing");
+      // Published exams stay in the list so the teacher can review their marks
+      // read-only; the grid disables editing when published_at is set.
+      const eligible = data.filter(
+        (exam) =>
+          exam.status === "scheduled" ||
+          exam.status === "ongoing" ||
+          exam.status === "completed"
+      );
       setExams(eligible);
       setSelectedExam(eligible[0] || null);
     } catch (error) {
@@ -629,6 +637,9 @@ function EnterResults({
 
   const gradeForScore = (score: number, maxMarks: number) => computeGrade(score, maxMarks);
 
+  // Once the admin publishes, marks are frozen — the backend rejects edits with a 409.
+  const isPublished = Boolean(selectedExam?.published_at);
+
   return (
     <div>
       <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap items-end gap-3 mb-5">
@@ -680,6 +691,12 @@ function EnterResults({
           <div className="px-4 py-3 border-b border-border text-sm">
             <b>{selectedExam.name}</b> · {selectedExam.section?.full_name} · Max marks: {selectedExam.max_marks} · {Object.keys(results).filter((key) => results[key].score || results[key].is_absent).length}/{students.length} marked
           </div>
+          {isPublished && (
+            <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              These results have been published by the school administrator and can no longer
+              be edited. Contact your administrator if a correction is needed.
+            </div>
+          )}
           <table className="w-full text-sm">
             <thead className="bg-muted text-xs uppercase">
               <tr>
@@ -687,7 +704,7 @@ function EnterResults({
                 <th className="text-left p-3">Marks</th>
                 <th className="text-left p-3">Grade</th>
                 <th className="text-left p-3">Status</th>
-                <th className="text-left p-3">Remarks</th>
+                <th className="text-left p-3">Comments</th>
               </tr>
             </thead>
             <tbody>
@@ -706,7 +723,7 @@ function EnterResults({
                         type="number"
                         min={0}
                         max={maxMarks}
-                        disabled={result.is_absent}
+                        disabled={result.is_absent || isPublished}
                         value={result.score}
                         onChange={(e) => setResults({
                           ...results,
@@ -734,19 +751,21 @@ function EnterResults({
                         <input
                           type="checkbox"
                           checked={result.is_absent}
+                          disabled={isPublished}
                           onChange={(e) => setResults({
                             ...results,
                             [student.id]: { ...result, is_absent: e.target.checked, score: e.target.checked ? '' : result.score },
                           })}
-                          className="rounded border-input"
+                          className="rounded border-input disabled:opacity-50"
                         />
                         <span className="text-xs">Absent</span>
                       </label>
                     </td>
                     <td className="p-3">
                       <input
-                        className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
-                        placeholder="Optional remark"
+                        className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs disabled:opacity-50"
+                        placeholder="Comment shown on the report card"
+                        disabled={isPublished}
                         value={result.remarks}
                         onChange={(e) => setResults({
                           ...results,
@@ -759,22 +778,24 @@ function EnterResults({
               })}
             </tbody>
           </table>
-          <div className="p-4 border-t border-border flex justify-end gap-2">
-            <button
-              onClick={handleSaveDraft}
-              disabled={submitting}
-              className="h-9 px-4 rounded-md border border-border text-sm font-semibold"
-            >
-              Save Draft
-            </button>
-            <button
-              onClick={handleSubmitResults}
-              disabled={submitting}
-              className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold"
-            >
-              {submitting ? 'Submitting...' : 'Submit for Review'}
-            </button>
-          </div>
+          {!isPublished && (
+            <div className="p-4 border-t border-border flex justify-end gap-2">
+              <button
+                onClick={handleSaveDraft}
+                disabled={submitting}
+                className="h-9 px-4 rounded-md border border-border text-sm font-semibold"
+              >
+                Save Draft
+              </button>
+              <button
+                onClick={handleSubmitResults}
+                disabled={submitting}
+                className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold"
+              >
+                {submitting ? 'Submitting...' : 'Submit for Review'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -956,7 +977,6 @@ function StudentPerformance({
 function ResultsModal({ exam, onClose }: { exam: TeacherExam; onClose: () => void }) {
   const [results, setResults] = useState<ExamResult[]>([]);
   const [loading, setLoading] = useState(true);
-  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     loadResults();
@@ -989,20 +1009,6 @@ function ResultsModal({ exam, onClose }: { exam: TeacherExam; onClose: () => voi
       { grade: 'D', count: dist.D },
       { grade: 'F', count: dist.F },
     ];
-  };
-
-  const handlePublish = async () => {
-    try {
-      setPublishing(true);
-      await updateExam(exam.id, { status: 'completed' });
-      toast.success('Results published successfully');
-      onClose();
-    } catch (error) {
-      toast.error('Failed to publish results');
-      console.error(error);
-    } finally {
-      setPublishing(false);
-    }
   };
 
   const distribution = buildDistribution();
@@ -1087,18 +1093,13 @@ function ResultsModal({ exam, onClose }: { exam: TeacherExam; onClose: () => voi
               </div>
             </div>
 
-            <div className="flex justify-end gap-2">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                {exam.published_at
+                  ? "Published by the school administrator — marks are locked."
+                  : "Only a school administrator can publish these results to parents."}
+              </p>
               <button onClick={onClose} className="h-9 px-4 rounded-md border border-border text-sm font-semibold">Close</button>
-              {exam.status !== 'completed' && (
-                <button
-                  onClick={handlePublish}
-                  disabled={publishing}
-                  className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2 disabled:opacity-50"
-                >
-                  {publishing && <Loader2 className="h-4 w-4 animate-spin" />}
-                  <Send className="h-4 w-4" /> Publish Results
-                </button>
-              )}
             </div>
           </>
         )}

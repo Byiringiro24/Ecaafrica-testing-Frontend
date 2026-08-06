@@ -7,6 +7,9 @@ const defaultApiBaseUrl = import.meta.env.DEV
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL?.trim() || defaultApiBaseUrl).replace(/\/$/, "");
 
+// Static files (uploads/) are served at the server root, not under /api/v1
+export const SERVER_BASE_URL = API_BASE_URL.replace(/\/api\/v\d+$/, "");
+
 type ApiError = {
   status: number;
   code?: string;

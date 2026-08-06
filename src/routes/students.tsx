@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search, UserPlus, Grid3X3, List, X, Phone, Pencil, Check, Loader2 } from "lucide-react";
+import { Search, UserPlus, Grid3X3, List, X, Phone, Pencil, Check, Loader2, Camera } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StudentRegistrationModal } from "@/components/modals/StudentRegistrationModal";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, API_BASE_URL, SERVER_BASE_URL } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -30,6 +30,7 @@ type ApiStudent = {
   religion: string | null;
   previous_school: string | null;
   national_id: string | null;
+  photo_url: string | null;
   created_at: string;
   primary_parent: {
     first_name: string;
@@ -221,7 +222,7 @@ function StudentsPage() {
                 return (
                   <div key={s.id} className="rounded-xl border border-border bg-card p-5 shadow-sm hover:shadow-md transition-all">
                     <div className="flex items-start justify-between">
-                      <Avatar name={fullName} size="lg" />
+                      <Avatar name={fullName} size="lg" src={s.photo_url ? `${SERVER_BASE_URL}/${s.photo_url}` : null} />
                       {residency && (
                         <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
                           {residency}
@@ -426,6 +427,11 @@ function StudentProfileSlideOver({
   onEditSuccess: () => void;
 }) {
   const [editOpen, setEditOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [photoSrc, setPhotoSrc] = useState<string | null>(
+    student.photo_url ? `${SERVER_BASE_URL}/${student.photo_url}` : null
+  );
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const fullName = `${student.first_name} ${student.last_name}`;
   const residency = student.student_type ? capitalize(student.student_type) : null;
@@ -436,6 +442,29 @@ function StudentProfileSlideOver({
     : "—";
   const parentPhone = student.primary_parent?.phone ?? "—";
   const dob = student.date_of_birth ? new Date(student.date_of_birth).toLocaleDateString() : "—";
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("photo", file);
+      await apiRequest(`/students/${student.id}/photo`, {
+        method: "POST",
+        auth: "school",
+        body: fd,
+      });
+      setPhotoSrc(URL.createObjectURL(file));
+      toast.success("Photo updated");
+      onEditSuccess();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to upload photo");
+    } finally {
+      setUploading(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  };
 
   return (
     <>
@@ -462,12 +491,50 @@ function StudentProfileSlideOver({
 
           {/* content */}
           <div className="p-6 space-y-5">
-            <div className="flex items-center gap-4">
-              <Avatar name={fullName} size="lg" />
-              <div>
+            {/* Photo + identity */}
+            <div className="flex flex-col items-center gap-3 py-2">
+              <div className="relative group">
+                {photoSrc ? (
+                  <img
+                    src={photoSrc}
+                    alt={fullName}
+                    className="h-24 w-24 rounded-full object-cover border-2 border-border"
+                    onError={() => setPhotoSrc(null)}
+                  />
+                ) : (
+                  <div className="h-24 w-24 rounded-full bg-muted border-2 border-dashed border-border grid place-items-center">
+                    <Camera className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                )}
+                {uploading && (
+                  <div className="absolute inset-0 rounded-full bg-black/40 grid place-items-center">
+                    <Loader2 className="h-6 w-6 text-white animate-spin" />
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => photoInputRef.current?.click()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+              >
+                <Camera className="h-3.5 w-3.5" />
+                {photoSrc ? "Change Photo" : "Add Photo"}
+              </button>
+
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handlePhotoUpload}
+              />
+
+              <div className="text-center">
                 <div className="font-display font-bold text-lg">{fullName}</div>
                 <div className="text-sm text-muted-foreground font-mono">{student.student_id_number ?? "—"}</div>
-                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                <div className="mt-2 flex items-center justify-center gap-2 flex-wrap">
                   {sectionName && (
                     <span className="inline-flex items-center rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold">
                       {sectionName}

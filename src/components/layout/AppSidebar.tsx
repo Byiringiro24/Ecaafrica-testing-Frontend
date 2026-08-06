@@ -26,6 +26,7 @@ const SECTIONS: Section[] = [
     { to: "/attendance", label: "Attendance", icon: ScanLine, module: "attendance" },
     { to: "/students", label: "Students", icon: Users, module: "students" },
     { to: "/classes", label: "Classes", icon: BookOpen, module: "classes" },
+    { to: "/subject-assignments", label: "Subject Assignments", icon: BookOpen, module: "classes" },
     { to: "/exams", label: "Exams & Results", icon: GraduationCap, module: "exams" },
     { to: "/visitors", label: "Visitors", icon: UserCheck, module: "visitors" },
   ]},

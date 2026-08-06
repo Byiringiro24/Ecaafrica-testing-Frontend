@@ -15,6 +15,8 @@ export interface Exam {
   max_marks: string;
   pass_mark: string;
   status: "scheduled" | "ongoing" | "completed" | "cancelled";
+  published_at?: string | null;
+  published_by?: string | null;
   created_at: string;
   updated_at: string;
   subject?: { id: string; name: string; code?: string };
@@ -219,12 +221,9 @@ type ResultPayload = {
   grade?: string;
 };
 
-// Record exam results (draft or publish)
-export async function recordExamResults(
-  examId: string,
-  results: ResultPayload[],
-  publish = false
-) {
+// Teachers save marks as a draft. Only a school admin can publish (see
+// publishExamResults) — the backend rejects a publish attempt from a teacher.
+export async function recordExamResults(examId: string, results: ResultPayload[]) {
   return apiRequest(
     "/exam-results/bulk",
     {
@@ -233,7 +232,6 @@ export async function recordExamResults(
       body: JSON.stringify({
         exam_id: examId,
         results,
-        publish,
       }),
     }
   );
@@ -261,14 +259,32 @@ export async function getExamSummary(examId: string) {
   );
 }
 
-// Publish exam results
+export interface PublishResult {
+  id: string;
+  status: string;
+  published_at: string | null;
+  published_by: string | null;
+  published_count?: number;
+}
+
+// School admin only — stamps published_at on every result for the exam.
 export async function publishExamResults(examId: string) {
-  return apiRequest<Exam>(
-    `/exams/${examId}`,
+  return apiRequest<PublishResult>(
+    `/exam-results/publish/${examId}`,
     {
-      method: "PATCH",
+      method: "POST",
       auth: "school",
-      body: JSON.stringify({ status: "completed" }),
+    }
+  );
+}
+
+// School admin only — reopens a published exam so teachers can edit again.
+export async function unpublishExamResults(examId: string) {
+  return apiRequest<PublishResult>(
+    `/exam-results/unpublish/${examId}`,
+    {
+      method: "POST",
+      auth: "school",
     }
   );
 }

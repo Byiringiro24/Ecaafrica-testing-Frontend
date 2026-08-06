@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Award, Eye } from "lucide-react";
+import { Award, Eye, LockOpen, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { ExamFilters } from "@/components/exams/ExamFilters";
 import { ExamResultsModal } from "@/components/exams/ExamResultsModal";
@@ -8,6 +8,7 @@ import {
   listAdminExams,
   getFilterOptions,
   isPublished,
+  unpublishExamResults,
   type AdminExam,
   type SectionOption,
   type SubjectOption,
@@ -25,6 +26,7 @@ function ExamsPublishedPage() {
   const [subjectId, setSubjectId] = useState("");
   const [loading, setLoading] = useState(true);
   const [viewExam, setViewExam] = useState<AdminExam | null>(null);
+  const [unpublishingId, setUnpublishingId] = useState<string | null>(null);
 
   useEffect(() => {
     getFilterOptions().then((opts) => {
@@ -52,6 +54,27 @@ function ExamsPublishedPage() {
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUnpublish = async (exam: AdminExam) => {
+    if (
+      !confirm(
+        `Unpublish "${exam.name}"? Parents will no longer see these grades and the teacher will be able to edit marks again.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setUnpublishingId(exam.id);
+      await unpublishExamResults(exam.id);
+      toast.success("Results unpublished — the teacher can now edit marks");
+      loadExams();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to unpublish results");
+    } finally {
+      setUnpublishingId(null);
     }
   };
 
@@ -144,12 +167,26 @@ function ExamsPublishedPage() {
                 </div>
               </div>
 
-              <button
-                onClick={() => setViewExam(exam)}
-                className="w-full h-8 rounded-md border border-border text-xs font-semibold inline-flex items-center justify-center gap-1 hover:bg-muted"
-              >
-                <Eye className="h-3.5 w-3.5" /> View Full Results
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setViewExam(exam)}
+                  className="h-8 flex-1 rounded-md border border-border text-xs font-semibold inline-flex items-center justify-center gap-1 hover:bg-muted"
+                >
+                  <Eye className="h-3.5 w-3.5" /> View Results
+                </button>
+                <button
+                  onClick={() => handleUnpublish(exam)}
+                  disabled={unpublishingId === exam.id}
+                  className="h-8 px-3 rounded-md border border-amber-300 text-amber-800 text-xs font-semibold inline-flex items-center justify-center gap-1 hover:bg-amber-50 disabled:opacity-50"
+                >
+                  {unpublishingId === exam.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <LockOpen className="h-3.5 w-3.5" />
+                  )}
+                  Unpublish
+                </button>
+              </div>
             </div>
           ))}
         </div>

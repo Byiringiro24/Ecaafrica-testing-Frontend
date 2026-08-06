@@ -24,6 +24,27 @@ const DAYS = [
 
 const AUTH = { auth: "school" as const };
 
+/** Renders a period time as "3:30 PM". Accepts "HH:mm", "HH:mm:ss" or an ISO datetime. */
+function formatPeriodTime(value?: string | null) {
+  if (!value) return "";
+  const match = /(\d{1,2}):(\d{2})/.exec(
+    value.includes("T") ? value.slice(value.indexOf("T") + 1) : value,
+  );
+  if (!match) return "";
+  const hours = Number(match[1]);
+  const minutes = match[2];
+  const suffix = hours >= 12 ? "PM" : "AM";
+  const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+  return `${hour12}:${minutes} ${suffix}`;
+}
+
+function formatPeriodRange(start?: string | null, end?: string | null) {
+  const from = formatPeriodTime(start);
+  const to = formatPeriodTime(end);
+  if (!from && !to) return "—";
+  return `${from} – ${to}`;
+}
+
 function TimetablePage() {
   const [periods, setPeriods] = useState<Period[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -170,7 +191,7 @@ function TimetablePage() {
                   <td className={`p-3 align-top ${period.is_break ? "bg-muted/30" : ""}`}>
                     <div className="font-semibold text-sm">{period.name}</div>
                     <div className="text-[11px] text-muted-foreground">
-                      {period.start_time.slice(0, 5)}–{period.end_time.slice(0, 5)}
+                      {formatPeriodRange(period.start_time, period.end_time)}
                     </div>
                     {period.is_break && (
                       <div className="mt-1 text-[10px] font-semibold text-amber-600 uppercase">Break</div>
@@ -295,7 +316,7 @@ function SlotModal({
           {period && day && (
             <div className="rounded-lg bg-muted p-3 text-sm">
               <span className="font-semibold">{period.name}</span>
-              <span className="text-muted-foreground"> ({period.start_time.slice(0, 5)}–{period.end_time.slice(0, 5)})</span>
+              <span className="text-muted-foreground"> ({formatPeriodRange(period.start_time, period.end_time)})</span>
               <span className="ml-2 font-semibold">· {day.label}</span>
             </div>
           )}
@@ -385,66 +406,66 @@ function PeriodModal({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-card shadow-2xl max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-          <h3 className="font-display font-bold">Manage Periods</h3>
+      <div className="w-full max-w-3xl rounded-2xl bg-card shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-8 py-5 border-b border-border shrink-0">
+          <h3 className="font-display font-bold text-lg">Manage Periods</h3>
           <button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-4 w-4" /></button>
         </div>
 
-        <div className="px-6 py-4 border-b border-border shrink-0">
-          <div className="grid grid-cols-5 gap-2 items-end">
+        <div className="px-8 py-5 border-b border-border shrink-0">
+          <div className="grid grid-cols-12 gap-4 items-end">
+            <div className="col-span-3">
+              <label className="text-xs font-semibold mb-1.5 block">Name</label>
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="P1" className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+            </div>
+            <div className="col-span-3">
+              <label className="text-xs font-semibold mb-1.5 block">Start</label>
+              <input type="time" value={newStart} onChange={(e) => setNewStart(e.target.value)} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+            </div>
+            <div className="col-span-3">
+              <label className="text-xs font-semibold mb-1.5 block">End</label>
+              <input type="time" value={newEnd} onChange={(e) => setNewEnd(e.target.value)} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm" />
+            </div>
             <div className="col-span-1">
-              <label className="text-[10px] font-semibold mb-1 block">Name</label>
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="P1" className="h-9 w-full rounded border border-input bg-background px-2 text-xs" />
-            </div>
-            <div>
-              <label className="text-[10px] font-semibold mb-1 block">Start</label>
-              <input type="time" value={newStart} onChange={(e) => setNewStart(e.target.value)} className="h-9 w-full rounded border border-input bg-background px-2 text-xs" />
-            </div>
-            <div>
-              <label className="text-[10px] font-semibold mb-1 block">End</label>
-              <input type="time" value={newEnd} onChange={(e) => setNewEnd(e.target.value)} className="h-9 w-full rounded border border-input bg-background px-2 text-xs" />
-            </div>
-            <div>
-              <label className="text-[10px] font-semibold mb-1 block">&nbsp;</label>
-              <label className="flex items-center gap-1.5 h-9 text-xs">
+              <label className="text-xs font-semibold mb-1.5 block">&nbsp;</label>
+              <label className="flex items-center gap-1.5 h-10 text-sm whitespace-nowrap">
                 <input type="checkbox" checked={newIsBreak} onChange={(e) => setNewIsBreak(e.target.checked)} className="h-4 w-4 rounded border-input" />
                 Break
               </label>
             </div>
-            <div>
-              <label className="text-[10px] font-semibold mb-1 block">&nbsp;</label>
+            <div className="col-span-2">
+              <label className="text-xs font-semibold mb-1.5 block">&nbsp;</label>
               <button
                 onClick={handleCreate} disabled={saving}
-                className="h-9 w-full rounded bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-50 inline-flex items-center justify-center gap-1"
+                className="h-10 w-full rounded-lg bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
               >
-                {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                 Add
               </button>
             </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-3">
+        <div className="flex-1 overflow-y-auto px-8 py-4">
           {list.length === 0 ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">No periods yet. Add one above.</div>
+            <div className="py-8 text-center text-sm text-muted-foreground">No periods yet. Add one above.</div>
           ) : (
             <div className="space-y-1">
               {list.map((p, i) => (
-                <div key={p.id} className="flex items-center gap-3 rounded-lg p-2 hover:bg-muted/50 text-sm">
-                  <span className="w-6 text-xs text-muted-foreground">{i + 1}.</span>
-                  <span className="w-16 font-semibold">{p.name}</span>
-                  <span className="text-muted-foreground text-xs">
-                    {p.start_time.slice(0, 5)}–{p.end_time.slice(0, 5)}
+                <div key={p.id} className="flex items-center gap-4 rounded-lg px-3 py-2.5 hover:bg-muted/50 text-sm">
+                  <span className="w-6 text-xs text-muted-foreground shrink-0">{i + 1}.</span>
+                  <span className="w-32 font-semibold truncate">{p.name}</span>
+                  <span className="text-muted-foreground whitespace-nowrap">
+                    {formatPeriodRange(p.start_time, p.end_time)}
                   </span>
-                  {p.is_break && <span className="text-[10px] font-semibold text-amber-600 uppercase ml-1">Break</span>}
+                  {p.is_break && <span className="text-[10px] font-semibold text-amber-600 uppercase">Break</span>}
                   <div className="flex-1" />
                   <button
                     onClick={() => handleDelete(p.id)}
-                    className="rounded p-1 text-muted-foreground hover:text-red-600"
+                    className="rounded p-1.5 text-muted-foreground hover:text-red-600 shrink-0"
                     aria-label="Delete period"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               ))}
@@ -452,8 +473,8 @@ function PeriodModal({
           )}
         </div>
 
-        <div className="flex justify-end px-6 py-4 border-t border-border shrink-0">
-          <button onClick={onClose} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground">Done</button>
+        <div className="flex justify-end px-8 py-5 border-t border-border shrink-0">
+          <button onClick={onClose} className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground">Done</button>
         </div>
       </div>
     </div>

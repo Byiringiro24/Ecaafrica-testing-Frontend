@@ -170,6 +170,23 @@
     break-after: auto;
     page-break-after: auto;
   }
+  /* Timetable grids need the full page width and their cell shading preserved */
+  .timetable-print {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .timetable-print table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .timetable-print th,
+  .timetable-print td {
+    border: 1px solid #d1d5db;
+  }
+}
+
+@page {
+  margin: 12mm;
 }
 
 .dark {

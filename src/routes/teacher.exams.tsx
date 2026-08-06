@@ -352,8 +352,8 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="w-full max-w-lg rounded-2xl bg-background p-6 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-background p-6 shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-display text-lg font-bold">Create Exam</h3>
           <button onClick={onClose} className="rounded-md p-1 hover:bg-muted">
@@ -426,6 +426,7 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
                 <input
                   type="date"
                   required
+                  min={new Date().toISOString().slice(0, 10)}
                   value={formData.exam_date}
                   onChange={(e) => setFormData({ ...formData, exam_date: e.target.value })}
                   className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"

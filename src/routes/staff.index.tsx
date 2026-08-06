@@ -109,7 +109,7 @@ type StaffRow = {
   assignedSectionIds: string[];
 };
 
-const TABS = ["All Staff", " ", "Departments"] as const;
+const TABS = ["All Staff", "Departments"] as const;
 const DEFAULT_DEPARTMENTS = ["Teaching", "Administration", "Boarding", "Security", "Finance"];
 const STAFF_DEPARTMENTS_KEY = "staff_departments";
 const STAFF_ROLES = ["teacher", "staff", "gate_keeper", "boarding_officer", "finance_officer", "school_admin"] as const;

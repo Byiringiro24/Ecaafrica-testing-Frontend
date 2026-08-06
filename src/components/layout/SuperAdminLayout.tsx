@@ -1,7 +1,7 @@
 import { ReactNode, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  Globe, School as SchoolIcon, UsersRound,
+  Globe, School as SchoolIcon,
   BarChart3, Megaphone, Headphones, Settings, ClipboardList,
   LogOut, X, Menu, Receipt, TrendingUp, Repeat, Cpu, TabletSmartphone, Mail,
   MessageSquareMore,
@@ -20,7 +20,6 @@ const NAV: NavSection[] = [
     items: [
       { to: "/super-admin", label: "Platform Overview", icon: Globe, exact: true },
       { to: "/super-admin/schools", label: "Schools", icon: SchoolIcon },
-      { to: "/super-admin/users", label: "Platform Users", icon: UsersRound },
     ],
   },
   {

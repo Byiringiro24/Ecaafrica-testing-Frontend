@@ -18,6 +18,7 @@ import {
   Network,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   Settings,
   ShieldCheck,
@@ -1507,6 +1508,39 @@ function ServerCommandCenter() {
               >
                 {busy ? <Loader2 className="animate-spin" size={15} /> : <DownloadCloud size={15} />}
                 Sync Now
+              </button>
+
+              {/* ── Device danger actions ── */}
+              <div className="h-6 w-px bg-white/10 mx-1 hidden sm:block" />
+              <button
+                type="button"
+                onClick={powerOffDevice}
+                disabled={busy || !selectedTablet}
+                title="Reboot the FK623 device"
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2.5 text-sm font-semibold text-amber-300 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RotateCcw size={14} />
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => clearDeviceData("logs")}
+                disabled={busy || !selectedTablet}
+                title="Delete all attendance logs from the FK623 device memory (server logs are safe)"
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2.5 text-sm font-semibold text-rose-300 transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Trash2 size={14} />
+                Delete Logs
+              </button>
+              <button
+                type="button"
+                onClick={() => clearDeviceData("all")}
+                disabled={busy || !selectedTablet}
+                title="Delete all enrolled users and biometrics from the FK623 device"
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2.5 text-sm font-semibold text-rose-300 transition-colors hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Users size={14} />
+                Delete Users
               </button>
             </div>
 

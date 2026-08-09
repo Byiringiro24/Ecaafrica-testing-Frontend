@@ -1,9 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { X, Users, CheckCircle2, ClipboardCheck, MessageSquare } from "lucide-react";
+import { X, Users } from "lucide-react";
 import { toast } from "sonner";
 import { teacherRouteGuard, getSchoolAuth } from "@/lib/schoolAuth";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
@@ -50,7 +49,6 @@ function TeacherClasses() {
   const teacherId = auth?.user?.id;
 
   const [openClass, setOpenClass] = useState<string | null>(null);
-  const [tab, setTab] = useState<"students" | "attendance" | "exams">("students");
   const [sections, setSections] = useState<SectionRecord[]>([]);
   const [classes, setClasses] = useState<Record<string, ClassRecord>>({});
   const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
@@ -145,7 +143,6 @@ function TeacherClasses() {
 
   const handleViewClass = (sectionId: string) => {
     setOpenClass(sectionId);
-    setTab("students");
     loadStudentsForSection(sectionId);
   };
 
@@ -203,9 +200,6 @@ function TeacherClasses() {
 
       {openClass && (
         <ClassDrawer
-          sectionId={openClass}
-          tab={tab}
-          setTab={setTab}
           onClose={() => setOpenClass(null)}
           students={sectionStudents[openClass] ?? []}
           section={sections.find((s) => s.id === openClass)}
@@ -218,18 +212,12 @@ function TeacherClasses() {
 }
 
 function ClassDrawer({
-  sectionId,
-  tab,
-  setTab,
   onClose,
   students,
   section,
   classInfo,
   teacherId
 }: {
-  sectionId: string;
-  tab: any;
-  setTab: any;
   onClose: () => void;
   students: StudentRecord[];
   section?: SectionRecord;
@@ -238,7 +226,6 @@ function ClassDrawer({
 }) {
   const displayName = classInfo && section ? `${classInfo.name}${section.name}` : section?.full_name ?? "Class";
   const isClassTeacher = section?.class_teacher_id === teacherId;
-  const trend = Array.from({ length: 14 }, (_, i) => ({ day: `D${i + 1}`, attendance: 80 + ((i * 7) % 18) }));
 
   return (
     <>
@@ -251,69 +238,28 @@ function ClassDrawer({
           </div>
           <button onClick={onClose} className="rounded-md p-2 hover:bg-muted"><X className="h-5 w-5" /></button>
         </div>
-        <div className="px-6 pt-4">
-          <div className="flex gap-1 border-b border-border">
-            {(["students", "attendance", "exams"] as const).map((t) => (
-              <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 text-sm font-semibold capitalize border-b-2 ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`}>
-                {t === "exams" ? "Exam Results" : t}
-              </button>
-            ))}
-          </div>
-        </div>
         <div className="p-6">
-          {tab === "students" && (
-            <div className="rounded-xl border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted text-xs uppercase">
-                  <tr><th className="text-left p-3">Name</th><th className="text-left p-3">Reg #</th><th className="text-left p-3">Attendance</th></tr>
-                </thead>
-                <tbody>
-                  {students.length > 0 ? (
-                    students.map((s, i) => (
-                      <tr key={s.id} className={`border-t border-border ${i % 2 ? "bg-gray-50" : ""}`}>
-                        <td className="p-3 font-medium">{s.first_name} {s.last_name}</td>
-                        <td className="p-3 text-muted-foreground">{s.student_id_number ?? "--"}</td>
-                        <td className="p-3">85%</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={3} className="p-3 text-center text-muted-foreground">No students in this class</td>
+          <div className="rounded-xl border border-border overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted text-xs uppercase">
+                <tr><th className="text-left p-3">Name</th><th className="text-left p-3">Reg #</th></tr>
+              </thead>
+              <tbody>
+                {students.length > 0 ? (
+                  students.map((s, i) => (
+                    <tr key={s.id} className={`border-t border-border ${i % 2 ? "bg-gray-50" : ""}`}>
+                      <td className="p-3 font-medium">{s.first_name} {s.last_name}</td>
+                      <td className="p-3 text-muted-foreground">{s.student_id_number ?? "--"}</td>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {tab === "attendance" && (
-            <div className="h-72">
-              <ResponsiveContainer>
-                <AreaChart data={trend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="day" fontSize={11} />
-                  <YAxis fontSize={11} domain={[60, 100]} />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="attendance" stroke="#3b5998" fill="#3b5998" fillOpacity={0.2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-          {tab === "exams" && (
-            <div className="rounded-xl border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted text-xs uppercase">
-                  <tr><th className="text-left p-3">Exam</th><th className="text-left p-3">Avg</th><th className="text-left p-3">High</th><th className="text-left p-3">Low</th><th className="text-left p-3">Pass %</th></tr>
-                </thead>
-                <tbody>
-                  {[{ n: "Term 1 CAT 1", a: 68, h: 92, l: 41, p: 78 }, { n: "Term 1 Main", a: 72, h: 95, l: 48, p: 84 }, { n: "Term 2 CAT 1", a: 70, h: 90, l: 45, p: 80 }].map((e, i) => (
-                    <tr key={i} className={`border-t ${i % 2 ? "bg-gray-50" : ""}`}>
-                      <td className="p-3 font-medium">{e.n}</td><td className="p-3">{e.a}</td><td className="p-3 text-indigo-700 font-semibold">{e.h}</td><td className="p-3 text-red-600">{e.l}</td><td className="p-3">{e.p}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={2} className="p-3 text-center text-muted-foreground">No students in this class</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </aside>
     </>

@@ -194,10 +194,7 @@ function TeacherExams() {
                   <th className="text-left p-3">Class</th>
                   <th className="text-left p-3">Subject</th>
                   <th className="text-left p-3">Date</th>
-                  <th className="text-left p-3">Duration</th>
                   <th className="text-left p-3">Max Marks</th>
-                  <th className="text-left p-3">Type</th>
-                  <th className="text-left p-3">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -207,14 +204,7 @@ function TeacherExams() {
                     <td className="p-3">{exam.section?.full_name || '—'}</td>
                     <td className="p-3">{exam.subject?.name || '—'}</td>
                     <td className="p-3">{exam.exam_date ? new Date(exam.exam_date).toLocaleDateString() : '—'}</td>
-                    <td className="p-3">{exam.duration_min ?? '—'}m</td>
                     <td className="p-3">{exam.max_marks}</td>
-                    <td className="p-3">
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">{exam.type}</span>
-                    </td>
-                    <td className="p-3">
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700 capitalize">{exam.status}</span>
-                    </td>
                   </tr>
                 ))}
               </tbody>

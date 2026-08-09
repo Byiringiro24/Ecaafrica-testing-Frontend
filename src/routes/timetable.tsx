@@ -13,6 +13,7 @@ type Section = { id: string; name: string; full_name: string };
 type Subject = { id: string; name: string; code?: string | null };
 type Teacher = { id: string; name: string; email?: string | null };
 type Term = { id: string; name: string; is_current?: boolean | null };
+type SectionAssignment = { id: string; teacher_id: string; subject_id: string; section_id: string; term_id?: string | null };
 
 const DAYS = [
   { label: "Mon", value: 1 },
@@ -51,6 +52,7 @@ function TimetablePage() {
   const [sections, setSections] = useState<Section[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [sectionAssignments, setSectionAssignments] = useState<SectionAssignment[]>([]);
   const [sectionId, setSectionId] = useState("");
   const [loading, setLoading] = useState(true);
   const [periodModal, setPeriodModal] = useState(false);
@@ -79,17 +81,33 @@ function TimetablePage() {
   }, []);
 
   useEffect(() => {
-    if (!sectionId) { setSlots([]); return; }
+    if (!sectionId) { setSlots([]); setSectionAssignments([]); return; }
     (async () => {
       try {
-        const slotData = await apiRequest<Slot[]>(
-          `/timetable-slots?section_id=${sectionId}&limit=200`,
-          AUTH
-        );
+        const [slotData, assignmentData] = await Promise.all([
+          apiRequest<Slot[]>(
+            `/timetable-slots?section_id=${sectionId}&limit=200`,
+            AUTH
+          ),
+          apiRequest<SectionAssignment[]>(
+            `/teacher-section-subjects?section_id=${sectionId}&limit=500`,
+            AUTH
+          ),
+        ]);
         setSlots(slotData ?? []);
-      } catch { setSlots([]); }
+        setSectionAssignments(assignmentData ?? []);
+      } catch { setSlots([]); setSectionAssignments([]); }
     })();
   }, [sectionId]);
+
+  /** subject_id → teacher_id for the selected class (first teacher assigned to that subject) */
+  const subjectTeacherMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    sectionAssignments.forEach((a) => {
+      if (!map[a.subject_id]) map[a.subject_id] = a.teacher_id;
+    });
+    return map;
+  }, [sectionAssignments]);
 
   const slotMap = useMemo(() => {
     const map = new Map<string, Slot>();
@@ -267,6 +285,7 @@ function TimetablePage() {
           day={DAYS.find((d) => d.value === (slotModal?.day_of_week ?? editingSlot?.day_of_week ?? 0))}
           subjects={subjects}
           teachers={teachers}
+          subjectTeacherMap={subjectTeacherMap}
           initialSubjectId={editingSlot?.subject_id ?? ""}
           initialTeacherId={editingSlot?.teacher_id ?? ""}
           onSave={(data) => {
@@ -294,14 +313,20 @@ function TimetablePage() {
 
 /* ─── Slot Assignment Modal ─── */
 function SlotModal({
-  period, day, subjects, teachers, initialSubjectId, initialTeacherId, onSave, onClose,
+  period, day, subjects, teachers, subjectTeacherMap, initialSubjectId, initialTeacherId, onSave, onClose,
 }: {
   period?: Period; day?: typeof DAYS[number]; subjects: Subject[]; teachers: Teacher[];
+  subjectTeacherMap: Record<string, string>;
   initialSubjectId: string; initialTeacherId: string;
   onSave: (data: { subject_id: string; teacher_id: string }) => void; onClose: () => void;
 }) {
   const [subjectId, setSubjectId] = useState(initialSubjectId);
   const [teacherId, setTeacherId] = useState(initialTeacherId);
+
+  const handleSubjectChange = (id: string) => {
+    setSubjectId(id);
+    setTeacherId(subjectTeacherMap[id] ?? "");
+  };
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-sm p-4">
@@ -322,7 +347,7 @@ function SlotModal({
           )}
           <label className="block">
             <span className="text-xs font-semibold mb-1.5 block">Subject</span>
-            <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm">
+            <select value={subjectId} onChange={(e) => handleSubjectChange(e.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm">
               <option value="">Select subject…</option>
               {subjects.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}{s.code ? ` (${s.code})` : ""}</option>
@@ -337,6 +362,11 @@ function SlotModal({
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
+            {subjectId && subjectTeacherMap[subjectId] && (
+              <span className="mt-1.5 block text-[11px] text-muted-foreground">
+                Auto-filled from the teacher assigned to this subject in the selected class.
+              </span>
+            )}
           </label>
         </div>
         <div className="flex justify-end gap-2 px-6 py-4 border-t border-border">

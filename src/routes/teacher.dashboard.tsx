@@ -12,6 +12,7 @@ import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { getTeacherAssignments, type TeacherAssignmentPair } from "@/lib/exams-api";
+import type { ApiSession, ApiRecord } from "@/lib/gateKeeperAttendance";
 
 export const Route = createFileRoute("/teacher/dashboard")({
   beforeLoad: ({ location }) => teacherRouteGuard(location),
@@ -60,6 +61,7 @@ function TeacherDashboard() {
   const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
   const [subjects, setSubjects] = useState<SubjectRecord[]>([]);
   const [teachingAssignments, setTeachingAssignments] = useState<TeacherAssignmentPair[]>([]);
+  const [attendanceToday, setAttendanceToday] = useState({ present: 0, absent: 0, late: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -125,6 +127,46 @@ function TeacherDashboard() {
           }
         }
         setStudentCounts(counts);
+
+        // Fetch today's attendance for the teacher's sections
+        if (teacherSections.length > 0) {
+          const todayValue = new Date().toISOString().slice(0, 10);
+          const sessionLists = await Promise.all(
+            teacherSections.map((section) =>
+              apiRequest<ApiSession[]>(
+                `/attendance/sessions?date=${todayValue}&section_id=${section.id}&limit=200`,
+                { auth: "school" }
+              ).catch(() => [])
+            )
+          );
+          const todaySessions = sessionLists.flat();
+
+          const recordBatches = await Promise.all(
+            todaySessions.map((session) =>
+              apiRequest<ApiRecord[]>(`/attendance/records?session_id=${session.id}&limit=2000`, {
+                auth: "school"
+              }).catch(() => [])
+            )
+          );
+          const todayRecords = recordBatches.flat();
+
+          const byStudent = new Map<string, ApiRecord["status"]>();
+          todayRecords.forEach((record) => {
+            const existing = byStudent.get(record.student_id);
+            const rank = (status: ApiRecord["status"]) =>
+              status === "present" ? 2 : status === "late" ? 1 : 0;
+            if (!existing || rank(record.status) > rank(existing)) {
+              byStudent.set(record.student_id, record.status);
+            }
+          });
+
+          const summary = { present: 0, absent: 0, late: 0 };
+          byStudent.forEach((status) => {
+            if (status === "present" || status === "late") summary.present += 1;
+            else if (status === "absent") summary.absent += 1;
+          });
+          setAttendanceToday(summary);
+        }
       } catch (error: any) {
         toast.error(error?.message ?? "Failed to load dashboard data");
       } finally {
@@ -162,7 +204,7 @@ function TeacherDashboard() {
             <StatCard label="My Classes" value={sections.length} icon={<BookOpen className="h-5 w-5" />} trend={`${sections.length} active`} tone="primary" />
             <StatCard label="Students I Teach" value={totalStudents} icon={<Users className="h-5 w-5" />} trend={`across ${sections.length} classes`} tone="primary" />
             <StatCard label="Subjects I Teach" value={subjectCount} icon={<FileText className="h-5 w-5" />} trend={`${subjectCount} assigned`} tone="secondary" />
-            <StatCard label="Present Today" value="92%" icon={<CheckCircle2 className="h-5 w-5" />} trend="↑ 3% vs yesterday" tone="success" />
+            <StatCard label="Present Today" value={attendanceToday.present} icon={<CheckCircle2 className="h-5 w-5" />} trend={`${attendanceToday.absent} absent today`} tone="success" />
           </>
         )}
       </div>

@@ -78,11 +78,20 @@ type StudentView = {
 type ParentRow = {
   id: string;
   name: string;
+  firstName: string;
   phone: string;
   district: string;
   studentIds: string[];
   lastSMSSent: string;
   totalSMSCount: number;
+};
+
+const splitName = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] ?? "",
+    lastName: parts.slice(1).join(" ") || parts[0] || "",
+  };
 };
 
 const UNKNOWN_DISTRICT = "Unknown";
@@ -105,8 +114,7 @@ function ParentsPage() {
   const [historyFor, setHistoryFor] = useState<ParentRow | null>(null);
   const [editingParent, setEditingParent] = useState<ParentRecord | null>(null);
   const [editForm, setEditForm] = useState({
-    first_name: "",
-    last_name: "",
+    full_name: "",
     phone: "",
     email: "",
     national_id: "",
@@ -164,6 +172,7 @@ function ParentsPage() {
       return {
         id: parent.id,
         name,
+        firstName: parent.first_name ?? name,
         phone: parent.phone,
         district: extractDistrict(parent.address),
         studentIds: studentsByParentPhone.get(parent.phone) ?? [],
@@ -176,8 +185,7 @@ function ParentsPage() {
   const openEditParent = (parent: ParentRecord) => {
     setEditingParent(parent);
     setEditForm({
-      first_name: parent.first_name ?? "",
-      last_name: parent.last_name ?? "",
+      full_name: buildFullName(parent.first_name, parent.last_name),
       phone: parent.phone ?? "",
       email: parent.email ?? "",
       national_id: parent.national_id ?? "",
@@ -187,7 +195,7 @@ function ParentsPage() {
 
   const closeEditModal = () => {
     setEditingParent(null);
-    setEditForm({ first_name: "", last_name: "", phone: "", email: "", national_id: "", district: "" });
+    setEditForm({ full_name: "", phone: "", email: "", national_id: "", district: "" });
   };
 
   const buildAddressFromDistrict = (original: string | null | undefined, district: string) => {
@@ -201,9 +209,10 @@ function ParentsPage() {
     if (!editingParent) return;
     setEditSaving(true);
     try {
+      const { firstName, lastName } = splitName(editForm.full_name);
       const payload = {
-        first_name: editForm.first_name,
-        last_name: editForm.last_name,
+        first_name: firstName,
+        last_name: lastName,
         phone: editForm.phone,
         email: editForm.email || undefined,
         national_id: editForm.national_id || undefined,
@@ -368,7 +377,7 @@ function ParentsPage() {
                     <tr key={parent.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5"><Avatar name={parent.name} size="sm" />
-                          <span className="font-medium">{parent.name}</span></div>
+                          <span className="font-medium">{parent.firstName}</span></div>
                       </td>
                       <td className="px-4 py-3 font-mono text-xs">{parent.phone}</td>
                       <td className="px-4 py-3">{parent.district}</td>
@@ -467,14 +476,9 @@ function ParentEditModal({
         </div>
         <div className="space-y-4 px-6 py-5">
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm font-medium text-foreground">
-              First Name
-              <input value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
-                className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
-            </label>
-            <label className="block text-sm font-medium text-foreground">
-              Last Name
-              <input value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))}
+            <label className="block text-sm font-medium text-foreground sm:col-span-2">
+              Parent Full Name
+              <input value={form.full_name} onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
                 className="mt-1 block w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
             </label>
           </div>

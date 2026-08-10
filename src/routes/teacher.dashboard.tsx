@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   BookOpen, Users, CheckCircle2, ClipboardCheck, FileText,
-  MessageSquare, Calendar, ArrowRight,
+  Calendar, ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
@@ -223,10 +223,6 @@ function TeacherDashboard() {
               <Link to="/teacher/exams" className="rounded-lg border border-border bg-card p-4 hover:bg-muted/40 transition flex flex-col items-start gap-2">
                 <FileText className="h-5 w-5 text-primary" />
                 <span className="font-semibold text-sm">Record Marks</span>
-              </Link>
-              <Link to="/teacher/messages" className="rounded-lg border border-border bg-card p-4 hover:bg-muted/40 transition flex flex-col items-start gap-2">
-                <MessageSquare className="h-5 w-5 text-primary" />
-                <span className="font-semibold text-sm">Communicate with parents</span>
               </Link>
               <Link to="/teacher/schedule" className="rounded-lg border border-border bg-card p-4 hover:bg-muted/40 transition flex flex-col items-start gap-2">
                 <Calendar className="h-5 w-5 text-primary" />

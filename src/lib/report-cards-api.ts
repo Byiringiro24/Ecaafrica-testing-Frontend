@@ -86,6 +86,50 @@ export async function listTerms() {
   return apiRequest<TermOption[]>("/terms?limit=100", { method: "GET", auth: "school" });
 }
 
+export interface AcademicYearOption {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_current: boolean;
+}
+
+export interface TermRecord extends TermOption {
+  academic_year_id: string;
+  created_at?: string;
+}
+
+export type TermPayload = {
+  academic_year_id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  is_current?: boolean;
+};
+
+export async function listAcademicYears() {
+  return apiRequest<AcademicYearOption[]>("/academic-years?limit=100", {
+    method: "GET",
+    auth: "school",
+  });
+}
+
+export async function createTerm(data: TermPayload) {
+  return apiRequest<TermOption>("/terms", {
+    method: "POST",
+    body: JSON.stringify(data),
+    auth: "school",
+  });
+}
+
+export async function updateTerm(id: string, data: Partial<TermPayload>) {
+  return apiRequest<TermOption>(`/terms/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+    auth: "school",
+  });
+}
+
 export async function listSectionStudents(sectionId: string) {
   return apiRequest<Array<{ id: string; first_name: string; last_name: string; student_id_number?: string | null }>>(
     `/sections/${sectionId}/students?limit=500`,

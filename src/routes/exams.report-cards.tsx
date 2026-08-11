@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Printer, Loader2 } from "lucide-react";
+import { Printer, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { ReportCard } from "@/components/reports/ReportCard";
 import { getFilterOptions, type SectionOption } from "@/lib/exams-admin-api";
@@ -9,6 +9,7 @@ import {
   getStudentReportCard,
   listSectionStudents,
   listTerms,
+  publishSectionReportCards,
   type ReportCardSchool,
   type ReportCardStudent,
   type ReportCardSubject,
@@ -51,6 +52,7 @@ function ReportCardsPage() {
 
   const [loading, setLoading] = useState(false);
   const [studentsLoading, setStudentsLoading] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -122,6 +124,41 @@ function ReportCardsPage() {
     () => cards.some((card) => card.subjects.length > 0),
     [cards]
   );
+
+  const handlePublish = async () => {
+    if (!sectionId) return;
+    const termName = termId
+      ? terms.find((item) => item.id === termId)?.name ?? "this term"
+      : "the current term";
+
+    if (
+      !confirm(
+        `Publish all exam results for this class (${termName}) to parents' Reports screens? This cannot be undone until you unpublish.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setPublishing(true);
+      const result = await publishSectionReportCards(sectionId, termId || undefined);
+      toast.success(
+        `Published ${result.published_exams} exam(s) — ${result.published_results} result(s) now visible to parents.`
+      );
+      if (result.skipped.length > 0) {
+        const summary = result.skipped
+          .map((item) => `${item.name} (${item.reason})`)
+          .join(", ");
+        toast.info(`Skipped: ${summary}`);
+      }
+      setCards([]);
+      if (studentId) handleGenerate();
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to publish report cards");
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   return (
     <div>
@@ -209,6 +246,21 @@ function ReportCardsPage() {
               >
                 <Printer className="h-4 w-4" />
                 Print
+              </button>
+            )}
+            {sectionId && (
+              <button
+                type="button"
+                onClick={handlePublish}
+                disabled={publishing}
+                className="inline-flex h-9 items-center gap-2 rounded-md bg-green-600 px-4 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+              >
+                {publishing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Publish All Results
               </button>
             )}
           </div>

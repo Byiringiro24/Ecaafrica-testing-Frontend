@@ -82,6 +82,23 @@ export async function getSectionReportCards(sectionId: string, termId?: string) 
   });
 }
 
+export interface PublishReportCardsResult {
+  section: { id: string; name: string; full_name: string };
+  term: { id: string; name: string; academic_year: string | null };
+  published: Array<{ id: string; name: string; results_published: number }>;
+  skipped: Array<{ id: string; name: string; reason: string }>;
+  published_exams: number;
+  published_results: number;
+}
+
+export async function publishSectionReportCards(sectionId: string, termId?: string) {
+  const params = termId ? `?term_id=${encodeURIComponent(termId)}` : "";
+  return apiRequest<PublishReportCardsResult>(
+    `/report-cards/section/${sectionId}/publish${params}`,
+    { method: "POST", auth: "school" }
+  );
+}
+
 export async function listTerms() {
   return apiRequest<TermOption[]>("/terms?limit=100", { method: "GET", auth: "school" });
 }

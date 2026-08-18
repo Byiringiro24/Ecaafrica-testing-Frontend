@@ -9,6 +9,7 @@ import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { studentSearchText, studentIdNumber } from "@/lib/studentIdentity";
 
 export const Route = createFileRoute("/teacher/attendance")({
   beforeLoad: ({ location }) => teacherRouteGuard(location),
@@ -35,6 +36,7 @@ type SectionRecord = {
 
 type ApiStudent = {
   id: string;
+  student_school_id?: string | null;
   first_name: string;
   last_name: string;
   student_id_number?: string | null;
@@ -552,7 +554,7 @@ function TeacherAttendance() {
       const studentName = student
         ? `${student.first_name} ${student.last_name}`.trim()
         : "Unknown student";
-      const cardId = student?.student_id_number ?? "--";
+      const cardId = studentIdNumber(student);
       const status = STATUS_LABEL[record.status];
       const timeIn = formatTime(record.scanned_at ?? record.created_at, record.status);
       const className = classLabelForSection(sectionId);
@@ -579,7 +581,7 @@ function TeacherAttendance() {
       const studentName = student
         ? `${student.first_name} ${student.last_name}`.trim()
         : "Unknown student";
-      const cardId = student?.student_id_number ?? "--";
+      const cardId = studentIdNumber(student);
       const status = STATUS_LABEL[record.status];
       const timeIn = formatTime(record.scanned_at ?? record.created_at, record.status);
       const className = classLabelForSection(sectionId);
@@ -744,7 +746,7 @@ function TeacherAttendance() {
       const name = `${student.first_name} ${student.last_name}`.toLowerCase();
       return (
         name.includes(target) ||
-        (student.student_id_number ?? "").toLowerCase().includes(target)
+        studentSearchText(student).includes(target)
       );
     });
   }, [manualStudents, manualSearch]);
@@ -1097,7 +1099,7 @@ function TeacherAttendance() {
                               </div>
                             </td>
                             <td className="px-5 py-3 font-mono text-xs text-muted-foreground">
-                              {student.student_id_number ?? "--"}
+                              {studentIdNumber(student)}
                             </td>
                             <td className="px-5 py-3">
                               <button

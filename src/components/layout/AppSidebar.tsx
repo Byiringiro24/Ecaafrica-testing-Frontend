@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard, ScanLine, Users, BookOpen,
+  LayoutDashboard, ScanLine, Users, BookOpen, ClipboardCheck,
   Heart, MessageSquare, Settings, LogOut, X,
   Home, FileText, Briefcase, ChevronDown, UserCheck,
   Cpu, UserPlus, ListChecks, GraduationCap, Clock3, TabletSmartphone,
-  CalendarClock,
+  CalendarClock, Headphones,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { schoolConfig } from "@/lib/mockData";
@@ -18,7 +18,7 @@ function handleLogout() {
   window.location.replace("/login");
 }
 
-interface NavItem { to: string; label: string; icon: any; module: string; match?: "exact" | "prefix"; }
+interface NavItem { to: string; label: string; icon: any; module: string; match?: "exact" | "prefix"; role?: string; }
 interface Section { id: string; label: string; items: NavItem[]; }
 
 const SECTIONS: Section[] = [
@@ -34,6 +34,7 @@ const SECTIONS: Section[] = [
   ]},
   { id: "boarding", label: "Boarding", items: [
     { to: "/boarding", label: "Boarding", icon: Home, module: "boarding", match: "exact" },
+    { to: "/boarding/attendance", label: "Dormitory Attendance", icon: ClipboardCheck, module: "boarding" },
     { to: "/leaves", label: "Leaves", icon: FileText, module: "leaves" },
   ]},
   { id: "devices", label: "Tablets & Devices", items: [
@@ -47,6 +48,9 @@ const SECTIONS: Section[] = [
   { id: "comm", label: "Communication", items: [
     { to: "/parents", label: "Parents", icon: Heart, module: "parents" },
     { to: "/notifications", label: "Notifications", icon: MessageSquare, module: "notifications" },
+  ]},
+  { id: "support", label: "Support", items: [
+    { to: "/support", label: "Support Tickets", icon: Headphones, module: "support", role: "school_admin" },
   ]},
   { id: "system", label: "System", items: [
     { to: "/settings", label: "Settings", icon: Settings, module: "settings" },
@@ -88,7 +92,8 @@ export function AppSidebar({ open, onClose }: Props) {
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
           {SECTIONS.map((sec) => {
             const items = sec.items.filter(it => {
-              if (!schoolConfig.enabledModules.includes(it.module)) return false;
+              if (it.role && currentUser?.role !== it.role) return false;
+              if (it.module !== "support" && !schoolConfig.enabledModules.includes(it.module)) return false;
               if (!schoolConfig.hasBoarding && (it.module === "boarding" || it.module === "leaves")) return false;
               if (!schoolConfig.hasGateManagement && it.module === "gate") return false;
               return true;

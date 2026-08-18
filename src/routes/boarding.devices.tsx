@@ -47,6 +47,7 @@ import {
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest } from "@/lib/api";
+import { studentSearchText, studentIdNumber } from "@/lib/studentIdentity";
 import { DEFAULT_FK623_CONFIG } from "@/lib/tabletApi";
 import { cn } from "@/lib/utils";
 
@@ -222,7 +223,7 @@ const unwrapList = <T,>(payload: unknown): T[] => {
 };
 
 const studentName = (student: Student) =>
-  `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim() || student.student_id_number || student.id;
+  `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim() || studentIdNumber(student);
 
 const buildDeviceUserId = (student: Student) => {
   if (student.device_user_id) return student.device_user_id;
@@ -316,7 +317,7 @@ function ServerCommandCenter() {
     const normalizedQuery = query.trim().toLowerCase();
     return students.filter((student) => {
       const inClass = !classId || student.current_section?.class_id === classId;
-      const searchable = `${studentName(student)} ${student.student_id_number ?? ""} ${student.current_section?.full_name ?? ""}`.toLowerCase();
+      const searchable = `${studentSearchText(student)} ${student.current_section?.full_name ?? ""}`.toLowerCase();
       return inClass && (!normalizedQuery || searchable.includes(normalizedQuery));
     });
   }, [classId, query, students]);
@@ -1272,7 +1273,7 @@ function ServerCommandCenter() {
                         </td>
                         <td>
                           <div className="font-semibold text-slate-900">{studentName(student)}</div>
-                          <div className="text-xs text-slate-500">{student.student_id_number ?? student.id}</div>
+                          <div className="text-xs text-slate-500">Student ID Number: {studentIdNumber(student)}</div>
                         </td>
                         <td>{student.current_section?.full_name ?? "Unassigned"}</td>
                         <td className="font-mono">{buildDeviceUserId(student)}</td>
@@ -1601,7 +1602,7 @@ function ServerCommandCenter() {
                     <form onSubmit={recordManualAttendanceEvent} className="grid gap-3">
                       <SelectField label="Student" value={manualEventForm.student_id} onChange={(value) => setManualEventForm({ ...manualEventForm, student_id: value })}>
                         <option value="">No student selected</option>
-                        {students.map((student) => <option key={student.id} value={student.id}>{studentName(student)}</option>)}
+                        {students.map((student) => <option key={student.id} value={student.id}>{studentName(student)} · {studentIdNumber(student)}</option>)}
                       </SelectField>
                       <SelectField label="Session" value={manualEventForm.session_name} onChange={(value) => setManualEventForm({ ...manualEventForm, session_name: value })}>
                         <option value="">Default session</option>
@@ -1901,7 +1902,7 @@ function LogTable({ logs }: { logs: AttendanceLog[] }) {
             <tr key={log.id}>
               <td>
                 <div className="font-semibold text-foreground">{`${log.first_name ?? ""} ${log.last_name ?? ""}`.trim() || log.student_id_number || log.student_id || "Unknown"}</div>
-                <div className="text-xs text-muted-foreground">{log.student_id_number ?? log.student_id ?? "-"}</div>
+                <div className="text-xs text-muted-foreground">Student ID Number: {log.student_id_number ?? log.student_id ?? "-"}</div>
               </td>
               <td>{log.device_id ?? "-"}</td>
               <td>{log.scan_method ?? "-"}</td>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search, UserPlus, Grid3X3, List, X, Phone, Pencil, Check, Loader2, Camera } from "lucide-react";
+import { Search, UserPlus, Grid3X3, List, X, Phone, Pencil, Check, Loader2, Camera, Mail, MapPin } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatCard } from "@/components/ui-kit/StatCard";
@@ -9,6 +9,7 @@ import { StudentRegistrationModal } from "@/components/modals/StudentRegistratio
 import { apiRequest, API_BASE_URL, SERVER_BASE_URL } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { studentIdNumber } from "@/lib/studentIdentity";
 
 export const Route = createFileRoute("/students")({
   component: StudentsPage,
@@ -16,6 +17,7 @@ export const Route = createFileRoute("/students")({
 
 type ApiStudent = {
   id: string;
+  student_school_id?: string | null;
   student_id_number: string | null;
   first_name: string;
   last_name: string;
@@ -33,9 +35,16 @@ type ApiStudent = {
   photo_url: string | null;
   created_at: string;
   primary_parent: {
+    id: string;
     first_name: string;
     last_name: string;
     phone: string;
+    phone_alt?: string | null;
+    email?: string | null;
+    national_id?: string | null;
+    relationship?: string | null;
+    address?: string | null;
+    occupation?: string | null;
   } | null;
   current_section: {
     name: string;
@@ -107,7 +116,7 @@ function StudentsPage() {
 
   const filtered = useMemo(() => students.filter(s => {
     const fullName = `${s.first_name} ${s.last_name}`.toLowerCase();
-    const studentId = (s.student_id_number ?? "").toLowerCase();
+    const studentId = studentIdNumber(s).toLowerCase();
     const sectionName = s.current_section?.full_name ?? "";
     const residency = s.student_type ? capitalize(s.student_type) : "";
     return (
@@ -171,7 +180,7 @@ function StudentsPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name or ID…"
+                placeholder="Search by name or Student ID Number…"
                 className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm"
               />
             </div>
@@ -230,7 +239,7 @@ function StudentsPage() {
                       )}
                     </div>
                     <h3 className="font-display font-bold mt-3 truncate">{fullName}</h3>
-                    <p className="text-xs text-muted-foreground font-mono mt-0.5">{s.student_id_number ?? "—"}</p>
+                    <p className="text-xs text-muted-foreground font-mono mt-0.5">Student ID Number: {studentIdNumber(s)}</p>
                     <div className="mt-3 flex items-center gap-2 flex-wrap">
                       {sectionName && (
                         <span className="inline-flex items-center rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold">
@@ -264,7 +273,7 @@ function StudentsPage() {
                   <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                     <tr>
                       <th className="text-left px-4 py-3">Name</th>
-                      <th className="text-left px-4 py-3">Student ID</th>
+                      <th className="text-left px-4 py-3">Student ID Number</th>
                       <th className="text-left px-4 py-3">Class</th>
                       <th className="text-left px-4 py-3">Residency</th>
                       <th className="text-left px-4 py-3">Device</th>
@@ -283,7 +292,7 @@ function StudentsPage() {
                       return (
                         <tr key={s.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
                           <td className="px-4 py-3 font-medium">{fullName}</td>
-                          <td className="px-4 py-3 font-mono text-xs">{s.student_id_number ?? "—"}</td>
+                          <td className="px-4 py-3 font-mono text-xs">{studentIdNumber(s)}</td>
                           <td className="px-4 py-3">{sectionName}</td>
                           <td className="px-4 py-3 text-xs font-semibold text-muted-foreground">{residency}</td>
                           <td className="px-4 py-3">
@@ -427,6 +436,7 @@ function StudentProfileSlideOver({
   onEditSuccess: () => void;
 }) {
   const [editOpen, setEditOpen] = useState(false);
+  const [parentEditOpen, setParentEditOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [photoSrc, setPhotoSrc] = useState<string | null>(
     student.photo_url ? `${SERVER_BASE_URL}/${student.photo_url}` : null
@@ -533,7 +543,7 @@ function StudentProfileSlideOver({
 
               <div className="text-center">
                 <div className="font-display font-bold text-lg">{fullName}</div>
-                <div className="text-sm text-muted-foreground font-mono">{student.student_id_number ?? "—"}</div>
+                <div className="text-sm text-muted-foreground font-mono">Student ID Number: {studentIdNumber(student)}</div>
                 <div className="mt-2 flex items-center justify-center gap-2 flex-wrap">
                   {sectionName && (
                     <span className="inline-flex items-center rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold">
@@ -561,8 +571,32 @@ function StudentProfileSlideOver({
             </DetailSection>
 
             <DetailSection title="Parent / Guardian">
-              <DetailRow label="Name" value={parentName} />
-              <DetailRow label="Phone" value={parentPhone} />
+              {student.primary_parent ? (
+                <button
+                  type="button"
+                  onClick={() => setParentEditOpen(true)}
+                  className="col-span-2 rounded-xl border border-border bg-background p-3 text-left transition hover:border-primary/50 hover:bg-primary/5"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">{parentName}</div>
+                      <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                        <Phone className="h-3 w-3" /> {parentPhone}
+                      </div>
+                      {student.primary_parent.relationship && (
+                        <div className="mt-1 text-xs text-muted-foreground">{student.primary_parent.relationship}</div>
+                      )}
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                      <Pencil className="h-3 w-3" /> View / edit
+                    </span>
+                  </div>
+                </button>
+              ) : (
+                <div className="col-span-2 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                  No parent or guardian linked.
+                </div>
+              )}
             </DetailSection>
           </div>
         </div>
@@ -575,7 +609,109 @@ function StudentProfileSlideOver({
           onSuccess={() => { setEditOpen(false); onEditSuccess(); }}
         />
       )}
+      {parentEditOpen && student.primary_parent && (
+        <ParentInfoModal
+          parent={student.primary_parent}
+          onClose={() => setParentEditOpen(false)}
+          onSuccess={() => { setParentEditOpen(false); onEditSuccess(); }}
+        />
+      )}
     </>
+  );
+}
+
+type ParentRecord = NonNullable<ApiStudent["primary_parent"]>;
+
+function ParentInfoModal({
+  parent,
+  onClose,
+  onSuccess,
+}: {
+  parent: ParentRecord;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [form, setForm] = useState({
+    firstName: parent.first_name,
+    lastName: parent.last_name,
+    relationship: parent.relationship ?? "",
+    phone: parent.phone,
+    phoneAlt: parent.phone_alt ?? "",
+    email: parent.email ?? "",
+    nationalId: parent.national_id ?? "",
+    occupation: parent.occupation ?? "",
+    address: parent.address ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const set = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }));
+
+  const handleSave = async () => {
+    if (!form.firstName.trim() || !form.lastName.trim() || !form.relationship.trim() || !form.phone.trim()) {
+      setError("First name, last name, relationship, and phone are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await apiRequest(`/parents/${parent.id}`, {
+        method: "PATCH",
+        auth: "school",
+        body: JSON.stringify({
+          first_name: form.firstName.trim(),
+          last_name: form.lastName.trim(),
+          relationship: form.relationship.trim(),
+          phone: form.phone.trim(),
+          phone_alt: form.phoneAlt.trim() || undefined,
+          email: form.email.trim() || undefined,
+          national_id: form.nationalId.trim() || undefined,
+          occupation: form.occupation.trim() || undefined,
+          address: form.address.trim() || undefined,
+        }),
+      });
+      toast.success("Parent information updated successfully");
+      onSuccess();
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to update parent information");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-60 grid place-items-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-2xl rounded-2xl bg-card shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div>
+            <h2 className="font-display text-lg font-bold">Parent Information</h2>
+            <p className="text-xs text-muted-foreground">Update the primary parent or guardian linked to this student.</p>
+          </div>
+          <button onClick={onClose} disabled={saving} className="rounded-md p-1.5 hover:bg-muted disabled:opacity-50"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="px-6 py-5 overflow-y-auto">
+          {error && <div className="mb-4 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <EField label="First Name *"><input value={form.firstName} onChange={e => set("firstName", e.target.value)} className={eCls()} /></EField>
+            <EField label="Last Name *"><input value={form.lastName} onChange={e => set("lastName", e.target.value)} className={eCls()} /></EField>
+            <EField label="Relationship *"><input value={form.relationship} onChange={e => set("relationship", e.target.value)} className={eCls()} placeholder="e.g. Father" /></EField>
+            <EField label="Primary Phone *"><div className="relative"><Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input value={form.phone} onChange={e => set("phone", e.target.value)} className={cn(eCls(), "pl-9")} /></div></EField>
+            <EField label="Alternative Phone"><input value={form.phoneAlt} onChange={e => set("phoneAlt", e.target.value)} className={eCls()} /></EField>
+            <EField label="Email"><div className="relative"><Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input type="email" value={form.email} onChange={e => set("email", e.target.value)} className={cn(eCls(), "pl-9")} /></div></EField>
+            <EField label="National ID"><input value={form.nationalId} onChange={e => set("nationalId", e.target.value)} className={eCls()} /></EField>
+            <EField label="Occupation"><input value={form.occupation} onChange={e => set("occupation", e.target.value)} className={eCls()} /></EField>
+            <EField label="Address" className="sm:col-span-2"><div className="relative"><MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input value={form.address} onChange={e => set("address", e.target.value)} className={cn(eCls(), "pl-9")} /></div></EField>
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
+          <button onClick={onClose} disabled={saving} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-50">Cancel</button>
+          <button onClick={() => void handleSave()} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

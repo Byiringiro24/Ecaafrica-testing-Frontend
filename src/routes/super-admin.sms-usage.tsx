@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { AlertCircle, CheckCircle2, Clock3, MessageSquareText, Search, WalletCards } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock3, MessageSquareText, Search } from "lucide-react";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs";
@@ -10,7 +10,6 @@ export const Route = createFileRoute("/super-admin/sms-usage")({
   component: SmsUsagePage
 });
 
-type Spend = { currency: string; amount: number };
 type SchoolUsage = {
   school_id: string;
   school_name: string;
@@ -19,8 +18,6 @@ type SchoolUsage = {
   sent: number;
   failed: number;
   pending: number;
-  currency: string;
-  total_spend: number;
 };
 type SmsUsageResponse = {
   period: { from: string; to: string };
@@ -29,7 +26,6 @@ type SmsUsageResponse = {
     sent: number;
     failed: number;
     pending: number;
-    spend_by_currency: Spend[];
   };
   schools: SchoolUsage[];
 };
@@ -39,8 +35,6 @@ const monthStart = () => {
   const now = new Date();
   return formatDateInput(new Date(now.getFullYear(), now.getMonth(), 1));
 };
-const money = (amount: number, currency: string) =>
-  new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
 const number = (value: number) => new Intl.NumberFormat().format(value);
 
 function SmsUsagePage() {
@@ -73,15 +67,11 @@ function SmsUsagePage() {
     );
   }, [data?.schools, search]);
 
-  const spendLabel = data?.summary.spend_by_currency.length
-    ? data.summary.spend_by_currency.map((item) => money(item.amount, item.currency)).join(" · ")
-    : money(0, "RWF");
-
   return (
     <SuperAdminLayout
-      title="SMS Usage & Spend"
-      subtitle="Monitor delivery volume and provider charges by school"
-      breadcrumbs={<SuperAdminBreadcrumbs items={[{ label: "Super Admin", to: "/super-admin" }, { label: "SMS Usage & Spend" }]} />}
+      title="SMS Usage"
+      subtitle="Monitor SMS delivery volume by school"
+      breadcrumbs={<SuperAdminBreadcrumbs items={[{ label: "Super Admin", to: "/super-admin" }, { label: "SMS Usage" }]} />}
     >
       <div className="space-y-6">
         <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-background p-4 shadow-sm">
@@ -100,37 +90,34 @@ function SmsUsagePage() {
           </label>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Metric icon={MessageSquareText} label="Total SMS" value={number(data?.summary.total ?? 0)} />
           <Metric icon={CheckCircle2} label="Sent / delivered" value={number(data?.summary.sent ?? 0)} tone="text-emerald-600" />
           <Metric icon={AlertCircle} label="Failed" value={number(data?.summary.failed ?? 0)} tone="text-red-600" />
           <Metric icon={Clock3} label="Pending" value={number(data?.summary.pending ?? 0)} tone="text-amber-600" />
-          <Metric icon={WalletCards} label="SMS spend" value={spendLabel} tone="text-primary" />
         </div>
 
         <div className="overflow-hidden rounded-xl border border-border bg-background shadow-sm">
           <div className="border-b border-border px-5 py-4">
-            <h2 className="font-semibold">Spend by school</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Spend includes sent and delivered SMS only, using the provider rate captured when each message was queued.</p>
+            <h2 className="font-semibold">Usage by school</h2>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-left text-sm">
+            <table className="w-full min-w-[680px] text-left text-sm">
               <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
-                <tr><th className="px-5 py-3">School</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Sent</th><th className="px-4 py-3">Failed</th><th className="px-4 py-3">Pending</th><th className="px-5 py-3 text-right">Spend</th></tr>
+                <tr><th className="px-5 py-3">School</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Sent</th><th className="px-4 py-3">Failed</th><th className="px-4 py-3">Pending</th></tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {loading ? (
-                  <tr><td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">Loading SMS usage…</td></tr>
+                  <tr><td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">Loading SMS usage…</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">No SMS usage found for this period.</td></tr>
+                  <tr><td colSpan={5} className="px-5 py-10 text-center text-muted-foreground">No SMS usage found for this period.</td></tr>
                 ) : rows.map((row) => (
-                  <tr key={`${row.school_id}-${row.currency}`} className="hover:bg-muted/40">
+                  <tr key={row.school_id} className="hover:bg-muted/40">
                     <td className="px-5 py-4"><div className="font-semibold">{row.school_name}</div><div className="text-xs text-muted-foreground">{row.country ?? "Country not set"}</div></td>
                     <td className="px-4 py-4 font-medium">{number(row.total)}</td>
                     <td className="px-4 py-4 text-emerald-600">{number(row.sent)}</td>
                     <td className="px-4 py-4 text-red-600">{number(row.failed)}</td>
                     <td className="px-4 py-4 text-amber-600">{number(row.pending)}</td>
-                    <td className="px-5 py-4 text-right font-semibold">{money(row.total_spend, row.currency)}</td>
                   </tr>
                 ))}
               </tbody>

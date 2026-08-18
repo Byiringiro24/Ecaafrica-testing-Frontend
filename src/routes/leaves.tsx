@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { apiRequest } from "@/lib/api";
+import { studentIdNumber } from "@/lib/studentIdentity";
 
 export const Route = createFileRoute("/leaves")({ component: LeavesPage });
 
@@ -19,6 +20,7 @@ type ParentRecord = {
 
 type StudentRecord = {
   id: string;
+  student_school_id?: string | null;
   first_name: string;
   last_name: string;
   student_type?: "boarding" | "day" | null;
@@ -550,7 +552,7 @@ function NewLeaveModal({
               <label className="block text-xs font-semibold mb-1.5">Search Student *</label>
               <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" /><input value={q} onChange={e => setQ(e.target.value)} placeholder="Type a name..." className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" /></div>
               <div className="mt-2 space-y-1">
-                {matches.map(s => <button key={s.id} onClick={() => { setStudentId(s.id); setQ(s.name); }} className={`w-full flex justify-between rounded-lg border px-3 py-2 text-sm text-left ${studentId === s.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}><span>{s.name}</span><span className="text-xs text-muted-foreground">{s.className}</span></button>)}
+                {matches.map(s => <button key={s.id} onClick={() => { setStudentId(s.id); setQ(s.name); }} className={`w-full flex justify-between rounded-lg border px-3 py-2 text-sm text-left ${studentId === s.id ? "border-primary bg-primary/5" : "border-border hover:bg-muted"}`}><span>{s.name} · Student ID Number: {studentIdNumber(s)}</span><span className="text-xs text-muted-foreground">{s.className}</span></button>)}
               </div>
               {student && <div className="mt-3 rounded-lg bg-success/10 text-success p-2 text-xs">Selected: {student.name} ({student.className})</div>}
             </div>

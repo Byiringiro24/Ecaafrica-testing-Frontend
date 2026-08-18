@@ -6,6 +6,7 @@ import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { studentIdNumber } from "@/lib/studentIdentity";
 import {
   type ApiRecord,
   type ApiSession,
@@ -150,7 +151,7 @@ function AttendanceHistoryPage() {
       const studentName = student
         ? `${student.first_name} ${student.last_name}`.trim()
         : "Unknown student";
-      const cardId = student?.student_id_number ?? "—";
+      const cardId = studentIdNumber(student);
       const status = STATUS_LABEL[record.status];
       const timeIn = formatTime(record.scanned_at ?? record.created_at, record.status);
       const className = sectionId

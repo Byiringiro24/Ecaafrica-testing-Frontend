@@ -9,6 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { todayIso } from "@/lib/gateKeeperAttendance";
 
+const MAX_CAPACITY = 32767;
+
 export const Route = createFileRoute("/boarding-officer/dormitory")({
   beforeLoad: ({ location }) => boardingOfficerRouteGuard(location),
   component: BoardingOfficerDormitoryPage,
@@ -416,6 +418,12 @@ function BoardingOfficerDormitoryPage() {
       return;
     }
 
+    const capacity = Number(dormitoryForm.capacity);
+    if (dormitoryForm.capacity && (!Number.isInteger(capacity) || capacity < 1 || capacity > MAX_CAPACITY)) {
+      toast.error(`Capacity must be a whole number between 1 and ${MAX_CAPACITY}`);
+      return;
+    }
+
     setSavingDormitory(true);
     try {
       await apiRequest("/boarding/dormitories", {
@@ -424,7 +432,7 @@ function BoardingOfficerDormitoryPage() {
         body: JSON.stringify({
           name: dormitoryForm.name.trim(),
           gender: dormitoryForm.gender || undefined,
-          capacity: dormitoryForm.capacity ? Number(dormitoryForm.capacity) : undefined,
+          capacity: dormitoryForm.capacity ? capacity : undefined,
           description: dormitoryForm.description.trim() || undefined,
         }),
       });
@@ -582,6 +590,8 @@ function BoardingOfficerDormitoryPage() {
               <input
                 type="number"
                 min={1}
+                max={MAX_CAPACITY}
+                step={1}
                 value={dormitoryForm.capacity}
                 onChange={(e) => setDormitoryForm((prev) => ({ ...prev, capacity: e.target.value }))}
                 placeholder="120"

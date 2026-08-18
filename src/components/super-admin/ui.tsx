@@ -275,6 +275,7 @@ export function SaPhoneInput({
   className,
   placeholder = "Phone number",
   error = false,
+  required = false,
   ...props
 }: {
   label: string;
@@ -284,7 +285,8 @@ export function SaPhoneInput({
   className?: string;
   placeholder?: string;
   error?: boolean;
-} & React.InputHTMLAttributes<HTMLInputElement>) {
+  required?: boolean;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const parsed = useMemo(() => parsePhoneValue(value), [value]);
@@ -316,7 +318,7 @@ export function SaPhoneInput({
             onClick={() => setOpen((s) => !s)}
             className={cn(
               "h-10 min-w-[7.5rem] rounded-lg border bg-background px-2 text-sm flex items-center gap-1.5",
-                  phoneError ? "border-destructive" : "border-border",
+                  phoneError ? "border-destructive" : required ? "border-orange-400 bg-orange-50/30" : "border-border",
             )}
           >
             {selectedCountry ? (
@@ -371,7 +373,7 @@ export function SaPhoneInput({
           placeholder={placeholder}
           className={cn(
             "h-10 flex-1 min-w-0 rounded-lg border bg-background px-3 text-sm",
-            phoneError ? "border-destructive" : "border-border",
+            phoneError ? "border-destructive" : required ? "border-orange-400 bg-orange-50/30" : "border-border",
           )}
           {...props}
         />

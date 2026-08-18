@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { z } from "zod";
 
 export const STUDENT_IMPORT_HEADERS = [
@@ -19,13 +20,22 @@ export const STUDENT_IMPORT_HEADERS = [
   "admission_date",
   "enrollment_year",
   "student_type",
-  "status"
+  "status",
+  "parent_first_name",
+  "parent_last_name",
+  "parent_relationship",
+  "parent_phone",
+  "parent_phone_alt",
+  "parent_email",
+  "parent_national_id",
+  "parent_address",
+  "parent_occupation"
 ] as const;
 
 type StudentImportHeader = (typeof STUDENT_IMPORT_HEADERS)[number];
 
 type StudentImportRow = {
-  student_id_number?: string;
+  student_id_number: string;
   first_name: string;
   last_name: string;
   other_names?: string;
@@ -43,6 +53,15 @@ type StudentImportRow = {
   enrollment_year?: number;
   student_type?: string;
   status?: string;
+  parent_first_name?: string;
+  parent_last_name?: string;
+  parent_relationship?: string;
+  parent_phone?: string;
+  parent_phone_alt?: string;
+  parent_email?: string;
+  parent_national_id?: string;
+  parent_address?: string;
+  parent_occupation?: string;
 };
 
 export type StudentImportIssue = {
@@ -58,7 +77,7 @@ export type StudentImportParseResult = {
 };
 
 const studentImportSchema = z.object({
-  student_id_number: z.string().optional(),
+  student_id_number: z.string().min(1, "student_id_number is required"),
   first_name: z.string().min(1, "first_name is required"),
   last_name: z.string().min(1, "last_name is required"),
   other_names: z.string().optional(),
@@ -75,7 +94,39 @@ const studentImportSchema = z.object({
   admission_date: z.union([z.string(), z.date()]).optional(),
   enrollment_year: z.coerce.number().int().min(1900).max(2100).optional(),
   student_type: z.enum(["boarding", "day"]).optional(),
-  status: z.enum(["active", "inactive", "transferred", "graduated", "expelled"]).optional()
+  status: z.enum(["active", "inactive", "transferred", "graduated", "expelled"]).optional(),
+  parent_first_name: z.string().optional(),
+  parent_last_name: z.string().optional(),
+  parent_relationship: z.string().optional(),
+  parent_phone: z.string().optional(),
+  parent_phone_alt: z.string().optional(),
+  parent_email: z.string().email("parent_email must be a valid email").optional(),
+  parent_national_id: z.string().optional(),
+  parent_address: z.string().optional(),
+  parent_occupation: z.string().optional()
+}).superRefine((row, context) => {
+  const hasParentData = [
+    row.parent_first_name,
+    row.parent_last_name,
+    row.parent_relationship,
+    row.parent_phone,
+    row.parent_phone_alt,
+    row.parent_email,
+    row.parent_national_id,
+    row.parent_address,
+    row.parent_occupation
+  ].some(Boolean);
+
+  if (!hasParentData) return;
+  if (!row.parent_first_name) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["parent_first_name"], message: "parent_first_name is required when parent data is provided" });
+  }
+  if (!row.parent_last_name) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["parent_last_name"], message: "parent_last_name is required when parent data is provided" });
+  }
+  if (!row.parent_phone) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["parent_phone"], message: "parent_phone is required when parent data is provided" });
+  }
 });
 
 const REQUIRED_HEADERS: StudentImportHeader[] = ["first_name", "last_name"];
@@ -234,16 +285,55 @@ export const makeStudentImportCsvFile = (
 };
 
 export const downloadStudentImportTemplate = (
-  filename = "ecareafrica-students-template.csv"
+  filename = "ecareafrica-students-template.xlsx"
 ) => {
-  const csv = buildStudentImportCsv([]);
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+  void (async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Students");
+    const requiredHeaders = new Set<StudentImportHeader>(["student_id_number", "first_name", "last_name"]);
+
+    sheet.addRow(STUDENT_IMPORT_HEADERS);
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+    sheet.autoFilter = { from: "A1", to: `${sheet.getColumn(STUDENT_IMPORT_HEADERS.length).letter}1` };
+    sheet.columns = STUDENT_IMPORT_HEADERS.map((header) => ({
+      header,
+      key: header,
+      width: Math.max(16, header.length + 3)
+    }));
+
+    const headerRow = sheet.getRow(1);
+    headerRow.font = { bold: true, color: { argb: "FF7C2D12" } };
+    headerRow.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    headerRow.height = 30;
+    headerRow.eachCell((cell, columnNumber) => {
+      const header = STUDENT_IMPORT_HEADERS[columnNumber - 1];
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: requiredHeaders.has(header) ? "FFF4B183" : "FFFFFFFF" }
+      };
+    });
+
+    const instructions = workbook.addWorksheet("Instructions");
+    instructions.columns = [{ width: 24 }, { width: 80 }];
+    instructions.addRow(["Student import template", "Enter one student per row on the Students sheet."]);
+    instructions.addRow(["Required columns", "student_id_number, first_name and last_name (orange headers). All other columns are optional."]);
+    instructions.addRow(["Class and academic year", "These are assigned automatically from the class and current academic year selected in /classes."]);
+    instructions.addRow(["Parent columns", "Parent information is optional. If any parent value is entered, parent_first_name, parent_last_name and parent_phone are required."]);
+    instructions.getColumn(1).eachCell((cell) => { cell.font = { bold: true }; });
+    instructions.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    instructions.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF97316" } };
+    instructions.eachRow((row) => { row.alignment = { vertical: "top", wrapText: true }; });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  })();
 };
 
 export const parseStudentImportFile = async (file: File): Promise<StudentImportParseResult> => {
@@ -299,7 +389,7 @@ export const parseStudentImportFile = async (file: File): Promise<StudentImportP
 
     totalRows += 1;
 
-    const normalized: StudentImportRow = {
+    const normalized = {
       ...record,
       gender: normalizeEnumValue(record.gender),
       student_type: normalizeEnumValue(record.student_type),

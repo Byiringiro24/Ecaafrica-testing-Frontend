@@ -58,6 +58,7 @@ type SubjectRecord = {
   id: string;
   name: string;
   code?: string | null;
+  is_active: boolean;
 };
 
 type TeacherSectionSubjectRecord = {
@@ -149,8 +150,6 @@ const genderLabel = (value?: string | null) =>
 const mergeUnique = (values: string[]) =>
   Array.from(new Set(values.filter((value) => value && value !== EMPTY_VALUE)));
 
-const normalizeDepartment = (value: string) => value.trim().replace(/\s+/g, " ");
-
 const buildStaffRows = (
   profiles: StaffProfileRecord[],
   users: UserRecord[],
@@ -239,9 +238,7 @@ function StaffPage() {
   const [teacherSectionSubjects, setTeacherSectionSubjects] = useState<TeacherSectionSubjectRecord[]>([]);
   const [subjectCatalog, setSubjectCatalog] = useState<SubjectRecord[]>([]);
   const [departments, setDepartments] = useState<string[]>(DEFAULT_DEPARTMENTS);
-  const [departmentSetting, setDepartmentSetting] = useState<SystemSetting | null>(null);
   const [loading, setLoading] = useState(false);
-  const [departmentsSaving, setDepartmentsSaving] = useState(false);
   const [accountBusyId, setAccountBusyId] = useState<string | null>(null);
 
   const staffRows = useMemo(
@@ -306,14 +303,12 @@ function StaffPage() {
     try {
       const setting = await apiRequest<SystemSetting>(`/system-settings/key/${STAFF_DEPARTMENTS_KEY}`, { auth: "school" });
       const parsed = Array.isArray(setting?.parsed_value) ? setting.parsed_value : [];
-      setDepartmentSetting(setting ?? null);
       setDepartments(mergeUnique([...DEFAULT_DEPARTMENTS, ...parsed.map((value: any) => String(value))]));
     } catch (error: any) {
       if (error?.status !== 404) {
         toast.error(error?.message ?? "Failed to load departments");
       }
       setDepartments(DEFAULT_DEPARTMENTS);
-      setDepartmentSetting(null);
     }
   };
 
@@ -339,43 +334,6 @@ function StaffPage() {
     loadDepartments();
     loadClassAssignments();
   }, []);
-
-  const handleCreateDepartment = async (name: string) => {
-    const trimmed = normalizeDepartment(name);
-    if (!trimmed) {
-      toast.error("Department name is required");
-      return false;
-    }
-
-    const next = mergeUnique([...departments, trimmed]);
-    setDepartmentsSaving(true);
-    try {
-      if (departmentSetting?.id) {
-        const updated = await apiRequest<SystemSetting>(`/system-settings/${departmentSetting.id}`, {
-          method: "PATCH",
-          auth: "school",
-          body: JSON.stringify({ value: next, type: "json" })
-        });
-        setDepartmentSetting(updated);
-      } else {
-        const created = await apiRequest<SystemSetting>("/system-settings", {
-          method: "POST",
-          auth: "school",
-          body: JSON.stringify({ key_name: STAFF_DEPARTMENTS_KEY, value: next, type: "json" })
-        });
-        setDepartmentSetting(created);
-      }
-
-      setDepartments(next);
-      toast.success(`Department ${trimmed} added`);
-      return true;
-    } catch (error: any) {
-      toast.error(error?.message ?? "Failed to create department");
-      return false;
-    } finally {
-      setDepartmentsSaving(false);
-    }
-  };
 
   const handleToggleAccount = async (staff: StaffRow) => {
     const nextStatus = staff.status === "Inactive" ? "active" : "inactive";
@@ -538,9 +496,7 @@ function StaffPage() {
         <DepartmentsTab
           departments={departmentOptions}
           staff={staffRows}
-          saving={departmentsSaving}
           onPick={(d) => { setTab("All Staff"); setDept(d); }}
-          onCreate={handleCreateDepartment}
         />
       )}
 
@@ -657,44 +613,14 @@ function StatusPill({ v }: { v: StaffRow["status"] }) {
 function DepartmentsTab({
   departments,
   staff,
-  onPick,
-  onCreate,
-  saving
+  onPick
 }: {
   departments: string[];
   staff: StaffRow[];
   onPick: (d: string) => void;
-  onCreate: (name: string) => Promise<boolean> | boolean;
-  saving: boolean;
 }) {
-  const [newDepartment, setNewDepartment] = useState("");
-
-  const handleCreate = async () => {
-    const ok = await onCreate(newDepartment);
-    if (ok) setNewDepartment("");
-  };
-
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-card p-4">
-        <div className="text-xs uppercase font-bold text-muted-foreground mb-2">Create Department</div>
-        <div className="flex flex-wrap gap-2">
-          <input
-            value={newDepartment}
-            onChange={(e) => setNewDepartment(e.target.value)}
-            placeholder="e.g. Procurement"
-            className="h-10 flex-1 min-w-55 rounded-lg border border-border bg-background px-3 text-sm"
-          />
-          <button
-            onClick={handleCreate}
-            disabled={saving || !newDepartment.trim()}
-            className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-          >
-            Add Department
-          </button>
-        </div>
-      </div>
-
       {departments.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
           No departments available yet.
@@ -860,9 +786,9 @@ function RegisterStaffModal({
       });
 
       if (data.email.trim()) {
-        await apiRequest("/auth/forgot-password", {
+        await apiRequest("/auth/staff-onboarding", {
           method: "POST",
-          auth: "none",
+          auth: "school",
           body: JSON.stringify({ email: data.email.trim() })
         });
       }
@@ -1006,6 +932,9 @@ function EditStaffModal({
   const [teachingAssignments, setTeachingAssignments] = useState<TeachingAssignmentRow[]>([]);
   const [initialTeachingAssignments, setInitialTeachingAssignments] = useState<TeacherSectionSubjectRecord[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
+  const [editingSubjectName, setEditingSubjectName] = useState("");
+  const [subjectUpdating, setSubjectUpdating] = useState(false);
   const timetableAccessOptions = ["Full Access", "Limited Access", "Read Only"];
 
   useEffect(() => {
@@ -1162,6 +1091,43 @@ function EditStaffModal({
     }
   };
 
+  const toggleTeachingSubject = async (subject: SubjectRecord) => {
+    try {
+      const updated = await apiRequest<SubjectRecord>(`/subjects/${subject.id}`, {
+        method: "PATCH",
+        auth: "school",
+        body: JSON.stringify({ is_active: !subject.is_active }),
+      });
+      setSubjects((prev) => prev.map((item) => item.id === updated.id ? updated : item));
+      toast.success(`Subject "${updated.name}" ${updated.is_active ? "activated" : "deactivated"}`);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to update subject status");
+    }
+  };
+
+  const saveTeachingSubjectName = async () => {
+    const name = editingSubjectName.trim();
+    if (!editingSubjectId || name.length < 2) {
+      toast.error("Subject name must be at least 2 characters");
+      return;
+    }
+    setSubjectUpdating(true);
+    try {
+      const updated = await apiRequest<SubjectRecord>(`/subjects/${editingSubjectId}`, {
+        method: "PATCH",
+        auth: "school",
+        body: JSON.stringify({ name }),
+      });
+      setSubjects((prev) => prev.map((item) => item.id === updated.id ? updated : item));
+      setEditingSubjectId(null);
+      toast.success(`Subject renamed to "${updated.name}"`);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to rename subject");
+    } finally {
+      setSubjectUpdating(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
       <div className="bg-card rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -1264,12 +1230,24 @@ function EditStaffModal({
                 </div>
                 {subjects.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
-                    {subjects.map((subject) => (
-                      <span
-                        key={subject.id}
-                        className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
-                      >
-                        {subject.name}
+                    {subjects.map((subject) => editingSubjectId === subject.id ? (
+                      <span key={subject.id} className="inline-flex items-center gap-1">
+                        <input value={editingSubjectName} onChange={(e) => setEditingSubjectName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") void saveTeachingSubjectName(); if (e.key === "Escape") setEditingSubjectId(null); }}
+                          autoFocus className="h-8 w-40 rounded-md border border-input bg-background px-2 text-xs" />
+                        <button type="button" onClick={() => void saveTeachingSubjectName()} disabled={subjectUpdating}
+                          className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-50">Save</button>
+                        <button type="button" onClick={() => setEditingSubjectId(null)} className="rounded-md border border-border px-2 py-1 text-xs">Cancel</button>
+                      </span>
+                    ) : (
+                      <span key={subject.id} className="inline-flex items-center gap-1">
+                        <button type="button" onClick={() => toggleTeachingSubject(subject)}
+                          title={subject.is_active ? "Deactivate subject" : "Activate subject before assigning it"}
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${subject.is_active ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                          {subject.name} · {subject.is_active ? "Active" : "Activate"}
+                        </button>
+                        <button type="button" onClick={() => { setEditingSubjectId(subject.id); setEditingSubjectName(subject.name); }}
+                          className="rounded-md border border-border px-1.5 py-1 text-xs hover:bg-muted">Edit</button>
                       </span>
                     ))}
                   </div>
@@ -1312,8 +1290,8 @@ function EditStaffModal({
                             className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
                           >
                             <option value="">Select subject</option>
-                            {subjects.map((subject) => (
-                              <option key={subject.id} value={subject.id}>{subject.name}</option>
+                            {subjects.filter((subject) => subject.is_active || subject.id === assignment.subject_id).map((subject) => (
+                              <option key={subject.id} value={subject.id} disabled={!subject.is_active}>{subject.name}{!subject.is_active ? " (inactive)" : ""}</option>
                             ))}
                           </select>
                           <button

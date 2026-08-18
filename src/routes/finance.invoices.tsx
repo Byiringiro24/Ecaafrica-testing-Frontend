@@ -12,6 +12,7 @@ import {
 import { API_BASE_URL, apiRequest } from "@/lib/api";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useAcademicSession } from "@/hooks/useAcademicSession";
+import { studentIdNumber } from "@/lib/studentIdentity";
 import {
   formatRWF, toNum,
   listInvoices, createInvoice, issueInvoice, payInvoice, uploadInvoiceDocument,
@@ -48,13 +49,14 @@ const docUrl = (url: string) =>
 
 type StudentRecord = {
   id: string;
+  student_school_id?: string | null;
   first_name?: string | null;
   last_name?: string | null;
-  student_number?: string | null;
+  student_id_number?: string | null;
 };
 
 const studentLabel = (s: StudentRecord) =>
-  `${[s.first_name, s.last_name].filter(Boolean).join(" ") || "Unnamed"}${s.student_number ? ` · ${s.student_number}` : ""}`;
+  `${[s.first_name, s.last_name].filter(Boolean).join(" ") || "Unnamed"} · Student ID Number: ${studentIdNumber(s)}`;
 
 function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -112,7 +114,7 @@ function InvoicesPage() {
       <div className="flex flex-wrap gap-2 items-center mb-4">
         <div className="relative flex-1 min-w-[240px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search student or invoice #..." className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search student name, Student ID Number or invoice #..." className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
         </div>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm">
           <option value="All">All</option>
@@ -142,7 +144,7 @@ function InvoicesPage() {
                 invoices.map((inv) => (
                   <tr key={inv.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
                     <td className="px-4 py-3 font-mono text-xs font-semibold">{inv.invoice_number}</td>
-                    <td className="px-4 py-3 font-medium">{inv.student_name}<div className="text-[11px] text-muted-foreground">{inv.student_number}</div></td>
+                    <td className="px-4 py-3 font-medium">{inv.student_name}<div className="text-[11px] text-muted-foreground">Student ID Number: {inv.student_number}</div></td>
                     <td className="px-4 py-3 text-xs">{shortDate(inv.issue_date)}</td>
                     <td className="px-4 py-3 text-xs">{shortDate(inv.due_date)}</td>
                     <td className="px-4 py-3 font-semibold">{formatRWF(inv.total)}</td>
@@ -280,7 +282,7 @@ function GenerateInvoiceModal({
             onChange={(e) => { setStudentSearch(e.target.value); setStudentId(""); setShowStudentDropdown(true); }}
             onFocus={() => setShowStudentDropdown(true)}
             onBlur={() => setShowStudentDropdown(false)}
-            placeholder="Search student by name or number..."
+            placeholder="Search student by name or Student ID Number..."
             className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm"
           />
         </div>
@@ -416,7 +418,7 @@ function InvoiceModal({ invoice, autoPrint, onClose }: { invoice: Invoice; autoP
             <div className="text-right">
               <div className="text-xs text-muted-foreground">Billed to</div>
               <div className="font-semibold">{invoice.student_name}</div>
-              <div className="text-xs text-muted-foreground">{invoice.student_number}</div>
+              <div className="text-xs text-muted-foreground">Student ID Number: {invoice.student_number}</div>
             </div>
           </div>
 

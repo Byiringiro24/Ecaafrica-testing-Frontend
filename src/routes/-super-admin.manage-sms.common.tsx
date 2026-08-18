@@ -40,23 +40,11 @@ const renderTemplateText = (
     return value !== undefined && value !== null ? String(value) : "";
   });
 
-const defaultBodies: Record<string, { en: string; kin: string }> = {
-  school_entry: {
-    en: "Education Care\nAttendance: ${student_name} has checked in at ${time}.\nThank you for staying connected.",
-    kin: "Esoho y'Icare\nAhazwe: ${student_name} yaraze ku ishuri ku ${time}.\nMurakoze cyane kugira intege."
-  },
-  school_exit: {
-    en: "Education Care\nAttendance: ${student_name} has checked out at ${time}.\nThank you for staying connected.",
-    kin: "Esoho y'Icare\nAhazwe: ${student_name} yavuye ku ishuri ku ${time}.\nMurakoze cyane kugira intege."
-  },
-  class_entry: {
-    en: "Education Care\nAttendance: ${student_name} has entered class at ${time}.\nThank you for staying connected.",
-    kin: "Esoho y'Icare\nAhazwe: ${student_name} yinjiye mu isomo ku ${time}.\nMurakoze cyane kugira intege."
-  },
-  class_absent: {
-    en: "Education Care\nAttendance: ${student_name} was absent from class today.\nPlease contact the school for details.",
-    kin: "Esoho y'Icare\nAhazwe: ${student_name} ataraje mu isomo uyu munsi.\nNyamuneka hamagara ishuri kugira ngo ubone ibisobanuro."
-  }
+const defaultBodies: Record<string, string> = {
+  school_entry: "Education Care\nAttendance: ${student_name} has checked in at ${time}.\nThank you for staying connected.",
+  school_exit: "Education Care\nAttendance: ${student_name} has checked out at ${time}.\nThank you for staying connected.",
+  class_entry: "Education Care\nAttendance: ${student_name} has entered class at ${time}.\nThank you for staying connected.",
+  class_absent: "Education Care\nAttendance: ${student_name} was absent from class today.\nPlease contact the school for details."
 };
 
 type ManageSmsTypePageProps = {
@@ -69,24 +57,20 @@ export function ManageSmsTypePage({ triggerType, typeLabel }: ManageSmsTypePageP
   const [selectedTemplate, setSelectedTemplate] = useState<NotificationTemplate | null>(null);
   const [templateName, setTemplateName] = useState("");
   const [messageBodyEn, setMessageBodyEn] = useState("");
-  const [messageBodyKin, setMessageBodyKin] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [previewText, setPreviewText] = useState("");
-  const [previewLanguage, setPreviewLanguage] = useState<"en" | "kin">("en");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const resetForm = useCallback(() => {
     setTemplateName(`Attendance SMS Template - ${typeLabel.toUpperCase()}`);
-    setMessageBodyEn(defaultBodies[triggerType].en);
-    setMessageBodyKin(defaultBodies[triggerType].kin);
+    setMessageBodyEn(defaultBodies[triggerType]);
     setIsActive(true);
   }, [triggerType, typeLabel]);
 
   const populateFormFromTemplate = useCallback((template: NotificationTemplate) => {
     setTemplateName(template.name);
     setMessageBodyEn(template.body_en);
-    setMessageBodyKin(template.body_kin || "");
     setIsActive(template.is_active);
   }, []);
 
@@ -123,8 +107,7 @@ export function ManageSmsTypePage({ triggerType, typeLabel }: ManageSmsTypePageP
   }, [loadTemplates]);
 
   const generatePreview = useCallback(async () => {
-    const language = previewLanguage;
-    const body = language === "en" ? messageBodyEn : messageBodyKin;
+    const body = messageBodyEn;
 
     if (!body.trim()) {
       setPreviewText("");
@@ -142,7 +125,7 @@ export function ManageSmsTypePage({ triggerType, typeLabel }: ManageSmsTypePageP
         const response = await renderNotificationTemplate(
           selectedTemplate.id,
           variables,
-          language
+          "en"
         );
         setPreviewText(response.rendered);
         return;
@@ -152,7 +135,7 @@ export function ManageSmsTypePage({ triggerType, typeLabel }: ManageSmsTypePageP
     }
 
     setPreviewText(renderTemplateText(body, variables));
-  }, [messageBodyEn, messageBodyKin, previewLanguage, selectedTemplate]);
+  }, [messageBodyEn, selectedTemplate]);
 
   useEffect(() => {
     void generatePreview();
@@ -183,7 +166,7 @@ export function ManageSmsTypePage({ triggerType, typeLabel }: ManageSmsTypePageP
           .replace(/^-+|-+$/g, ""),
         trigger_type: triggerType,
         body_en: messageBodyEn.trim(),
-        body_kin: messageBodyKin.trim() || null,
+        body_kin: null,
         is_active: isActive
       };
 
@@ -202,7 +185,7 @@ export function ManageSmsTypePage({ triggerType, typeLabel }: ManageSmsTypePageP
     } finally {
       setSaving(false);
     }
-  }, [templateName, triggerType, messageBodyEn, messageBodyKin, isActive, selectedTemplate, loadTemplates]);
+  }, [templateName, triggerType, messageBodyEn, isActive, selectedTemplate, loadTemplates]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedTemplate) return;
@@ -315,13 +298,6 @@ export function ManageSmsTypePage({ triggerType, typeLabel }: ManageSmsTypePageP
                   </div>
                   <Textarea rows={6} value={messageBodyEn} onChange={(e) => setMessageBodyEn(e.target.value)} className="min-h-[120px]" />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-foreground">Kinyarwanda Template (Optional)</label>
-                  <div className="text-xs text-muted-foreground">
-                    Use <code className="rounded bg-muted px-1 py-0.5 text-xs">${"{student_name}"}</code> and <code className="rounded bg-muted px-1 py-0.5 text-xs">${"{time}"}</code>.
-                  </div>
-                  <Textarea rows={6} value={messageBodyKin} onChange={(e) => setMessageBodyKin(e.target.value)} className="min-h-[120px]" />
-                </div>
                 <div className="flex items-center gap-3">
                   <label className="flex items-center gap-2 text-sm font-medium text-foreground">
                     <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} className="h-4 w-4 rounded border-primary text-primary focus:ring-primary" />
@@ -342,16 +318,9 @@ export function ManageSmsTypePage({ triggerType, typeLabel }: ManageSmsTypePageP
             </div>
 
             <div className="space-y-2 rounded-xl border border-border bg-muted/50 p-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Preview</h3>
-                <div className="flex gap-2">
-                  <button onClick={() => setPreviewLanguage("en")} className={`rounded-full px-3 py-1 text-xs font-semibold ${previewLanguage === "en" ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-muted"}`}>
-                    English
-                  </button>
-                  <button onClick={() => setPreviewLanguage("kin")} className={`rounded-full px-3 py-1 text-xs font-semibold ${previewLanguage === "kin" ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-muted"}`}>
-                    Kinyarwanda
-                  </button>
-                </div>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">Preview</h3>
+                  <span className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">English</span>
               </div>
               <div className="min-h-[100px] whitespace-pre-wrap rounded-xl border border-border bg-background p-4 text-sm leading-relaxed text-foreground">
                 {previewText || "Enter template text to see preview."}

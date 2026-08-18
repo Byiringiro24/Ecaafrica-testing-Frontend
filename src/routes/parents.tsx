@@ -7,6 +7,7 @@ import { Avatar } from "@/components/ui-kit/Avatar";
 import { SMSComposeModal } from "@/components/modals/SMSComposeModal";
 import { ConfirmModal } from "@/components/modals/ConfirmModal";
 import { apiRequest } from "@/lib/api";
+import { studentIdNumber, studentSearchText } from "@/lib/studentIdentity";
 
 export const Route = createFileRoute("/parents")({ component: ParentsPage });
 
@@ -61,6 +62,8 @@ type ParentRecord = {
 
 type StudentRecord = {
   id: string;
+  student_school_id?: string | null;
+  student_id_number?: string | null;
   first_name: string;
   last_name: string;
   current_section?: { name?: string | null; full_name?: string | null } | null;
@@ -69,6 +72,7 @@ type StudentRecord = {
 
 type StudentView = {
   id: string;
+  studentIdNumber: string;
   name: string;
   class: string;
   parentName: string;
@@ -140,6 +144,7 @@ function ParentsPage() {
       const parentName = buildFullName(student.primary_parent?.first_name, student.primary_parent?.last_name);
       return {
         id: student.id,
+        studentIdNumber: studentIdNumber(student),
         name,
         class: className,
         parentName,
@@ -311,7 +316,7 @@ function ParentsPage() {
     if (q) {
       const t = q.toLowerCase();
       const childMatch = parent.studentIds.some((id) =>
-        studentsById.get(id)?.name.toLowerCase().includes(t)
+        studentSearchText(students.find((student) => student.id === id)).includes(t)
       );
       if (!parent.name.toLowerCase().includes(t) && !parent.phone.includes(t) && !childMatch) return false;
     }
@@ -388,7 +393,7 @@ function ParentsPage() {
                           )}
                           {children.map((child) => child && (
                             <span key={child.id} className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold">
-                              {child.name.split(" ")[0]} <span className="opacity-70">({child.class})</span>
+                              {child.name.split(" ")[0]} <span className="opacity-70">({child.studentIdNumber} · {child.class})</span>
                             </span>
                           ))}
                         </div>

@@ -1,190 +1,42 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import { Clock3, Headphones, Mail, MessageCircle, Send, UserRound, X } from "lucide-react";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs";
-import { StatCard } from "@/components/ui-kit/StatCard";
-import { SaModal, SaInput, SaSelect, FilterBar, Pagination } from "@/components/super-admin/ui";
-import { Skeleton } from "@/components/ui/skeleton";
-import { SUPPORT_TICKETS, MOCK_PLATFORM_SCHOOLS } from "@/lib/superAdminMockData";
+import { apiRequest } from "@/lib/api";
+import { getPlatformAuth } from "@/lib/platformAuth";
 
-export const Route = createFileRoute("/super-admin/support")({ component: SupportPage });
+type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
+type Ticket = { id: string; ticket_number: string; school_id: string; school_name: string | null; school_email: string | null; sender_name: string | null; sender_email: string | null; sender_role: string | null; source: "gate_keeper" | "school_admin"; subject: string; category: string; priority: string; status: TicketStatus; created_at: string; updated_at: string };
+type Message = { id: string; sender_type: "school_user" | "platform_user"; body: string; created_at: string };
+const label = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, c => c.toUpperCase());
+const statusStyle: Record<TicketStatus, string> = { open: "bg-amber-50 text-amber-700", in_progress: "bg-blue-50 text-blue-700", resolved: "bg-emerald-50 text-emerald-700", closed: "bg-slate-100 text-slate-600" };
 
-function SupportPage() {
-  const [statusF, setStatusF] = useState("All");
-  const [priorityF, setPriorityF] = useState("All");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [ticket, setTicket] = useState<(typeof SUPPORT_TICKETS)[0] | null>(null);
-  const [newOpen, setNewOpen] = useState(false);
+export const Route = createFileRoute("/super-admin/support")({ component: PlatformSupportPage });
+
+function PlatformSupportPage() {
+  const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [selected, setSelected] = useState<Ticket | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [reply, setReply] = useState("");
+  const [status, setStatus] = useState("All");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const platformUserId = getPlatformAuth()?.user?.id;
+  const load = async () => { try { const result = await apiRequest<{ data: Ticket[] }>("/platform/support-tickets?limit=100", { returnMeta: true }); setTickets(result.data ?? []); } catch (error: any) { toast.error(error?.message ?? "Unable to load support tickets."); } finally { setLoading(false); } };
+  useEffect(() => { void load(); }, []);
+  const filtered = useMemo(() => tickets.filter(ticket => (status === "All" || ticket.status === status) && `${ticket.ticket_number} ${ticket.subject} ${ticket.school_name ?? ""} ${ticket.sender_name ?? ""}`.toLowerCase().includes(search.toLowerCase())), [tickets, status, search]);
+  const openTicket = async (ticket: Ticket) => { setSelected(ticket); setReply(""); try { setMessages(await apiRequest<Message[]>(`/platform/support-tickets/${ticket.id}/messages`)); } catch { toast.error("Unable to load conversation."); } };
+  const sendReply = async () => { if (!selected || !reply.trim() || !platformUserId) return; try { const message = await apiRequest<Message>(`/platform/support-tickets/${selected.id}/messages`, { method: "POST", body: JSON.stringify({ sender_type: "platform_user", sender_id: platformUserId, body: reply.trim() }) }); setMessages(current => [...current, message]); setReply(""); toast.success("Reply sent to school admin."); } catch (error: any) { toast.error(error?.message ?? "Unable to send reply."); } };
+  const changeStatus = async (next: TicketStatus) => { if (!selected) return; try { const updated = await apiRequest<Ticket>(`/platform/support-tickets/${selected.id}`, { method: "PATCH", body: JSON.stringify({ status: next }) }); setSelected(updated); setTickets(current => current.map(ticket => ticket.id === updated.id ? updated : ticket)); toast.success("Ticket status updated."); } catch (error: any) { toast.error(error?.message ?? "Unable to update ticket status."); } };
 
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 600);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const filtered = useMemo(() => {
-    let r = [...SUPPORT_TICKETS];
-    if (statusF !== "All") r = r.filter(t => t.status === statusF);
-    if (priorityF !== "All") r = r.filter(t => t.priority === priorityF);
-    return r;
-  }, [statusF, priorityF]);
-
-  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
-
-  return (
-    <SuperAdminLayout
-      title="Support Tickets"
-      breadcrumbs={<SuperAdminBreadcrumbs items={[{ label: "Super Admin", to: "/super-admin" }, { label: "Support" }]} />}
-    >
-      {loading ? (
-        <SupportSkeleton />
-      ) : (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-            <StatCard label="Open" value={SUPPORT_TICKETS.filter(t => t.status === "Open").length} />
-            <StatCard label="In Progress" value={SUPPORT_TICKETS.filter(t => t.status === "In Progress").length} tone="warning" />
-            <StatCard label="Resolved Today" value={1} tone="success" />
-            <StatCard label="Avg Response" value="2.4h" />
-          </div>
-
-          <div className="flex justify-between items-center mb-4">
-            <FilterBar>
-              <select value={statusF} onChange={e => setStatusF(e.target.value)} className="h-10 rounded-lg border border-border px-3 text-sm"><option>All</option><option>Open</option><option>In Progress</option><option>Resolved</option></select>
-              <select value={priorityF} onChange={e => setPriorityF(e.target.value)} className="h-10 rounded-lg border border-border px-3 text-sm"><option>All</option><option>High</option><option>Medium</option><option>Low</option></select>
-            </FilterBar>
-            <button type="button" onClick={() => setNewOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold shrink-0">
-              <Plus className="h-4 w-4" /> New Ticket
-            </button>
-          </div>
-
-          <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
-                <tr>{["Ticket #", "School", "Subject", "Category", "Priority", "Assigned", "Created", "Updated", "Status"].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr>
-              </thead>
-              <tbody>
-                {paginated.map(t => (
-                  <tr key={t.id} onClick={() => setTicket(t)} className="border-t border-border hover:bg-muted/20 cursor-pointer">
-                    <td className="px-4 py-3 font-mono text-xs">{t.id}</td>
-                    <td className="px-4 py-3">{t.school}</td>
-                    <td className="px-4 py-3 font-medium max-w-[200px] truncate">{t.subject}</td>
-                    <td className="px-4 py-3 text-xs">{t.category}</td>
-                    <td className="px-4 py-3"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${t.priority === "High" ? "bg-destructive/10 text-destructive" : t.priority === "Medium" ? "bg-amber-100 text-amber-800" : "bg-muted"}`}>{t.priority}</span></td>
-                    <td className="px-4 py-3 text-xs">{t.assigned}</td>
-                    <td className="px-4 py-3 text-xs">{t.created}</td>
-                    <td className="px-4 py-3 text-xs">{t.updated}</td>
-                    <td className="px-4 py-3 text-xs">{t.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <Pagination total={filtered.length} page={page} pageSize={pageSize} onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1); }} />
-          </div>
-        </>
-      )}
-
-      {ticket && <TicketDrawer ticket={ticket} onClose={() => setTicket(null)} />}
-      <SaModal open={newOpen} onClose={() => setNewOpen(false)} title="New Support Ticket" footer={
-        <button type="button" onClick={() => { toast.success("Ticket created"); setNewOpen(false); }} className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm font-semibold">Create</button>
-      }>
-        <div className="space-y-3">
-          <SaSelect label="School">{MOCK_PLATFORM_SCHOOLS.map(s => <option key={s.id}>{s.name}</option>)}</SaSelect>
-          <SaInput label="Subject" />
-          <SaSelect label="Category"><option>Technical</option><option>Billing</option><option>Feature Request</option><option>Other</option></SaSelect>
-          <SaSelect label="Priority"><option>High</option><option>Medium</option><option>Low</option></SaSelect>
-          <textarea rows={4} placeholder="Description" className="w-full rounded-lg border border-border p-3 text-sm" />
-          <SaSelect label="Assign to"><option>Uwase Claudine</option><option>Ingabire Beatrice</option></SaSelect>
-        </div>
-      </SaModal>
-    </SuperAdminLayout>
-  );
+  return <SuperAdminLayout title="Support center" subtitle="Manage escalations from school administrators." breadcrumbs={<SuperAdminBreadcrumbs items={[{ label: "Super Admin", to: "/super-admin" }, { label: "Support" }]} />}><div className="space-y-6">
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Stat icon={<Headphones className="h-5 w-5" />} label="Total tickets" value={tickets.length} /><Stat icon={<Clock3 className="h-5 w-5" />} label="Open" value={tickets.filter(ticket => ticket.status === "open").length} tone="amber" /><Stat icon={<MessageCircle className="h-5 w-5" />} label="In progress" value={tickets.filter(ticket => ticket.status === "in_progress").length} tone="blue" /><Stat icon={<Mail className="h-5 w-5" />} label="Resolved" value={tickets.filter(ticket => ticket.status === "resolved" || ticket.status === "closed").length} tone="green" /></div>
+    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm"><div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><h2 className="font-display text-xl font-bold">System support queue</h2><p className="mt-1 text-sm text-muted-foreground">Review, respond to, and resolve school escalations.</p></div><div className="flex flex-col gap-3 sm:flex-row"><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search ticket, school, or requester" className="h-10 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" /><select value={status} onChange={event => setStatus(event.target.value)} className="h-10 rounded-xl border border-input bg-background px-3 text-sm"><option>All</option><option value="open">Open</option><option value="in_progress">In progress</option><option value="resolved">Resolved</option><option value="closed">Closed</option></select></div></div></div>
+    {loading ? <div className="rounded-2xl border border-border bg-card p-12 text-center text-sm text-muted-foreground">Loading support queue…</div> : <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm"><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground"><tr>{["Ticket", "School", "Requester", "Subject", "Priority", "Status", "Updated"].map(item => <th key={item} className="px-5 py-4">{item}</th>)}</tr></thead><tbody>{filtered.map(ticket => <tr key={ticket.id} onClick={() => void openTicket(ticket)} className="cursor-pointer border-t border-border transition hover:bg-muted/30"><td className="px-5 py-4 font-mono text-xs text-muted-foreground">{ticket.ticket_number}</td><td className="px-5 py-4"><p className="font-semibold">{ticket.school_name ?? `School #${ticket.school_id}`}</p><p className="text-xs text-muted-foreground">{ticket.school_email ?? "School contact unavailable"}</p></td><td className="px-5 py-4"><p>{ticket.sender_name ?? "Unknown sender"}</p><p className="text-xs text-muted-foreground">{ticket.sender_email ?? "Email unavailable"}</p></td><td className="max-w-[220px] truncate px-5 py-4 font-semibold">{ticket.subject}</td><td className="px-5 py-4 capitalize">{ticket.priority}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle[ticket.status]}`}>{label(ticket.status)}</span></td><td className="px-5 py-4 text-xs text-muted-foreground">{new Date(ticket.updated_at).toLocaleDateString()}</td></tr>)}{filtered.length === 0 && <tr><td colSpan={7} className="px-5 py-14 text-center text-muted-foreground">No support tickets match your filters.</td></tr>}</tbody></table></div></div>}
+  </div>{selected && <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => setSelected(null)}><div className="flex h-full w-full max-w-2xl flex-col border-l border-border bg-card shadow-2xl" onClick={event => event.stopPropagation()}><div className="border-b border-border p-6"><div className="flex items-start justify-between gap-4"><div><span className="font-mono text-xs text-muted-foreground">{selected.ticket_number}</span><h2 className="mt-1 font-display text-2xl font-bold">{selected.subject}</h2><div className="mt-3 flex flex-wrap gap-2"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle[selected.status]}`}>{label(selected.status)}</span><span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700">{selected.source === "gate_keeper" ? "Gate keeper ticket" : "School admin escalation"}</span></div></div><button type="button" onClick={() => setSelected(null)}><X className="h-5 w-5" /></button></div><div className="mt-5 grid gap-3 sm:grid-cols-2"><Info icon={<Headphones className="h-4 w-4" />} label="School" value={selected.school_name ?? `School #${selected.school_id}`} detail={selected.school_email ?? "No school email"} /><Info icon={<UserRound className="h-4 w-4" />} label="Sent by" value={selected.sender_name ?? "Unknown sender"} detail={selected.sender_email ?? "No sender email"} /></div></div><div className="flex-1 space-y-4 overflow-y-auto p-6">{messages.map(message => <div key={message.id} className={`rounded-2xl p-4 text-sm ${message.sender_type === "platform_user" ? "ml-8 bg-primary/10" : "bg-muted"}`}><p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{message.sender_type === "platform_user" ? "System administrator" : "School user"} · {new Date(message.created_at).toLocaleString()}</p><p className="whitespace-pre-wrap leading-6">{message.body}</p></div>)}{messages.length === 0 && <p className="text-sm text-muted-foreground">No messages yet.</p>}</div><div className="space-y-3 border-t border-border p-6"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ticket status</label><select value={selected.status} onChange={event => void changeStatus(event.target.value as TicketStatus)} className="h-10 rounded-xl border border-input bg-background px-3 text-sm"><option value="open">Open</option><option value="in_progress">In progress</option><option value="resolved">Resolved</option><option value="closed">Closed</option></select></div><div className="flex gap-2"><textarea value={reply} onChange={event => setReply(event.target.value)} rows={3} className="min-w-0 flex-1 rounded-xl border border-input bg-background p-3 text-sm outline-none focus:border-primary" placeholder="Write a reply to the school..." /><button type="button" onClick={() => void sendReply()} className="grid h-10 w-10 shrink-0 place-items-center self-end rounded-xl bg-primary text-primary-foreground"><Send className="h-4 w-4" /></button></div></div></div></div>}</SuperAdminLayout>;
 }
 
-function SupportSkeleton() {
-  return (
-    <>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-xl border border-border bg-card p-4">
-            <Skeleton className="h-3 w-16" />
-            <Skeleton className="mt-2 h-6 w-20" />
-          </div>
-        ))}
-      </div>
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex flex-wrap gap-2">
-          <Skeleton className="h-10 w-28" />
-          <Skeleton className="h-10 w-28" />
-        </div>
-        <Skeleton className="h-9 w-28" />
-      </div>
-      <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
-            <tr>
-              {Array.from({ length: 9 }).map((_, i) => (
-                <th key={i} className="text-left px-4 py-3"><Skeleton className="h-3 w-16" /></th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {Array.from({ length: 6 }).map((_, i) => (
-              <tr key={i} className="border-t border-border">
-                {Array.from({ length: 9 }).map((__, j) => (
-                  <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="px-4 py-3 border-t border-border">
-          <Skeleton className="h-4 w-40" />
-        </div>
-      </div>
-    </>
-  );
-}
-
-function TicketDrawer({ ticket, onClose }: { ticket: (typeof SUPPORT_TICKETS)[0]; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
-      <div className="w-full max-w-lg bg-card h-full shadow-2xl flex flex-col border-l border-border" onClick={e => e.stopPropagation()}>
-        <div className="px-6 py-4 border-b border-border">
-          <div className="font-mono text-xs text-muted-foreground">{ticket.id}</div>
-          <h3 className="font-display font-semibold text-lg">{ticket.subject}</h3>
-          <div className="flex gap-2 mt-2 text-xs">
-            <span className="rounded-full bg-destructive/10 text-destructive px-2 py-0.5 font-bold">{ticket.priority}</span>
-            <span>{ticket.status}</span>
-            <span className="text-muted-foreground">{ticket.school}</span>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-          <p className="text-sm text-muted-foreground">School admin reported SMS delivery failures for attendance alerts. Batch #4421 shows 14 undelivered messages.</p>
-          <div className="rounded-lg bg-muted/30 p-3 text-sm">
-            <div className="font-semibold text-xs mb-1">School Admin · May 14</div>
-            Parents did not receive SMS since yesterday afternoon.
-          </div>
-          <div className="rounded-lg bg-primary/5 p-3 text-sm ml-4">
-            <div className="font-semibold text-xs mb-1">Support · May 15</div>
-            We are checking Pindo API status for your sender ID.
-          </div>
-          <div>
-            <label className="text-xs font-semibold">Internal notes</label>
-            <textarea rows={2} className="w-full mt-1 rounded-lg border border-border p-2 text-sm" placeholder="Not visible to school" />
-          </div>
-          <SaSelect label="Status"><option>Open</option><option>In Progress</option><option>Resolved</option></SaSelect>
-          <SaSelect label="Assign to"><option>{ticket.assigned}</option><option>Karera Thierry</option></SaSelect>
-          <textarea rows={3} placeholder="Reply to school admin..." className="w-full rounded-lg border border-border p-3 text-sm" />
-        </div>
-        <div className="px-6 py-4 border-t border-border flex gap-2">
-          <button type="button" onClick={() => toast.success("Reply sent")} className="flex-1 rounded-lg bg-primary text-primary-foreground py-2 text-sm font-semibold">Send</button>
-          <button type="button" onClick={() => toast.success("Resolved")} className="rounded-lg border px-3 py-2 text-sm font-semibold">Resolve</button>
-          <button type="button" onClick={() => toast.info("Escalated")} className="rounded-lg border px-3 py-2 text-sm font-semibold">Escalate</button>
-        </div>
-      </div>
-    </div>
-  );
-}
+function Stat({ icon, label: title, value, tone = "default" }: { icon: React.ReactNode; label: string; value: number; tone?: "default" | "amber" | "blue" | "green" }) { const tones = { default: "bg-card", amber: "bg-amber-50", blue: "bg-blue-50", green: "bg-emerald-50" }; return <div className={`rounded-2xl border border-border p-5 shadow-sm ${tones[tone]}`}><div className="flex items-center justify-between text-primary"><span className="rounded-xl bg-background/70 p-2">{icon}</span><span className="font-display text-3xl font-bold text-foreground">{value}</span></div><p className="mt-4 text-sm font-semibold text-muted-foreground">{title}</p></div>; }
+function Info({ icon, label: title, value, detail }: { icon: React.ReactNode; label: string; value: string; detail: string }) { return <div className="rounded-xl border border-border bg-muted/30 p-3"><div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{icon}{title}</div><p className="mt-2 truncate font-semibold">{value}</p><p className="truncate text-xs text-muted-foreground">{detail}</p></div>; }

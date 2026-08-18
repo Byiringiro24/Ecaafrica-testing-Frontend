@@ -181,8 +181,8 @@ function SchoolTab() {
       return;
     }
 
-    if (yearStart > todayValue) {
-      toast.error("Start date cannot be in the future");
+    if (yearStart > yearEnd) {
+      toast.error("Start date must be before the end date");
       return;
     }
 
@@ -375,10 +375,10 @@ function SchoolTab() {
             <input value={yearName} onChange={(event) => setYearName(event.target.value)} className={inputClass} placeholder="2025/2026" />
           </Field>
           <Field label="Start date">
-            <input type="date" value={yearStart} max={todayValue} onChange={(event) => setYearStart(event.target.value)} className={inputClass} />
+            <input type="date" value={yearStart} onChange={(event) => setYearStart(event.target.value)} className={inputClass} />
           </Field>
           <Field label="End date">
-            <input type="date" value={yearEnd} min={todayValue} onChange={(event) => setYearEnd(event.target.value)} className={inputClass} />
+            <input type="date" value={yearEnd} min={yearStart || undefined} onChange={(event) => setYearEnd(event.target.value)} className={inputClass} />
           </Field>
           <Toggle label="Set as current" checked={yearCurrent} onChange={setYearCurrent} />
         </div>

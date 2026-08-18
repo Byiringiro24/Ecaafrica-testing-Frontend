@@ -13,8 +13,6 @@ import { formatRWF } from "@/lib/mockData";
 import { apiRequest } from "@/lib/api";
 import {  
   SCHOOL_GROWTH, 
-  PLATFORM_ACTIVITY,
-  ACTIVE_SCHOOL_DEVICES,
   planBadgeClass,
   statusBadgeClass,
 } from "@/lib/superAdminMockData";
@@ -71,7 +69,7 @@ function SuperAdminOverview() {
       const params = new URLSearchParams();
       params.set("page", String(page));
       params.set("limit", String(pageSize));
-      params.set("status", "active");
+      params.set("exclude_status", "suspended");
 
       try {
         const resp = await apiRequest<ListResponse<PlatformSchool>>(
@@ -229,7 +227,6 @@ function SuperAdminOverview() {
                           <td className="px-4 py-3 text-xs text-muted-foreground">{formatLastActive(s.updated_at)}</td>
                           <td className="px-4 py-3 whitespace-nowrap space-x-2">
                             <Link to="/super-admin/schools/$id" params={{ id: s.id }} className="text-xs font-semibold text-primary hover:underline">View</Link>
-                            <button type="button" className="text-xs text-muted-foreground hover:underline">Contact</button>
                           </td>
                         </tr>
                       ))
@@ -261,20 +258,6 @@ function SuperAdminOverview() {
                 </ul>
               </div>
 
-              <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                <div className="font-display font-semibold mb-3">Active Devices by Schools</div>
-                <div className="space-y-2 text-sm">
-                  {ACTIVE_SCHOOL_DEVICES.map((a, i) => (
-                    <div key={i} className="flex gap-2 border-b border-border pb-2 last:border-0">
-                      <div className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${a.tone === "warning" ? "bg-amber-500" : a.tone === "destructive" ? "bg-destructive" : "bg-primary"}`} />
-                      <div className="flex-1 min-w-0">
-                        <p>{a.text}</p>
-                        <p className="text-xs text-muted-foreground">{a.time}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
           </div>
         </>

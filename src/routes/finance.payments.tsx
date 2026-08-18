@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FileInput, openDocument, type UploadedDoc } from "@/components/finance/ui";
 import { API_BASE_URL, apiRequest } from "@/lib/api";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { studentIdNumber, studentSearchText } from "@/lib/studentIdentity";
 import {
   formatRWF, toNum, paymentMethodLabel, PAYMENT_METHODS,
   listFeeAssignments, listFeeTransactions, createFeeTransaction, uploadTransactionReceipt,
@@ -36,9 +37,10 @@ const docUrl = (url: string) =>
 
 type StudentRecord = {
   id: string;
+  student_school_id?: string | null;
   first_name?: string | null;
   last_name?: string | null;
-  student_number?: string | null;
+  student_id_number?: string | null;
 };
 
 const fullName = (s?: StudentRecord | null) =>
@@ -132,7 +134,7 @@ function StudentBalancesTab({
   const rows = assignments.filter((a) => {
     const name = a.student_name ?? fullName(students[a.student_id]);
     return (
-      (q === "" || name.toLowerCase().includes(q.toLowerCase())) &&
+      (q === "" || `${name} ${studentSearchText(students[a.student_id])}`.toLowerCase().includes(q.toLowerCase())) &&
       (status === "All" || a.status === status)
     );
   });
@@ -142,7 +144,7 @@ function StudentBalancesTab({
       <div className="flex flex-wrap gap-2 items-center mb-4">
         <div className="relative flex-1 min-w-[240px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by student name..." className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by student name or Student ID Number..." className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
         </div>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm">
           <option value="All">All</option>
@@ -174,7 +176,7 @@ function StudentBalancesTab({
                     <tr key={a.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
                       <td className="px-4 py-3 font-medium">
                         {a.student_name ?? fullName(student)}
-                        <div className="text-[11px] text-muted-foreground">{a.student_number ?? student?.student_number ?? ""}</div>
+                        <div className="text-[11px] text-muted-foreground">Student ID Number: {studentIdNumber(student)}</div>
                       </td>
                       <td className="px-4 py-3 text-xs">{a.fee_name ?? "--"}</td>
                       <td className="px-4 py-3">{formatRWF(a.amount_due)}</td>

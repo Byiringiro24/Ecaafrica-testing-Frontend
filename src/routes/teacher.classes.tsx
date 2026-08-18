@@ -6,6 +6,7 @@ import { teacherRouteGuard, getSchoolAuth } from "@/lib/schoolAuth";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { studentIdNumber } from "@/lib/studentIdentity";
 
 export const Route = createFileRoute("/teacher/classes")({
   beforeLoad: ({ location }) => teacherRouteGuard(location),
@@ -28,6 +29,7 @@ type ClassRecord = {
 
 type StudentRecord = {
   id: string;
+  student_school_id?: string | null;
   first_name: string;
   last_name: string;
   student_id_number?: string | null;
@@ -249,7 +251,7 @@ function ClassDrawer({
                   students.map((s, i) => (
                     <tr key={s.id} className={`border-t border-border ${i % 2 ? "bg-gray-50" : ""}`}>
                       <td className="p-3 font-medium">{s.first_name} {s.last_name}</td>
-                      <td className="p-3 text-muted-foreground">{s.student_id_number ?? "--"}</td>
+                      <td className="p-3 text-muted-foreground">{studentIdNumber(s)}</td>
                     </tr>
                   ))
                 ) : (

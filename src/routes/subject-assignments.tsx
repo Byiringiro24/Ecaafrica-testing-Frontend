@@ -17,7 +17,7 @@ export const Route = createFileRoute("/subject-assignments")({
 
 type TeacherRecord = { id: string; name: string; email?: string | null; role: string };
 type SectionRecord = { id: string; name: string; full_name: string };
-type SubjectRecord = { id: string; name: string; code?: string | null };
+type SubjectRecord = { id: string; name: string; code?: string | null; is_active: boolean };
 
 const selectClass =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
@@ -38,6 +38,9 @@ function SubjectAssignmentsPage() {
   const [newSubjectName, setNewSubjectName] = useState("");
   const [newSubjectCode, setNewSubjectCode] = useState("");
   const [subjectSubmitting, setSubjectSubmitting] = useState(false);
+  const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
+  const [editingSubjectName, setEditingSubjectName] = useState("");
+  const [subjectUpdating, setSubjectUpdating] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -102,6 +105,43 @@ function SubjectAssignmentsPage() {
       toast.error(err?.message ?? "Failed to create subject");
     } finally {
       setSubjectSubmitting(false);
+    }
+  };
+
+  const toggleSubject = async (subject: SubjectRecord) => {
+    try {
+      const updated = await apiRequest<SubjectRecord>(`/subjects/${subject.id}`, {
+        auth: "school",
+        method: "PATCH",
+        body: JSON.stringify({ is_active: !subject.is_active }),
+      });
+      setSubjects((prev) => prev.map((item) => item.id === updated.id ? updated : item));
+      toast.success(`Subject "${updated.name}" ${updated.is_active ? "activated" : "deactivated"}`);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to update subject status");
+    }
+  };
+
+  const saveSubjectName = async () => {
+    const name = editingSubjectName.trim();
+    if (!editingSubjectId || name.length < 2) {
+      toast.error("Subject name must be at least 2 characters");
+      return;
+    }
+    setSubjectUpdating(true);
+    try {
+      const updated = await apiRequest<SubjectRecord>(`/subjects/${editingSubjectId}`, {
+        auth: "school",
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      });
+      setSubjects((prev) => prev.map((item) => item.id === updated.id ? updated : item));
+      setEditingSubjectId(null);
+      toast.success(`Subject renamed to "${updated.name}"`);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to rename subject");
+    } finally {
+      setSubjectUpdating(false);
     }
   };
 
@@ -194,7 +234,10 @@ function SubjectAssignmentsPage() {
 
       <div className="mb-5 rounded-xl border border-border bg-card p-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold">Subjects</h3>
+          <div>
+            <h3 className="text-sm font-semibold">Subjects</h3>
+            <p className="text-xs text-muted-foreground">New subjects are inactive until activated.</p>
+          </div>
           <button
             type="button"
             onClick={() => setCreatingSubject((v) => !v)}
@@ -246,9 +289,24 @@ function SubjectAssignmentsPage() {
           <div className="flex flex-wrap gap-1.5">
             {subjects.length === 0
               ? <span className="text-xs text-muted-foreground">No subjects yet.</span>
-              : subjects.map((s) => (
-                  <span key={s.id} className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
-                    {s.name}{s.code ? ` (${s.code})` : ""}
+              : subjects.map((s) => editingSubjectId === s.id ? (
+                  <span key={s.id} className="inline-flex items-center gap-1">
+                    <input value={editingSubjectName} onChange={(e) => setEditingSubjectName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") void saveSubjectName(); if (e.key === "Escape") setEditingSubjectId(null); }}
+                      autoFocus className="h-7 w-40 rounded-md border border-input bg-background px-2 text-xs" />
+                    <button type="button" onClick={() => void saveSubjectName()} disabled={subjectUpdating}
+                      className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-50">Save</button>
+                    <button type="button" onClick={() => setEditingSubjectId(null)} className="rounded-md border border-border px-2 py-1 text-xs">Cancel</button>
+                  </span>
+                ) : (
+                  <span key={s.id} className="inline-flex items-center gap-1">
+                    <button type="button" onClick={() => toggleSubject(s)}
+                      title={s.is_active ? "Deactivate subject" : "Activate subject before assigning it"}
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${s.is_active ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
+                      {s.name}{s.code ? ` (${s.code})` : ""} · {s.is_active ? "Active" : "Activate"}
+                    </button>
+                    <button type="button" onClick={() => { setEditingSubjectId(s.id); setEditingSubjectName(s.name); }}
+                      className="rounded-md border border-border px-1.5 py-0.5 text-xs hover:bg-muted">Edit</button>
                   </span>
                 ))}
           </div>
@@ -312,9 +370,9 @@ function SubjectAssignmentsPage() {
                         className={selectClass}
                       >
                         <option value="">Select subject</option>
-                        {subjects.map((subject) => (
-                          <option key={subject.id} value={subject.id}>
-                            {subject.name}
+                        {subjects.filter((subject) => subject.is_active || subject.id === row.subject_id).map((subject) => (
+                          <option key={subject.id} value={subject.id} disabled={!subject.is_active}>
+                            {subject.name}{!subject.is_active ? " (inactive)" : ""}
                           </option>
                         ))}
                       </select>

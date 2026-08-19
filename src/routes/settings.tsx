@@ -5,8 +5,12 @@ import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest, API_BASE_URL } from "@/lib/api";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { schoolAdminRouteGuard } from "@/lib/schoolAuth";
 
-export const Route = createFileRoute("/settings")({ component: SettingsPage });
+export const Route = createFileRoute("/settings")({
+  beforeLoad: ({ location }) => schoolAdminRouteGuard(location),
+  component: SettingsPage,
+});
 
 type TabId = "school" | "reset-password";
 

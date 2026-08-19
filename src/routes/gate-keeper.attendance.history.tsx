@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +21,9 @@ import {
 } from "@/lib/gateKeeperAttendance";
 
 export const Route = createFileRoute("/gate-keeper/attendance/history")({
+  beforeLoad: () => {
+    throw redirect({ to: "/gate-keeper/attendance/device-attendance" });
+  },
   component: AttendanceHistoryPage,
 });
 

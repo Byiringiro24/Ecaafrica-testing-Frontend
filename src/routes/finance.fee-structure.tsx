@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Search } from "lucide-react";
+import {
+  ChevronRight,
+  CircleDollarSign,
+  Plus,
+  Search,
+  Trash2,
+  ToggleLeft,
+  ToggleRight,
+} from "lucide-react";
 import { toast } from "sonner";
 import { FinanceLayout, StatusPill } from "@/components/layout/FinanceLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
@@ -8,53 +16,65 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Modal, TextField, PrimaryButton, GhostButton } from "@/components/finance/ui";
 import { apiRequest } from "@/lib/api";
 import { useAcademicSession } from "@/hooks/useAcademicSession";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import {
-  formatRWF, toNum,
-  listFeeStructures, createFeeStructure, deleteFeeStructure,
+  formatCurrency,
+  toNum,
+  listFeeStructures,
+  createFeeStructure,
+  deleteFeeStructure,
+  updateFeeStructure,
   type FeeStructure,
 } from "@/lib/financeApi";
 
 export const Route = createFileRoute("/finance/fee-structure")({ component: FeeStructurePage });
-
 type ClassRecord = { id: string; name: string };
-
-// The backend stores one row per class; the page shows one row per fee name
-// with a column per class, so rows sharing a name are grouped together.
 type FeeGroup = {
   name: string;
-  is_mandatory: boolean;
-  byClass: Record<string, FeeStructure>;
+  structures: FeeStructure[];
   total: number;
+  active: boolean;
+  mandatory: boolean;
 };
+const errorMessage = (error: unknown, fallback: string) =>
+  typeof error === "object" &&
+  error !== null &&
+  "message" in error &&
+  typeof error.message === "string"
+    ? error.message
+    : fallback;
 
-const groupByName = (structures: FeeStructure[]): FeeGroup[] => {
+function groupByCategory(structures: FeeStructure[]) {
   const groups = new Map<string, FeeGroup>();
-
-  for (const s of structures) {
-    const group = groups.get(s.name) ?? {
-      name: s.name,
-      is_mandatory: s.is_mandatory,
-      byClass: {},
+  structures.forEach((structure) => {
+    const group = groups.get(structure.name) ?? {
+      name: structure.name,
+      structures: [],
       total: 0,
+      active: false,
+      mandatory: false,
     };
-    if (s.class_id) group.byClass[s.class_id] = s;
-    group.total += toNum(s.amount);
-    group.is_mandatory = group.is_mandatory || s.is_mandatory;
-    groups.set(s.name, group);
-  }
-
-  return [...groups.values()];
-};
+    group.structures.push(structure);
+    group.total += toNum(structure.amount);
+    group.active = group.active || structure.is_active !== false;
+    group.mandatory = group.mandatory || structure.is_mandatory;
+    groups.set(structure.name, group);
+  });
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
 
 function FeeStructurePage() {
   const session = useAcademicSession();
+  const currentUser = useCurrentUser();
+  const currency = currentUser?.school_currency ?? "RWF";
   const [structures, setStructures] = useState<FeeStructure[]>([]);
   const [classes, setClasses] = useState<ClassRecord[]>([]);
-  const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "active" | "inactive">("all");
   const [creating, setCreating] = useState(false);
+  const [managing, setManaging] = useState<FeeGroup | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -65,124 +85,440 @@ function FeeStructurePage() {
       ]);
       setStructures(structureRes.data);
       setClasses(classList);
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to load fee structures");
+    } catch (err: unknown) {
+      setError(errorMessage(err, "Failed to load fee structures"));
     } finally {
       setLoading(false);
     }
   }, []);
-
   useEffect(() => {
     load();
   }, [load]);
-
-  const groups = useMemo(() => groupByName(structures), [structures]);
-  const rows = groups.filter((g) => g.name.toLowerCase().includes(q.toLowerCase()));
-  const mandatoryCount = groups.filter((g) => g.is_mandatory).length;
-
-  const removeGroup = async (group: FeeGroup) => {
-    const ids = structures.filter((s) => s.name === group.name).map((s) => s.id);
+  const allGroups = useMemo(() => groupByCategory(structures), [structures]);
+  const groups = useMemo(
+    () =>
+      allGroups.filter(
+        (group) =>
+          group.name.toLowerCase().includes(query.toLowerCase()) &&
+          (filter === "all" || (filter === "active" ? group.active : !group.active)),
+      ),
+    [allGroups, query, filter],
+  );
+  const activeCount = allGroups.filter((group) => group.active).length;
+  const assignedClassCount = new Set(
+    structures.map((structure) => structure.class_id).filter(Boolean),
+  ).size;
+  const toggleCategory = async (group: FeeGroup) => {
+    const nextActive = !group.active;
     try {
-      await Promise.all(ids.map((id) => deleteFeeStructure(id)));
-      toast.success(`"${group.name}" removed`);
+      await Promise.all(
+        group.structures.map((structure) =>
+          updateFeeStructure(structure.id, { is_active: nextActive }),
+        ),
+      );
+      toast.success(`${group.name} is now ${nextActive ? "active" : "inactive"}`);
       await load();
-    } catch (err: any) {
-      toast.error(err?.message ?? "Failed to remove fee category — student assignments may exist");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, "Could not update fee status"));
     }
   };
-
-  const headerCount = classes.length + 4;
-
   return (
     <FinanceLayout
       title="Fee Structure"
-      subtitle={session.academicYear ? `Fee categories for ${session.academicYear.name}` : "Fee categories"}
+      subtitle={
+        session.academicYear
+          ? `Manage categories and class assignments · ${session.academicYear.name}`
+          : "Manage categories and class assignments"
+      }
     >
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <StatCard compact label="Fee Categories" value={groups.length} />
-        <StatCard compact label="Structure Rows" value={structures.length} tone="primary" />
-        <StatCard compact label="Mandatory" value={mandatoryCount} tone="success" />
-        <StatCard compact label="Classes Covered" value={classes.length} tone="warning" />
-      </div>
-
-      <div className="flex flex-wrap gap-2 items-center mb-4">
-        <div className="relative flex-1 min-w-[240px]">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search fee categories..." className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
+      <div className="mb-5 rounded-2xl border border-border bg-gradient-to-br from-primary/10 via-card to-card p-5 md:p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="mb-1 text-xs font-bold uppercase tracking-[0.18em] text-primary">
+              Fee administration
+            </p>
+            <h2 className="font-display text-xl font-bold">
+              Keep categories simple. Manage classes inside them.
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Create one fee category, then open it to assign amounts and classes. Inactive fees
+              stay available for history without being used for new billing.
+            </p>
+          </div>
+          <button
+            onClick={() => setCreating(true)}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4" /> New fee category
+          </button>
         </div>
-        <button onClick={() => setCreating(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm font-semibold hover:bg-primary/90">
-          <Plus className="h-4 w-4" /> Create Fee Category
-        </button>
       </div>
-
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard compact label="Categories" value={allGroups.length} />
+        <StatCard compact label="Active categories" value={activeCount} tone="success" />
+        <StatCard compact label="Class assignments" value={structures.length} tone="primary" />
+        <StatCard
+          compact
+          label="Classes covered"
+          value={assignedClassCount || classes.length}
+          tone="warning"
+        />
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[240px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search fee categories..."
+            className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm"
+          />
+        </div>
+        <div className="flex rounded-lg border border-border bg-card p-1">
+          {(["all", "active", "inactive"] as const).map((value) => (
+            <button
+              key={value}
+              onClick={() => setFilter(value)}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold capitalize ${filter === value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+            >
+              {value}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+            <thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="text-left px-4 py-3">Fee Category</th>
-                {classes.map((c) => <th key={c.id} className="text-right px-4 py-3">{c.name}</th>)}
-                <th className="text-right px-4 py-3">Total</th>
-                <th className="text-center px-4 py-3">Mandatory</th>
-                <th className="text-center px-4 py-3">Action</th>
+                <th className="px-4 py-3">Fee category</th>
+                <th className="px-4 py-3">Classes assigned</th>
+                <th className="px-4 py-3">Total value</th>
+                <th className="px-4 py-3">Type</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Manage</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                Array.from({ length: 5 }, (_, i) => (
-                  <tr key={i} className="border-t border-border"><td colSpan={headerCount} className="px-4 py-3"><Skeleton className="h-5 w-full" /></td></tr>
-                ))
-              ) : error ? (
-                <tr><td colSpan={headerCount} className="px-4 py-10 text-center text-sm text-destructive">{error}</td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={headerCount} className="px-4 py-10 text-center text-sm text-muted-foreground">No fee categories defined yet.</td></tr>
-              ) : (
-                rows.map((g) => (
-                  <tr key={g.name} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
-                    <td className="px-4 py-3 font-medium">{g.name}</td>
-                    {classes.map((c) => (
-                      <td key={c.id} className="px-4 py-3 text-right font-mono text-xs">
-                        {g.byClass[c.id] ? formatRWF(g.byClass[c.id].amount) : "--"}
-                      </td>
-                    ))}
-                    <td className="px-4 py-3 text-right font-mono text-xs font-semibold">{formatRWF(g.total)}</td>
-                    <td className="px-4 py-3 text-center">{g.is_mandatory ? <StatusPill label="Yes" tone="success" /> : <StatusPill label="No" tone="muted" />}</td>
-                    <td className="px-4 py-3 text-center">
-                      <button onClick={() => removeGroup(g)} className="text-xs font-semibold text-destructive hover:underline">Remove</button>
+                Array.from({ length: 5 }, (_, index) => (
+                  <tr key={index} className="border-t border-border">
+                    <td colSpan={6} className="px-4 py-4">
+                      <Skeleton className="h-5 w-full" />
                     </td>
                   </tr>
                 ))
+              ) : error ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-sm text-destructive">
+                    {error}
+                  </td>
+                </tr>
+              ) : groups.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                    No fee categories match your filters.
+                  </td>
+                </tr>
+              ) : (
+                groups.map((group) => {
+                  const classNames = group.structures.map(
+                    (structure) =>
+                      classes.find((item) => item.id === structure.class_id)?.name ?? "Unassigned",
+                  );
+                  return (
+                    <tr key={group.name} className="border-t border-border hover:bg-accent/20">
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">
+                            <CircleDollarSign className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <div className="font-semibold">{group.name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {group.structures.length} class{" "}
+                              {group.structures.length === 1 ? "assignment" : "assignments"}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="max-w-[280px] px-4 py-4">
+                        <div className="flex flex-wrap gap-1.5">
+                          {classNames.slice(0, 4).map((name, index) => (
+                            <span
+                              key={`${name}-${index}`}
+                              className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium"
+                            >
+                              {name}
+                            </span>
+                          ))}
+                          {classNames.length > 4 && (
+                            <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                              +{classNames.length - 4} more
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 font-mono text-xs font-semibold">
+                        {formatCurrency(group.total, currency)}
+                      </td>
+                      <td className="px-4 py-4">
+                        {group.mandatory ? (
+                          <StatusPill label="Mandatory" tone="success" />
+                        ) : (
+                          <StatusPill label="Optional" tone="muted" />
+                        )}
+                      </td>
+                      <td className="px-4 py-4">
+                        <button
+                          onClick={() => toggleCategory(group)}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold"
+                          title={`Set ${group.active ? "inactive" : "active"}`}
+                        >
+                          {group.active ? (
+                            <>
+                              <ToggleRight className="h-5 w-5 text-emerald-600" />
+                              <span className="text-emerald-700">Active</span>
+                            </>
+                          ) : (
+                            <>
+                              <ToggleLeft className="h-5 w-5 text-muted-foreground" />
+                              <span className="text-muted-foreground">Inactive</span>
+                            </>
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <button
+                          onClick={() => setManaging(group)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted"
+                        >
+                          Manage <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
-
-      <p className="mt-3 text-xs text-muted-foreground">
-        A fee category spanning several classes is stored as one structure row per class. Removing a category deletes every row that shares its name; rows already assigned to students cannot be deleted.
-      </p>
-
       {creating && (
         <CreateFeeModal
           classes={classes}
+          currency={currency}
           academicYearId={session.academicYear?.id ?? null}
           termId={session.term?.id ?? null}
           onClose={() => setCreating(false)}
-          onCreated={async () => { setCreating(false); await load(); }}
+          onCreated={async () => {
+            setCreating(false);
+            await load();
+          }}
+        />
+      )}
+      {managing && (
+        <ManageFeeModal
+          group={managing}
+          classes={classes}
+          currency={currency}
+          academicYearId={session.academicYear?.id ?? null}
+          termId={session.term?.id ?? null}
+          onClose={() => setManaging(null)}
+          onUpdated={async () => {
+            setManaging(null);
+            await load();
+          }}
         />
       )}
     </FinanceLayout>
   );
 }
 
+function ManageFeeModal({
+  group,
+  classes,
+  currency,
+  academicYearId,
+  termId,
+  onClose,
+  onUpdated,
+}: {
+  group: FeeGroup;
+  classes: ClassRecord[];
+  currency: string;
+  academicYearId: string | null;
+  termId: string | null;
+  onClose: () => void;
+  onUpdated: () => Promise<void>;
+}) {
+  const assignedIds = new Set(group.structures.map((structure) => structure.class_id));
+  const availableClasses = classes.filter((item) => !assignedIds.has(item.id));
+  const [classId, setClassId] = useState(availableClasses[0]?.id ?? "");
+  const [amount, setAmount] = useState(group.structures[0]?.amount ?? "");
+  const [busy, setBusy] = useState(false);
+  const mandatory = group.mandatory;
+  const updateMandatory = async () => {
+    setBusy(true);
+    try {
+      await Promise.all(
+        group.structures.map((structure) =>
+          updateFeeStructure(structure.id, { is_mandatory: !mandatory }),
+        ),
+      );
+      toast.success(!mandatory ? "Fee is now mandatory to pay" : "Fee is now optional");
+      await onUpdated();
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, "Could not update fee status"));
+      setBusy(false);
+    }
+  };
+  const removeClass = async (structure: FeeStructure) => {
+    const className = classes.find((item) => item.id === structure.class_id)?.name ?? "this class";
+    if (!window.confirm(`Remove ${className} from the ${group.name} fee?`)) return;
+    setBusy(true);
+    try {
+      await deleteFeeStructure(structure.id);
+      toast.success(`${className} removed from fee`);
+      await onUpdated();
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, "Could not remove class from fee"));
+      setBusy(false);
+    }
+  };
+  const addClass = async () => {
+    const value = Number(amount.replace(/[^\d.]/g, ""));
+    if (!academicYearId) return toast.error("No academic year is set for this school");
+    if (!classId) return toast.error("Select a class to add");
+    if (!value || value <= 0) return toast.error("Enter a valid amount");
+    setBusy(true);
+    try {
+      await createFeeStructure({
+        academic_year_id: academicYearId,
+        term_id: termId ?? undefined,
+        class_id: classId,
+        name: group.name,
+        amount: value,
+        is_mandatory: mandatory,
+        is_active: true,
+      });
+      toast.success("Class added to fee");
+      await onUpdated();
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, "Could not add class to fee"));
+      setBusy(false);
+    }
+  };
+  return (
+    <Modal
+      title={`Manage ${group.name}`}
+      subtitle="Add classes and choose whether this fee is mandatory to pay"
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <GhostButton onClick={onClose}>Close</GhostButton>
+        </>
+      }
+    >
+      <div className="rounded-lg border border-border bg-muted/20 p-4">
+        <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          Fee status
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <StatusPill
+            label={mandatory ? "Mandatory to pay" : "Optional"}
+            tone={mandatory ? "success" : "muted"}
+          />
+          <button
+            onClick={updateMandatory}
+            disabled={busy}
+            className="rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {mandatory ? "Make optional" : "Make mandatory to pay"}
+          </button>
+        </div>
+      </div>
+      <div>
+        <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          Assigned classes
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {group.structures.map((structure) => (
+            <span
+              key={structure.id}
+              className="inline-flex items-center gap-2 rounded-full bg-muted px-3 py-1.5 text-xs font-medium"
+            >
+              {classes.find((item) => item.id === structure.class_id)?.name ?? "Unassigned"}
+              <button
+                type="button"
+                onClick={() => removeClass(structure)}
+                disabled={busy}
+                aria-label={`Remove ${classes.find((item) => item.id === structure.class_id)?.name ?? "class"} from fee`}
+                title="Remove class from fee"
+                className="text-muted-foreground hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="border-t border-border pt-4">
+        <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          Add class to this fee
+        </div>
+        {availableClasses.length ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">
+                Class
+              </label>
+              <select
+                value={classId}
+                onChange={(event) => setClassId(event.target.value)}
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
+              >
+                {availableClasses.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <TextField
+              label={`Amount per class (${currency})`}
+              value={amount}
+              onChange={setAmount}
+              placeholder="50000"
+              required
+            />
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            All available classes are already assigned.
+          </p>
+        )}
+      </div>
+      {availableClasses.length > 0 && (
+        <PrimaryButton onClick={addClass} disabled={busy}>
+          {busy ? "Saving..." : "Add class"}
+        </PrimaryButton>
+      )}
+    </Modal>
+  );
+}
+
 function CreateFeeModal({
   classes,
+  currency,
   academicYearId,
   termId,
   onClose,
   onCreated,
 }: {
   classes: ClassRecord[];
+  currency: string;
   academicYearId: string | null;
   termId: string | null;
   onClose: () => void;
@@ -190,73 +526,100 @@ function CreateFeeModal({
 }) {
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
-  const [dueDate, setDueDate] = useState("");
   const [mandatory, setMandatory] = useState(true);
-  const [selectedClasses, setSelectedClasses] = useState<Record<string, boolean>>(() =>
-    classes.reduce((acc, c) => ({ ...acc, [c.id]: true }), {} as Record<string, boolean>)
-  );
   const [submitting, setSubmitting] = useState(false);
-
-  const targets = classes.filter((c) => selectedClasses[c.id]);
-
+  const [selected, setSelected] = useState<Record<string, boolean>>(() =>
+    classes.reduce(
+      (result, item) => ({ ...result, [item.id]: true }),
+      {} as Record<string, boolean>,
+    ),
+  );
+  const targets = classes.filter((item) => selected[item.id]);
   const submit = async () => {
-    if (!academicYearId) { toast.error("No academic year is set for this school"); return; }
-    if (!name.trim()) { toast.error("Enter a fee category name"); return; }
-    const amt = Number(amount.replace(/[^\d.]/g, ""));
-    if (!amt || amt <= 0) { toast.error("Enter a valid base amount"); return; }
-    if (targets.length === 0) { toast.error("Select at least one class"); return; }
-
+    if (!academicYearId) return toast.error("No academic year is set for this school");
+    const value = Number(amount.replace(/[^\d.]/g, ""));
+    if (!name.trim()) return toast.error("Enter a fee category name");
+    if (!value || value <= 0) return toast.error("Enter a valid amount");
+    if (!targets.length) return toast.error("Select at least one class");
     setSubmitting(true);
     try {
       await Promise.all(
-        targets.map((c) =>
+        targets.map((item) =>
           createFeeStructure({
             academic_year_id: academicYearId,
             term_id: termId ?? undefined,
-            class_id: c.id,
+            class_id: item.id,
             name: name.trim(),
-            amount: amt,
+            amount: value,
             is_mandatory: mandatory,
-            due_date: dueDate || undefined,
-          })
-        )
+            is_active: true,
+          }),
+        ),
       );
-      toast.success(`Fee category "${name.trim()}" created for ${targets.length} class(es)`);
+      toast.success(`${name.trim()} created`);
       await onCreated();
-    } catch (err: any) {
-      toast.error(err?.message ?? "Failed to create fee category");
+    } catch (err: unknown) {
+      toast.error(errorMessage(err, "Failed to create fee category"));
     } finally {
       setSubmitting(false);
     }
   };
-
   return (
-    <Modal title="Create Fee Category" subtitle="One structure row is created per selected class" onClose={onClose} wide
-      footer={<><GhostButton onClick={onClose}>Cancel</GhostButton><PrimaryButton onClick={submit}>{submitting ? "Creating..." : `Create for ${targets.length} class(es)`}</PrimaryButton></>}>
-      <TextField label="Fee Category Name" value={name} onChange={setName} placeholder="e.g. Examination Fee" required />
-      <div className="grid grid-cols-2 gap-3">
-        <TextField label="Amount per Class (RWF)" value={amount} onChange={setAmount} placeholder="50000" required />
-        <TextField label="Due Date" value={dueDate} onChange={setDueDate} type="date" />
-      </div>
-
+    <Modal
+      title="New fee category"
+      subtitle="Create the category once, then assign it to selected classes"
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <GhostButton onClick={onClose}>Cancel</GhostButton>
+          <PrimaryButton onClick={submit}>
+            {submitting ? "Creating..." : `Create for ${targets.length} classes`}
+          </PrimaryButton>
+        </>
+      }
+    >
+      <TextField
+        label="Category name"
+        value={name}
+        onChange={setName}
+        placeholder="e.g. Examination Fee"
+        required
+      />
+      <TextField
+        label={`Amount per class (${currency})`}
+        value={amount}
+        onChange={setAmount}
+        placeholder="50000"
+        required
+      />
       <div>
-        <div className="text-xs font-bold text-muted-foreground mb-2">Apply To Classes</div>
-        {classes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No classes defined yet.</p>
-        ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {classes.map((c) => (
-              <label key={c.id} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm cursor-pointer hover:bg-muted/30">
-                <input type="checkbox" checked={!!selectedClasses[c.id]} onChange={(e) => setSelectedClasses((p) => ({ ...p, [c.id]: e.target.checked }))} />
-                {c.name}
-              </label>
-            ))}
-          </div>
-        )}
+        <div className="mb-2 text-xs font-bold text-muted-foreground">Assign to classes</div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+          {classes.map((item) => (
+            <label
+              key={item.id}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted/30"
+            >
+              <input
+                type="checkbox"
+                checked={!!selected[item.id]}
+                onChange={(event) =>
+                  setSelected((previous) => ({ ...previous, [item.id]: event.target.checked }))
+                }
+              />
+              {item.name}
+            </label>
+          ))}
+        </div>
       </div>
-
-      <label className="inline-flex items-center gap-2 text-sm pt-1">
-        <input type="checkbox" checked={mandatory} onChange={(e) => setMandatory(e.target.checked)} /> Mandatory
+      <label className="inline-flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={mandatory}
+          onChange={(event) => setMandatory(event.target.checked)}
+        />{" "}
+        Mandatory fee
       </label>
     </Modal>
   );

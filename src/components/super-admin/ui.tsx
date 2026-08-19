@@ -310,7 +310,9 @@ export function SaPhoneInput({
 
   return (
     <div className={className}>
-      <label className="block text-xs font-semibold mb-1.5 text-foreground">{label}</label>
+      <label className="block text-xs font-semibold mb-1.5 text-foreground">
+        {label} {required && <span className="text-destructive">*</span>}
+      </label>
       <div className="flex gap-2">
         <div className="relative shrink-0">
           <button
@@ -371,6 +373,7 @@ export function SaPhoneInput({
             handleNumberChange(e.clipboardData.getData("text"));
           }}
           placeholder={placeholder}
+          required={required}
           className={cn(
             "h-10 flex-1 min-w-0 rounded-lg border bg-background px-3 text-sm",
             phoneError ? "border-destructive" : required ? "border-orange-400 bg-orange-50/30" : "border-border",

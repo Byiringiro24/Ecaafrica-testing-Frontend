@@ -11,6 +11,7 @@ export type CurrentUser = {
   status: string;
   avatar_url: string | null;
   school_country?: string | null;
+  school_currency?: string | null;
   school_name?: string | null;
   school_province?: string | null;
   school_district?: string | null;
@@ -33,7 +34,7 @@ export function getInitials(name: string): string {
 }
 
 export function formatRole(role: string): string {
-  return role.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  return role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function fromCache(): CurrentUser | null {
@@ -56,7 +57,7 @@ export function useCurrentUser(): CurrentUser | null {
 
   useEffect(() => {
     apiRequest<CurrentUser>("/auth/me", { auth: "school" })
-      .then(data => setUser(data))
+      .then((data) => setUser(data))
       .catch(() => {
         const fallback = fromCache();
         if (fallback) setUser(fallback);

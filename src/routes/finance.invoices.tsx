@@ -1,21 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search, X, Printer, Download, Plus, Send, Wallet } from "lucide-react";
+import { Search, X, Printer, Plus, Send, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { FinanceLayout, StatusPill } from "@/components/layout/FinanceLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Modal, TextField, FileInput, DocButton, PrimaryButton, GhostButton, openDocument,
-  type UploadedDoc,
-} from "@/components/finance/ui";
-import { API_BASE_URL, apiRequest } from "@/lib/api";
+import { Modal, TextField, SelectField, PrimaryButton, GhostButton } from "@/components/finance/ui";
+import { apiRequest } from "@/lib/api";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useAcademicSession } from "@/hooks/useAcademicSession";
 import { studentIdNumber } from "@/lib/studentIdentity";
 import {
   formatRWF, toNum,
-  listInvoices, createInvoice, issueInvoice, payInvoice, uploadInvoiceDocument,
+  listInvoices, createInvoice, issueInvoice, payInvoice,
   listFeeStructures,
   type Invoice, type InvoiceStatus, type InvoiceListMeta, type FeeStructure,
 } from "@/lib/financeApi";
@@ -40,12 +37,9 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
   refunded: "Refunded",
 };
 
-const TABLE_HEADERS = ["Invoice #", "Student", "Issue", "Due", "Total", "Paid", "Balance", "Status", "Doc", ""];
+const TABLE_HEADERS = ["Invoice #", "Student", "Issue Date", "Due", "Total Amount", "Paid Amount", "Balance", "Status", ""];
 
 const shortDate = (iso?: string | null) => (iso ? iso.slice(0, 10) : "--");
-
-const docUrl = (url: string) =>
-  url.startsWith("http") ? url : `${API_BASE_URL.replace(/\/api\/v1$/, "")}${url}`;
 
 type StudentRecord = {
   id: string;
@@ -63,7 +57,7 @@ function InvoicesPage() {
   const [meta, setMeta] = useState<InvoiceListMeta | null>(null);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("All");
-  const [viewing, setViewing] = useState<{ invoice: Invoice; autoPrint: boolean } | null>(null);
+  const [viewing, setViewing] = useState<Invoice | null>(null);
   const [creating, setCreating] = useState(false);
   const [paying, setPaying] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
@@ -151,11 +145,9 @@ function InvoicesPage() {
                     <td className="px-4 py-3 text-success">{formatRWF(inv.amount_paid)}</td>
                     <td className="px-4 py-3 font-mono text-xs text-destructive">{formatRWF(inv.balance)}</td>
                     <td className="px-4 py-3"><StatusPill label={STATUS_LABEL[inv.status]} tone={STATUS_TONE[inv.status]} /></td>
-                    <td className="px-4 py-3"><DocButton doc={inv.document_url ? { name: `${inv.invoice_number}.pdf`, url: docUrl(inv.document_url) } : null} /></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <button onClick={() => setViewing({ invoice: inv, autoPrint: false })} className="text-xs font-semibold text-primary hover:underline">View</button>
-                        <button onClick={() => setViewing({ invoice: inv, autoPrint: true })} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"><Printer className="h-3.5 w-3.5" /> Print</button>
+                        <button onClick={() => setViewing(inv)} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"><Printer className="h-3.5 w-3.5" /> Print</button>
                         {inv.status === "draft" && (
                           <button onClick={() => runAction(`${inv.invoice_number} issued`, () => issueInvoice(inv.id))} className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"><Send className="h-3.5 w-3.5" /> Issue</button>
                         )}
@@ -172,7 +164,7 @@ function InvoicesPage() {
         </div>
       </div>
 
-      {viewing && <InvoiceModal invoice={viewing.invoice} autoPrint={viewing.autoPrint} onClose={() => setViewing(null)} />}
+      {viewing && <InvoiceModal invoice={viewing} onClose={() => setViewing(null)} />}
       {creating && (
         <GenerateInvoiceModal
           onClose={() => setCreating(false)}
@@ -207,7 +199,7 @@ function GenerateInvoiceModal({
     d.setDate(d.getDate() + 30);
     return d.toISOString().slice(0, 10);
   });
-  const [attachment, setAttachment] = useState<UploadedDoc | null>(null);
+  const [discount, setDiscount] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [studentSearch, setStudentSearch] = useState("");
   const [showStudentDropdown, setShowStudentDropdown] = useState(false);
@@ -239,11 +231,14 @@ function GenerateInvoiceModal({
   const items = structures
     .filter((f) => selected[f.id])
     .map((f) => ({ label: f.name, amount: toNum(f.amount), fee_structure_id: f.id }));
-  const total = items.reduce((s, i) => s + i.amount, 0);
+  const subtotal = items.reduce((s, i) => s + i.amount, 0);
+  const discountAmount = Number(discount.replace(/[^\d.]/g, "")) || 0;
+  const total = Math.max(0, subtotal - discountAmount);
 
   const submit = async () => {
     if (!studentId) { toast.error("Select a student"); return; }
     if (items.length === 0) { toast.error("Select at least one fee item"); return; }
+    if (discountAmount > subtotal) { toast.error("Discount cannot exceed the invoice subtotal"); return; }
 
     setSubmitting(true);
     try {
@@ -251,13 +246,10 @@ function GenerateInvoiceModal({
         student_id: studentId,
         items,
         due_date: dueDate,
+        discount: discountAmount,
         academic_year_id: session.academicYear?.id,
         term_id: session.term?.id,
       });
-
-      if (attachment?.file) {
-        await uploadInvoiceDocument(created.id, attachment.file);
-      }
 
       toast.success(`Invoice ${created.invoice_number} generated for ${created.student_name}`);
       await onCreated();
@@ -333,15 +325,14 @@ function GenerateInvoiceModal({
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <TextField label="Due Date" value={dueDate} onChange={setDueDate} type="date" required />
-      </div>
+      <TextField label="Due Date" value={dueDate} onChange={setDueDate} type="date" required />
+
+      <TextField label="Discount (RWF)" value={discount} onChange={setDiscount} placeholder="0" hint="Optional discount deducted from the invoice subtotal" />
 
       <div className="flex justify-between text-sm border-t border-border pt-3">
-        <span className="text-muted-foreground">Total</span>
+        <span className="text-muted-foreground">Total after discount</span>
         <span className="font-display text-lg font-bold text-primary">{formatRWF(total)}</span>
       </div>
-      <FileInput label="Attach Document (optional)" value={attachment} onChange={setAttachment} />
     </Modal>
   );
 }
@@ -356,6 +347,8 @@ function RecordPaymentModal({
   onDone: () => Promise<void>;
 }) {
   const [amount, setAmount] = useState(invoice.balance);
+  const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paymentMethod, setPaymentMethod] = useState<NonNullable<Invoice["payment_method"]>>("cash");
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async () => {
@@ -365,7 +358,7 @@ function RecordPaymentModal({
 
     setSubmitting(true);
     try {
-      await payInvoice(invoice.id, value);
+      await payInvoice(invoice.id, { amount: value, payment_date: paymentDate, payment_method: paymentMethod });
       toast.success(`${formatRWF(value)} applied to ${invoice.invoice_number}`);
       await onDone();
     } catch (err: any) {
@@ -379,6 +372,17 @@ function RecordPaymentModal({
     <Modal title={`Apply Payment — ${invoice.invoice_number}`} subtitle={`Balance ${formatRWF(invoice.balance)} for ${invoice.student_name}`} onClose={onClose}
       footer={<><GhostButton onClick={onClose}>Cancel</GhostButton><PrimaryButton onClick={submit}>{submitting ? "Applying..." : "Apply Payment"}</PrimaryButton></>}>
       <TextField label="Amount (RWF)" value={amount} onChange={setAmount} required />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <TextField label="Payment Date" value={paymentDate} onChange={setPaymentDate} type="date" required />
+        <SelectField
+          label="Payment Method"
+          value={paymentMethod}
+          onChange={(value) => setPaymentMethod(value as NonNullable<Invoice["payment_method"]>)}
+          options={["cash", "mtn_momo", "airtel_money", "bank_transfer", "cheque", "other"]}
+          optionLabels={{ cash: "Cash", mtn_momo: "MTN Mobile Money", airtel_money: "Airtel Money", bank_transfer: "Bank Transfer", cheque: "Cheque", other: "Other" }}
+          required
+        />
+      </div>
       <p className="text-[11px] text-muted-foreground">
         This updates the invoice only. Record the cash movement on the Payments page so it counts toward collections.
       </p>
@@ -386,19 +390,9 @@ function RecordPaymentModal({
   );
 }
 
-function InvoiceModal({ invoice, autoPrint, onClose }: { invoice: Invoice; autoPrint?: boolean; onClose: () => void }) {
+function InvoiceModal({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
   const currentUser = useCurrentUser();
   const session = useAcademicSession();
-
-  useEffect(() => {
-    if (!autoPrint) return;
-    const timer = setTimeout(() => window.print(), 150);
-    return () => clearTimeout(timer);
-  }, [autoPrint]);
-
-  const attachment = invoice.document_url
-    ? { name: `${invoice.invoice_number}.pdf`, url: docUrl(invoice.document_url) }
-    : null;
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
@@ -414,6 +408,7 @@ function InvoiceModal({ invoice, autoPrint, onClose }: { invoice: Invoice; autoP
               <p className="text-xs text-muted-foreground">{session.label ?? ""}</p>
               <p className="text-xs font-mono font-semibold mt-1">Invoice {invoice.invoice_number}</p>
               <p className="text-xs text-muted-foreground">Issued {shortDate(invoice.issue_date)} · Due {shortDate(invoice.due_date)}</p>
+              {invoice.payment_date && <p className="text-xs text-muted-foreground">Payment date {shortDate(invoice.payment_date)} · {invoice.payment_method?.replaceAll("_", " ")}</p>}
             </div>
             <div className="text-right">
               <div className="text-xs text-muted-foreground">Billed to</div>
@@ -445,7 +440,6 @@ function InvoiceModal({ invoice, autoPrint, onClose }: { invoice: Invoice; autoP
           <div className="flex items-center justify-between">
             <StatusPill label={STATUS_LABEL[invoice.status]} tone={STATUS_TONE[invoice.status]} />
             <div className="flex gap-2 no-print">
-              {attachment && <button onClick={() => openDocument(attachment)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-semibold hover:bg-muted"><Download className="h-4 w-4" /> Attachment</button>}
               <button onClick={() => window.print()} className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm font-semibold hover:opacity-90"><Printer className="h-4 w-4" /> Print</button>
             </div>
           </div>

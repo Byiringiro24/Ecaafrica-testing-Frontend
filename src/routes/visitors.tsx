@@ -1029,6 +1029,7 @@ function RegisterModal({
                 onChange={(phone) => setData({ ...data, phone })}
                 defaultCountryName={defaultCountryName ?? undefined}
                 error={!!errors.phone}
+                required
                 className="md:col-span-2"
               />
             </div>

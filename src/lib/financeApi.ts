@@ -7,6 +7,9 @@ export const toNum = (value: string | number | null | undefined) => Number(value
 export const formatRWF = (amount: string | number | null | undefined) =>
   `RWF ${toNum(amount).toLocaleString("en-RW", { maximumFractionDigits: 0 })}`;
 
+export const formatCurrency = (amount: string | number | null | undefined, currency = "RWF") =>
+  `${currency} ${toNum(amount).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+
 type Envelope<T> = { success: boolean; data: T; meta?: Record<string, unknown> };
 
 const get = <T>(path: string) => apiRequest<T>(path, { auth: "school" });
@@ -94,12 +97,7 @@ export const getPaymentMethodTotals = (params: Period = {}) =>
 // ---------------------------------------------------------------------------
 
 export type InvoiceStatus =
-  | "draft"
-  | "pending"
-  | "partially_paid"
-  | "paid"
-  | "cancelled"
-  | "refunded";
+  "draft" | "pending" | "partially_paid" | "paid" | "cancelled" | "refunded";
 
 export type InvoiceItem = {
   id: string;
@@ -123,6 +121,9 @@ export type Invoice = {
   late_charges: string;
   total: string;
   amount_paid: string;
+  payment_date: string | null;
+  payment_method:
+    "cash" | "mtn_momo" | "airtel_money" | "bank_transfer" | "cheque" | "other" | null;
   balance: string;
   currency: string;
   status: InvoiceStatus;
@@ -147,7 +148,7 @@ export const listInvoices = (
     academic_year_id?: string;
     from_date?: string;
     to_date?: string;
-  } = {}
+  } = {},
 ) => getWithMeta<Invoice[], InvoiceListMeta>(`/finance/invoices${query(params)}`);
 
 export const getInvoice = (id: string) => get<Invoice>(`/finance/invoices/${id}`);
@@ -167,11 +168,16 @@ export const createInvoice = (body: {
   notes?: string;
 }) => send<Invoice>("/finance/invoices", "POST", body);
 
-export const issueInvoice = (id: string) =>
-  send<Invoice>(`/finance/invoices/${id}/issue`, "PATCH");
+export const issueInvoice = (id: string) => send<Invoice>(`/finance/invoices/${id}/issue`, "PATCH");
 
-export const payInvoice = (id: string, amount: number | string) =>
-  send<Invoice>(`/finance/invoices/${id}/payments`, "POST", { amount });
+export const payInvoice = (
+  id: string,
+  input: {
+    amount: number | string;
+    payment_date?: string;
+    payment_method?: NonNullable<Invoice["payment_method"]>;
+  },
+) => send<Invoice>(`/finance/invoices/${id}/payments`, "POST", input);
 
 export const cancelInvoice = (id: string, reason?: string) =>
   send<Invoice>(`/finance/invoices/${id}/cancel`, "PATCH", { reason });
@@ -182,8 +188,7 @@ export const refundInvoice = (id: string, reason?: string) =>
 export const uploadInvoiceDocument = (id: string, file: File) =>
   upload<Invoice>(`/finance/invoices/${id}/document`, "document", file);
 
-export const deleteInvoice = (id: string) =>
-  send<Invoice>(`/finance/invoices/${id}`, "DELETE");
+export const deleteInvoice = (id: string) => send<Invoice>(`/finance/invoices/${id}`, "DELETE");
 
 // ---------------------------------------------------------------------------
 // Expenses
@@ -222,10 +227,15 @@ export const listExpenses = (
     vendor?: string;
     from_date?: string;
     to_date?: string;
-  } = {}
+  } = {},
 ) => getWithMeta<Expense[], ExpenseListMeta>(`/finance/expenses${query(params)}`);
 
 export const listExpenseCategories = () => get<string[]>("/finance/expenses/categories");
+
+export const createExpenseCategory = (name: string) =>
+  send<{ id: string; school_id: string; name: string }>("/finance/expenses/categories", "POST", {
+    name,
+  });
 
 export const createExpense = (body: {
   expense_date: string;
@@ -248,14 +258,13 @@ export const rejectExpense = (id: string, reason: string) =>
 
 export const markExpensePaid = (
   id: string,
-  body: { payment_method?: string; paid_at?: string } = {}
+  body: { payment_method?: string; paid_at?: string } = {},
 ) => send<Expense>(`/finance/expenses/${id}/mark-paid`, "PATCH", body);
 
 export const uploadExpenseDocument = (id: string, file: File) =>
   upload<Expense>(`/finance/expenses/${id}/document`, "document", file);
 
-export const deleteExpense = (id: string) =>
-  send<Expense>(`/finance/expenses/${id}`, "DELETE");
+export const deleteExpense = (id: string) => send<Expense>(`/finance/expenses/${id}`, "DELETE");
 
 // ---------------------------------------------------------------------------
 // Suppliers
@@ -276,10 +285,10 @@ export type Supplier = {
 };
 
 export const listSuppliers = (
-  params: ListParams & { category?: string; is_active?: boolean } = {}
+  params: ListParams & { category?: string; is_active?: boolean } = {},
 ) =>
   getWithMeta<Supplier[], { page: number; limit: number; total: number; total_payable: string }>(
-    `/finance/suppliers${query(params)}`
+    `/finance/suppliers${query(params)}`,
   );
 
 export const createSupplier = (body: {
@@ -295,8 +304,7 @@ export const createSupplier = (body: {
 export const updateSupplier = (id: string, body: Record<string, unknown>) =>
   send<Supplier>(`/finance/suppliers/${id}`, "PATCH", body);
 
-export const deleteSupplier = (id: string) =>
-  send<Supplier>(`/finance/suppliers/${id}`, "DELETE");
+export const deleteSupplier = (id: string) => send<Supplier>(`/finance/suppliers/${id}`, "DELETE");
 
 // ---------------------------------------------------------------------------
 // Inventory
@@ -327,7 +335,7 @@ export const listInventory = (
     category?: string;
     supplier_id?: string;
     low_stock?: boolean;
-  } = {}
+  } = {},
 ) =>
   getWithMeta<
     InventoryItem[],
@@ -439,7 +447,7 @@ export const listPayslips = (
     staff_id?: string;
     status?: string;
     department?: string;
-  } = {}
+  } = {},
 ) => getWithMeta<Payslip[], PayslipListMeta>(`/finance/payroll/payslips${query(params)}`);
 
 export const getPayslip = (id: string) => get<Payslip>(`/finance/payroll/payslips/${id}`);
@@ -455,7 +463,7 @@ export const addPayslip = (
     loan_recovery?: number | string;
     other_deductions?: number | string;
     notes?: string;
-  }
+  },
 ) => send<Payslip>(`/finance/payroll/runs/${runId}/payslips`, "POST", body);
 
 export const updatePayslip = (id: string, body: Record<string, unknown>) =>
@@ -463,7 +471,7 @@ export const updatePayslip = (id: string, body: Record<string, unknown>) =>
 
 export const markPayslipPaid = (
   id: string,
-  body: { payment_method?: string; paid_at?: string } = {}
+  body: { payment_method?: string; paid_at?: string } = {},
 ) => send<Payslip>(`/finance/payroll/payslips/${id}/mark-paid`, "PATCH", body);
 
 export const deletePayslip = (id: string) =>
@@ -570,7 +578,7 @@ export const listFinanceAuditLogs = (
     action?: string;
     from_date?: string;
     to_date?: string;
-  } = {}
+  } = {},
 ) => getWithMeta<FinanceAuditEntry[], FinanceAuditMeta>(`/finance/audit-logs${query(params)}`);
 
 export const listFinanceAuditModules = () => get<string[]>("/finance/audit-logs/modules");
@@ -589,11 +597,12 @@ export type FeeStructure = {
   amount: string;
   currency: string;
   is_mandatory: boolean;
+  is_active: boolean;
   due_date: string | null;
 };
 
 export const listFeeStructures = (
-  params: ListParams & { academic_year_id?: string; term_id?: string; class_id?: string } = {}
+  params: ListParams & { academic_year_id?: string; term_id?: string; class_id?: string } = {},
 ) => getWithMeta<FeeStructure[]>(`/fees/structures${query(params)}`);
 
 export const createFeeStructure = (body: {
@@ -604,6 +613,7 @@ export const createFeeStructure = (body: {
   class_id?: string;
   currency?: string;
   is_mandatory?: boolean;
+  is_active?: boolean;
   due_date?: string;
 }) => send<FeeStructure>("/fees/structures", "POST", body);
 
@@ -628,7 +638,7 @@ export type FeeAssignment = {
 };
 
 export const listFeeAssignments = (
-  params: ListParams & { student_id?: string; fee_structure_id?: string; status?: string } = {}
+  params: ListParams & { student_id?: string; fee_structure_id?: string; status?: string } = {},
 ) => getWithMeta<FeeAssignment[]>(`/fees/assignments${query(params)}`);
 
 export type FeeTransaction = {
@@ -652,7 +662,7 @@ export const listFeeTransactions = (
     fee_assignment_id?: string;
     from_date?: string;
     to_date?: string;
-  } = {}
+  } = {},
 ) => getWithMeta<FeeTransaction[]>(`/fees/transactions${query(params)}`);
 
 export const createFeeTransaction = (body: {

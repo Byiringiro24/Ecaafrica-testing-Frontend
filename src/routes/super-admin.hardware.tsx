@@ -4,6 +4,7 @@ import {
   School, TabletSmartphone, Cpu, ArrowRight,
   Plus, Trash2, RefreshCw, CheckCircle2, ArrowRightLeft,
   Pencil, X, Save, Link2, Zap, AlertTriangle, Info,
+  Wifi, Key, Copy, ClipboardPaste, WifiOff, ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
@@ -23,7 +24,7 @@ type PlatformDevice = Device & {
   tablet?: { id: string; name: string } | null;
 };
 
-const TABS = ["Schools", "Tablets", "Devices", "Assign"] as const;
+const TABS = ["Schools", "Tablets", "Devices", "Assign", "VPN Setup"] as const;
 type Tab = (typeof TABS)[number];
 
 const statusColor = (s?: string | null) =>
@@ -84,6 +85,7 @@ function HardwarePage() {
       {tab === "Tablets" && <TabletsTab tablets={tablets} schools={schools} onRefresh={loadAll} />}
       {tab === "Devices" && <DevicesTab devices={devices} tablets={tablets} schools={schools} onRefresh={loadAll} />}
       {tab === "Assign"  && <AssignTab  tablets={tablets} devices={devices} schools={schools} onRefresh={loadAll} />}
+      {tab === "VPN Setup" && <VpnSetupTab />}
     </SuperAdminLayout>
   );
 }
@@ -996,6 +998,487 @@ function AssignTab({ tablets, devices, schools, onRefresh }: {
           </table>
         </div>
       </section>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VPN Setup Tab
+// Two-panel layout:
+//   LEFT  = Server side  (runs on EcareAfrica server via backend API)
+//   RIGHT = Tablet side  (calls the tablet bridge API at http://TABLET_IP:5000)
+//
+// Flow:
+//   1. Server panel: click "Get Server Info" → shows server public key + next VPN IP
+//   2. Tablet panel: enter tablet bridge URL, click "Generate Keys on Tablet" → shows tablet public key
+//   3. Copy tablet public key → paste into server panel → click "Add Peer to VPN" → server adds peer
+//   4. Copy server public key + VPN IP → paste into tablet panel → click "Install & Activate VPN"
+//   5. Both sides show green "Active" status
+// ─────────────────────────────────────────────────────────────────────────────
+
+type VpnServerStatus = {
+  serverPublicKey: string;
+  interfaceUp: boolean;
+  serverVpnIp: string;
+  nextAvailableIp: string;
+  peerCount: number;
+  serverEndpoint: string;
+  peers: Array<{ publicKey: string; allowedIps: string; endpoint: string; latestHandshake: string }>;
+};
+
+type TabletVpnStatus = {
+  installed: boolean;
+  tunnelActive: boolean;
+  tunnelName: string;
+  vpnIp: string | null;
+  publicKey: string | null;
+  lastHandshake: string | null;
+};
+
+function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { toast.error("Copy failed — select and copy manually"); }
+  };
+  return (
+    <button onClick={handleCopy} type="button"
+      className={cn("inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold transition-colors",
+        copied ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-border bg-background text-muted-foreground hover:bg-muted")}>
+      {copied ? <CheckCircle2 className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      {copied ? "Copied!" : label}
+    </button>
+  );
+}
+
+function KeyBox({ label, value, placeholder }: { label: string; value: string; placeholder?: string }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold">{label}</span>
+        {value && <CopyButton value={value} />}
+      </div>
+      <div className={cn("rounded-lg border bg-muted/50 px-3 py-2 font-mono text-xs break-all",
+        value ? "text-foreground border-border" : "text-muted-foreground border-dashed border-border")}>
+        {value || placeholder || "—"}
+      </div>
+    </div>
+  );
+}
+
+function VpnSetupTab() {
+  // ── Server side ──
+  const [serverStatus, setServerStatus] = useState<VpnServerStatus | null>(null);
+  const [serverLoading, setServerLoading] = useState(false);
+  const [tabletPublicKey, setTabletPublicKey] = useState("");
+  const [assignedVpnIp, setAssignedVpnIp] = useState("");
+  const [peerComment, setPeerComment] = useState("");
+  const [addingPeer, setAddingPeer] = useState(false);
+  const [peerAdded, setPeerAdded] = useState(false);
+
+  // ── Tablet side ──
+  const [tabletBridgeUrl, setTabletBridgeUrl] = useState("http://");
+  const [tabletStatus, setTabletStatus] = useState<TabletVpnStatus | null>(null);
+  const [tabletLoading, setTabletLoading] = useState(false);
+  const [generatingKeys, setGeneratingKeys] = useState(false);
+  const [tabletKeys, setTabletKeys] = useState<{ privateKey: string; publicKey: string } | null>(null);
+  const [serverPublicKeyPaste, setServerPublicKeyPaste] = useState("");
+  const [serverEndpointPaste, setServerEndpointPaste] = useState("");
+  const [vpnIpPaste, setVpnIpPaste] = useState("");
+  const [installing, setInstalling] = useState(false);
+
+  // Load server status on mount
+  useEffect(() => { void loadServerStatus(); }, []);
+
+  const loadServerStatus = async () => {
+    setServerLoading(true);
+    try {
+      const res = await apiRequest<{ data: VpnServerStatus }>("/platform/hardware/vpn/status", { auth: "platform" });
+      const data = (res as any)?.data ?? res;
+      setServerStatus(data);
+      setAssignedVpnIp(data.nextAvailableIp || "");
+      // Pre-fill tablet install fields with server info
+      if (data.serverPublicKey) setServerPublicKeyPaste(data.serverPublicKey);
+      if (data.serverEndpoint) setServerEndpointPaste(data.serverEndpoint);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load server VPN status. Check the server has WireGuard installed.");
+    } finally { setServerLoading(false); }
+  };
+
+  const loadTabletStatus = async () => {
+    if (!tabletBridgeUrl || tabletBridgeUrl === "http://") { toast.error("Enter tablet bridge URL first"); return; }
+    setTabletLoading(true);
+    try {
+      const res = await fetch(`${tabletBridgeUrl}/api/wireguard/status`);
+      const data = await res.json();
+      setTabletStatus(data);
+      if (data.publicKey) setTabletKeys(prev => ({ privateKey: prev?.privateKey || "", publicKey: data.publicKey }));
+    } catch (e: any) {
+      toast.error("Cannot reach tablet bridge. Make sure the bridge app is running on the tablet.");
+    } finally { setTabletLoading(false); }
+  };
+
+  const handleGenerateTabletKeys = async () => {
+    if (!tabletBridgeUrl || tabletBridgeUrl === "http://") { toast.error("Enter tablet bridge URL first"); return; }
+    setGeneratingKeys(true);
+    try {
+      const res = await fetch(`${tabletBridgeUrl}/api/wireguard/generate-keys`, { method: "POST" });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Key generation failed");
+      setTabletKeys(data);
+      toast.success("Keys generated on tablet. Copy the public key and paste it into the server panel.");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to generate keys on tablet");
+    } finally { setGeneratingKeys(false); }
+  };
+
+  const handleAddPeer = async () => {
+    if (!tabletPublicKey.trim()) { toast.error("Paste the tablet public key first"); return; }
+    if (!assignedVpnIp.trim()) { toast.error("Enter the VPN IP to assign"); return; }
+    setAddingPeer(true);
+    try {
+      await apiRequest("/platform/hardware/vpn/peers", {
+        method: "POST",
+        auth: "platform",
+        body: JSON.stringify({ publicKey: tabletPublicKey.trim(), vpnIp: assignedVpnIp.trim(), comment: peerComment || `Tablet ${assignedVpnIp}` }),
+      });
+      setPeerAdded(true);
+      setVpnIpPaste(assignedVpnIp.trim());
+      toast.success(`Peer added — tablet VPN IP is ${assignedVpnIp}`);
+      void loadServerStatus();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to add peer");
+    } finally { setAddingPeer(false); }
+  };
+
+  const handleInstallVpn = async () => {
+    if (!tabletBridgeUrl || tabletBridgeUrl === "http://") { toast.error("Enter tablet bridge URL"); return; }
+    if (!serverPublicKeyPaste.trim()) { toast.error("Paste the server public key"); return; }
+    if (!serverEndpointPaste.trim()) { toast.error("Enter the server endpoint (IP:port)"); return; }
+    if (!vpnIpPaste.trim()) { toast.error("Enter the assigned VPN IP"); return; }
+    setInstalling(true);
+    try {
+      const res = await fetch(`${tabletBridgeUrl}/api/wireguard/install`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serverPublicKey: serverPublicKeyPaste.trim(),
+          serverEndpoint: serverEndpointPaste.trim(),
+          vpnIp: vpnIpPaste.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Installation failed");
+      setTabletStatus(prev => prev ? { ...prev, tunnelActive: data.tunnelActive, vpnIp: vpnIpPaste } : null);
+      toast.success(data.message || "WireGuard tunnel installed and activated on tablet ✓");
+      void loadTabletStatus();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to install VPN on tablet");
+    } finally { setInstalling(false); }
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* ── How it works banner ── */}
+      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+        <p className="font-semibold mb-2">How to connect a new tablet to the VPN — no terminal needed</p>
+        <ol className="list-decimal ml-4 space-y-1 text-xs text-blue-700">
+          <li><strong>Server side:</strong> Click "Refresh Server Info" to get the server public key and next available VPN IP</li>
+          <li><strong>Tablet side:</strong> Enter the tablet bridge URL, click "Generate Keys on Tablet" — copy the tablet public key that appears</li>
+          <li><strong>Server side:</strong> Paste the tablet public key and click "Add Peer to VPN" — the server registers the tablet</li>
+          <li><strong>Tablet side:</strong> Paste the server public key + VPN IP, click "Install & Activate VPN on Tablet" — tunnel goes live</li>
+          <li>Both panels show green Active status. Then register the tablet in the Tablets tab using the VPN IP.</li>
+        </ol>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+
+        {/* ════════ SERVER PANEL ════════ */}
+        <section className="rounded-xl border border-border bg-card">
+          <div className="border-b border-border px-5 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-blue-100 shrink-0">
+                <ShieldCheck className="h-5 w-5 text-blue-700" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-sm">Server Side</h2>
+                <p className="text-xs text-muted-foreground">EcareAfrica server · {serverStatus?.serverEndpoint || "169.58.124.150:51820"}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                serverStatus?.interfaceUp ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
+                {serverStatus?.interfaceUp ? <><Wifi className="h-3 w-3" /> VPN Active</> : <><WifiOff className="h-3 w-3" /> VPN Down</>}
+              </span>
+              <button onClick={() => void loadServerStatus()} disabled={serverLoading}
+                className="p-1.5 rounded-md border border-border hover:bg-muted text-muted-foreground disabled:opacity-50">
+                <RefreshCw className={cn("h-3.5 w-3.5", serverLoading && "animate-spin")} />
+              </button>
+            </div>
+          </div>
+
+          <div className="p-5 space-y-4">
+            {/* Server public key — the tablet needs this */}
+            <KeyBox
+              label="Server Public Key (give this to the tablet)"
+              value={serverStatus?.serverPublicKey || ""}
+              placeholder="Loading…"
+            />
+
+            <div className="grid grid-cols-2 gap-3">
+              <KeyBox label="Server Endpoint" value={serverStatus?.serverEndpoint || ""} />
+              <KeyBox label="Next Available VPN IP" value={serverStatus?.nextAvailableIp || ""} />
+            </div>
+
+            <div className="border-t border-border pt-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Step 3 — Add tablet as VPN peer</p>
+              <p className="text-xs text-muted-foreground">After generating keys on the tablet, copy the tablet's public key and paste it here.</p>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold">Tablet Public Key <span className="text-muted-foreground font-normal">(paste from tablet panel)</span></span>
+                <div className="flex gap-2">
+                  <input
+                    value={tabletPublicKey}
+                    onChange={e => setTabletPublicKey(e.target.value)}
+                    placeholder="Paste tablet public key here…"
+                    className="flex-1 rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+                  />
+                  {tabletPublicKey && (
+                    <button onClick={() => setTabletPublicKey("")} className="p-2 rounded-md border border-border hover:bg-muted text-muted-foreground">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold">Assign VPN IP</span>
+                  <input
+                    value={assignedVpnIp}
+                    onChange={e => setAssignedVpnIp(e.target.value)}
+                    placeholder="10.0.0.2"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold">Comment (optional)</span>
+                  <input
+                    value={peerComment}
+                    onChange={e => setPeerComment(e.target.value)}
+                    placeholder="Green Hills Academy"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs"
+                  />
+                </label>
+              </div>
+
+              <button
+                onClick={() => void handleAddPeer()}
+                disabled={addingPeer || !tabletPublicKey.trim() || !assignedVpnIp.trim()}
+                className={cn("w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50",
+                  peerAdded ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-primary text-primary-foreground hover:bg-primary/90")}>
+                {addingPeer
+                  ? <><RefreshCw className="h-4 w-4 animate-spin" /> Adding peer…</>
+                  : peerAdded
+                  ? <><CheckCircle2 className="h-4 w-4" /> Peer Added — VPN active on server</>
+                  : <><Key className="h-4 w-4" /> Add Peer to VPN</>}
+              </button>
+            </div>
+
+            {/* Peers list */}
+            {serverStatus && serverStatus.peers.length > 0 && (
+              <div className="border-t border-border pt-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{serverStatus.peers.length} Connected Peer{serverStatus.peers.length !== 1 ? "s" : ""}</p>
+                {serverStatus.peers.map((p, i) => (
+                  <div key={i} className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs space-y-0.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[11px] truncate">{p.allowedIps}</span>
+                      <span className={cn("rounded-full px-2 py-0.5 font-semibold",
+                        p.latestHandshake !== "never" ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
+                        {p.latestHandshake !== "never" ? "Connected" : "No handshake"}
+                      </span>
+                    </div>
+                    <div className="text-muted-foreground font-mono truncate">{p.publicKey.slice(0, 20)}…</div>
+                    {p.endpoint && <div className="text-muted-foreground">Endpoint: {p.endpoint}</div>}
+                    <div className="text-muted-foreground">Last handshake: {p.latestHandshake}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ════════ TABLET PANEL ════════ */}
+        <section className="rounded-xl border border-border bg-card">
+          <div className="border-b border-border px-5 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-amber-100 shrink-0">
+                <TabletSmartphone className="h-5 w-5 text-amber-700" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-sm">Tablet Side</h2>
+                <p className="text-xs text-muted-foreground">Windows tablet running FKBridge</p>
+              </div>
+            </div>
+            {tabletStatus && (
+              <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                tabletStatus.tunnelActive ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
+                {tabletStatus.tunnelActive
+                  ? <><Wifi className="h-3 w-3" /> VPN Active — {tabletStatus.vpnIp}</>
+                  : <><WifiOff className="h-3 w-3" /> VPN Inactive</>}
+              </span>
+            )}
+          </div>
+
+          <div className="p-5 space-y-4">
+            {/* Tablet bridge URL */}
+            <div>
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold">Tablet Bridge URL</span>
+                <p className="text-xs text-muted-foreground mb-1.5">The local URL of the FKBridge server running on the Windows tablet. Use the tablet's current IP before VPN is set up.</p>
+                <div className="flex gap-2">
+                  <input
+                    value={tabletBridgeUrl}
+                    onChange={e => setTabletBridgeUrl(e.target.value)}
+                    placeholder="http://192.168.1.50:5000"
+                    className="flex-1 rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+                  />
+                  <button onClick={() => void loadTabletStatus()} disabled={tabletLoading}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50">
+                    <RefreshCw className={cn("h-3.5 w-3.5", tabletLoading && "animate-spin")} />
+                    Check
+                  </button>
+                </div>
+              </label>
+              {tabletStatus && (
+                <div className="mt-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">WireGuard installed:</span>
+                    <span className={tabletStatus.installed ? "text-emerald-700 font-semibold" : "text-rose-600 font-semibold"}>
+                      {tabletStatus.installed ? "Yes" : "No — download from wireguard.com/install"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">Tunnel active:</span>
+                    <span className={tabletStatus.tunnelActive ? "text-emerald-700 font-semibold" : "text-muted-foreground"}>
+                      {tabletStatus.tunnelActive ? `Yes (${tabletStatus.vpnIp})` : "No"}
+                    </span>
+                  </div>
+                  {tabletStatus.lastHandshake && (
+                    <div className="text-muted-foreground">Last handshake: {tabletStatus.lastHandshake}</div>
+                  )}
+                  {!tabletStatus.installed && (
+                    <a href="https://www.wireguard.com/install/" target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-blue-600 hover:underline font-semibold">
+                      Download WireGuard for Windows →
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Step 2 — Generate keys */}
+            <div className="border-t border-border pt-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Step 2 — Generate keys on tablet</p>
+              <p className="text-xs text-muted-foreground">
+                This generates a private+public key pair on the Windows tablet. Copy the public key and paste it into the server panel above.
+              </p>
+              <button
+                onClick={() => void handleGenerateTabletKeys()}
+                disabled={generatingKeys || !tabletBridgeUrl || tabletBridgeUrl === "http://"}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50">
+                {generatingKeys
+                  ? <><RefreshCw className="h-4 w-4 animate-spin" /> Generating…</>
+                  : <><Key className="h-4 w-4" /> Generate Keys on Tablet</>}
+              </button>
+
+              {tabletKeys?.publicKey && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold">Tablet Public Key <span className="text-emerald-600">(copy this → paste into server panel)</span></span>
+                    <CopyButton value={tabletKeys.publicKey} label="Copy Public Key" />
+                  </div>
+                  <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 font-mono text-xs break-all text-emerald-900">
+                    {tabletKeys.publicKey}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Private key is saved securely on the tablet only — never shared.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Step 4 — Install tunnel */}
+            <div className="border-t border-border pt-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Step 4 — Install & activate VPN on tablet</p>
+              <p className="text-xs text-muted-foreground">
+                Paste the server public key and assigned VPN IP (both from the server panel), then click install.
+              </p>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold">Server Public Key <span className="text-muted-foreground font-normal">(paste from server panel)</span></span>
+                <div className="flex gap-2">
+                  <input
+                    value={serverPublicKeyPaste}
+                    onChange={e => setServerPublicKeyPaste(e.target.value)}
+                    placeholder="Paste server public key here…"
+                    className="flex-1 rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+                  />
+                  {serverPublicKeyPaste && (
+                    <button onClick={() => setServerPublicKeyPaste("")} className="p-2 rounded-md border border-border hover:bg-muted text-muted-foreground">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold">Server Endpoint</span>
+                  <input
+                    value={serverEndpointPaste}
+                    onChange={e => setServerEndpointPaste(e.target.value)}
+                    placeholder="169.58.124.150:51820"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-semibold">Assigned VPN IP</span>
+                  <input
+                    value={vpnIpPaste}
+                    onChange={e => setVpnIpPaste(e.target.value)}
+                    placeholder="10.0.0.2"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+                  />
+                </label>
+              </div>
+
+              <button
+                onClick={() => void handleInstallVpn()}
+                disabled={installing || !serverPublicKeyPaste.trim() || !vpnIpPaste.trim()}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
+                {installing
+                  ? <><RefreshCw className="h-4 w-4 animate-spin" /> Installing tunnel…</>
+                  : <><Wifi className="h-4 w-4" /> Install & Activate VPN on Tablet</>}
+              </button>
+
+              {tabletStatus?.tunnelActive && (
+                <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 shrink-0" />
+                  <div>
+                    <p className="font-semibold">VPN tunnel is active!</p>
+                    <p className="text-xs text-emerald-700 mt-0.5">
+                      Tablet VPN IP: <strong>{tabletStatus.vpnIp}</strong>.
+                      Now go to the <strong>Tablets tab</strong> and register this tablet with IP <strong>{tabletStatus.vpnIp}</strong>.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

@@ -20,11 +20,19 @@ import {
   type Student,
   type ExamResult,
 } from "@/lib/exams-api";
+import { listTerms, type TermOption } from "@/lib/report-cards-api";
+import { listGradingRoles, listExamTypes, type ExamTypeOption, type GradingRole } from "@/lib/exam-configuration-api";
 
 export const Route = createFileRoute("/teacher/exams")({
   beforeLoad: ({ location }) => teacherRouteGuard(location),
   component: TeacherExams,
 });
+
+function computeConfiguredGrade(score: number, maxMarks: number, roles: GradingRole[]): string {
+  const percentage = maxMarks > 0 ? (score / maxMarks) * 100 : 0;
+  const role = roles.find((item) => percentage >= Number(item.min_percentage) && percentage <= Number(item.max_percentage));
+  return role?.code ?? computeGrade(score, maxMarks);
+}
 
 function TeacherExams() {
   const [tab, setTab] = useState<"upcoming" | "enter" | "published" | "performance">("upcoming");
@@ -41,9 +49,11 @@ function TeacherExams() {
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
   const [selectedSectionId, setSelectedSectionId] = useState("");
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
+  const [gradingRoles, setGradingRoles] = useState<GradingRole[]>([]);
 
   useEffect(() => {
     loadAssignments();
+    loadGradingRoles();
   }, []);
 
   const mergedAssignmentSubjects = useMemo(
@@ -67,6 +77,14 @@ function TeacherExams() {
       console.error(error);
     } finally {
       setAssignmentsLoading(false);
+    }
+  };
+
+  const loadGradingRoles = async () => {
+    try {
+      setGradingRoles(await listGradingRoles());
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -218,6 +236,7 @@ function TeacherExams() {
           sectionId={selectedSectionId}
           subjectId={selectedSubjectId}
           assignedSubjects={assignedSubjects}
+          gradingRoles={gradingRoles}
         />
       )}
 
@@ -279,6 +298,10 @@ function TeacherExams() {
 function CreateExamModal({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
+  const [termsLoading, setTermsLoading] = useState(true);
+  const [examTypesLoading, setExamTypesLoading] = useState(true);
+  const [terms, setTerms] = useState<TermOption[]>([]);
+  const [examTypes, setExamTypes] = useState<ExamTypeOption[]>([]);
   const [sections, setSections] = useState<Array<{ id: string; name: string; full_name: string }>>([]);
   const [subjects, setSubjects] = useState<Array<{ id: string; name: string }>>([]);
   const [assignmentPairs, setAssignmentPairs] = useState<TeacherAssignmentPair[]>([]);
@@ -286,6 +309,8 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
     name: "",
     section_id: "",
     subject_id: "",
+    term_id: "",
+    exam_type_id: "",
     type: "cat",
     exam_date: new Date().toISOString().slice(0, 10),
     max_marks: 100,
@@ -294,6 +319,8 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     loadTeacherAssignments();
+    loadTerms();
+    loadExamTypes();
   }, []);
 
   const availableSubjects = useMemo(() => {
@@ -321,9 +348,33 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const loadTerms = async () => {
+    try {
+      setTermsLoading(true);
+      setTerms(await listTerms());
+    } catch (error) {
+      toast.error("Failed to load school terms");
+      console.error(error);
+    } finally {
+      setTermsLoading(false);
+    }
+  };
+
+  const loadExamTypes = async () => {
+    try {
+      setExamTypesLoading(true);
+      setExamTypes(await listExamTypes());
+    } catch (error) {
+      toast.error("Failed to load exam types");
+      console.error(error);
+    } finally {
+      setExamTypesLoading(false);
+    }
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!formData.name || !formData.section_id || !formData.subject_id) {
+    if (!formData.name || !formData.section_id || !formData.subject_id || !formData.term_id) {
       toast.error("Please fill in all required fields");
       return;
     }
@@ -351,10 +402,16 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {assignmentsLoading ? (
+        {assignmentsLoading || termsLoading || examTypesLoading ? (
           <div className="p-8 text-center text-muted-foreground">Loading classes and subjects…</div>
         ) : (
           <form className="space-y-4" onSubmit={handleSubmit}>
+            {terms.length === 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                No terms are registered for this school. Please contact the school system administrator to create a term before creating an exam.
+              </div>
+            )}
+
             <div>
               <label className="text-sm font-medium">Exam Name *</label>
               <input
@@ -410,6 +467,24 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
               </div>
             </div>
 
+            <div>
+              <label className="text-sm font-medium">Term *</label>
+              <select
+                required
+                value={formData.term_id}
+                onChange={(e) => setFormData({ ...formData, term_id: e.target.value })}
+                disabled={terms.length === 0}
+                className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="">Select term</option>
+                {terms.map((term) => (
+                  <option key={term.id} value={term.id}>
+                    {term.name}{term.is_current ? " (current)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium">Exam Date</label>
@@ -424,9 +499,13 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
               </div>
               <div>
                 <label className="text-sm font-medium">Type</label>
-                <select
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  <select
+                  value={formData.exam_type_id ? `custom:${formData.exam_type_id}` : formData.type}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const custom = value.startsWith("custom:");
+                    setFormData({ ...formData, type: custom ? "cat" : value, exam_type_id: custom ? value.slice(7) : "" });
+                  }}
                   className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="cat">CAT</option>
@@ -434,7 +513,11 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
                   <option value="mock">Mock</option>
                   <option value="quiz">Quiz</option>
                   <option value="assignment">Assignment</option>
+                  {examTypes.map((examType) => (
+                    <option key={examType.id} value={`custom:${examType.id}`}>{examType.name}</option>
+                  ))}
                 </select>
+                {examTypes.length > 0 && <p className="mt-2 text-xs text-muted-foreground">Custom types are managed by your school administrator.</p>}
               </div>
             </div>
 
@@ -469,7 +552,7 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
               </button>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || terms.length === 0}
                 className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold inline-flex items-center gap-2"
               >
                 {loading && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -487,10 +570,12 @@ function EnterResults({
   sectionId,
   subjectId,
   assignedSubjects,
+  gradingRoles,
 }: {
   sectionId: string;
   subjectId: string;
   assignedSubjects: Array<{ id: string; name: string; code?: string }>;
+  gradingRoles: GradingRole[];
 }) {
   const [exams, setExams] = useState<TeacherExam[]>([]);
   const [selectedExam, setSelectedExam] = useState<TeacherExam | null>(null);
@@ -575,7 +660,7 @@ function EnterResults({
           remarks: result.remarks,
           is_absent: result.is_absent,
           grade: !result.is_absent && !Number.isNaN(numericScore)
-            ? computeGrade(numericScore, maxMarks)
+            ? computeConfiguredGrade(numericScore, maxMarks, gradingRoles)
             : undefined,
         };
       });
@@ -625,7 +710,7 @@ function EnterResults({
     }
   };
 
-  const gradeForScore = (score: number, maxMarks: number) => computeGrade(score, maxMarks);
+  const gradeForScore = (score: number, maxMarks: number) => computeConfiguredGrade(score, maxMarks, gradingRoles);
 
   // Once the admin publishes, marks are frozen — the backend rejects edits with a 409.
   const isPublished = Boolean(selectedExam?.published_at);

@@ -8,6 +8,8 @@ export interface Exam {
   section_id?: string | null;
   teacher_id?: string | null;
   term_id?: string | null;
+  exam_type_id?: string | null;
+  exam_type?: { id: string; name: string } | null;
   type: "cat" | "main_exam" | "mock" | "quiz" | "assignment";
   exam_date?: string | null;
   start_time?: string | null;
@@ -136,6 +138,8 @@ export async function createExam(data: {
   name: string;
   section_id: string;
   subject_id: string;
+  term_id: string;
+  exam_type_id?: string;
   type: string;
   exam_date?: string;
   start_time?: string;

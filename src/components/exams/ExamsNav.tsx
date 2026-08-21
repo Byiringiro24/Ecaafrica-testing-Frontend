@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { to: "/exams", label: "Overview", match: "exact" as const },
   { to: "/exams/terms", label: "Terms", match: "prefix" as const },
+  { to: "/exams/exam-types", label: "Exam Types", match: "prefix" as const },
+  { to: "/exams/grading-roles", label: "Grading Roles", match: "prefix" as const },
   { to: "/exams/review", label: "Review Submissions", match: "prefix" as const },
   { to: "/exams/schedule", label: "All Exams", match: "prefix" as const },
   { to: "/exams/published", label: "Published Results", match: "prefix" as const },

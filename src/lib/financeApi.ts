@@ -274,6 +274,8 @@ export type Supplier = {
   id: string;
   code: string;
   name: string;
+  country_code: string | null;
+  tin_number: string | null;
   category: string | null;
   contact_person: string | null;
   phone: string | null;
@@ -293,6 +295,8 @@ export const listSuppliers = (
 
 export const createSupplier = (body: {
   name: string;
+  country_code?: string;
+  tin_number?: string;
   category?: string;
   contact_person?: string;
   phone?: string;
@@ -311,6 +315,7 @@ export const deleteSupplier = (id: string) => send<Supplier>(`/finance/suppliers
 // ---------------------------------------------------------------------------
 
 export type POStatus = "requested" | "ordered" | "received" | "invoiced" | "cancelled";
+export type PaymentMethod = "cash" | "mtn_momo" | "airtel_money" | "bank_transfer" | "cheque" | "other";
 
 export type InventoryItem = {
   id: string;
@@ -327,6 +332,11 @@ export type InventoryItem = {
   status: POStatus;
   notes?: string | null;
   invoice_url?: string | null;
+  amount_paid: string;
+  balance_due: string;
+  paid_at: string | null;
+  payment_method: PaymentMethod | null;
+  is_paid: boolean;
 };
 
 export const listInventory = (
@@ -341,6 +351,11 @@ export const listInventory = (
     InventoryItem[],
     { page: number; limit: number; total: number; stock_value: string; low_stock_count: number }
   >(`/finance/inventory${query(params)}`);
+
+export const listInventoryCategories = () => get<string[]>("/finance/inventory/categories");
+
+export const createInventoryCategory = (name: string) =>
+  send<{ id: string; school_id: string; name: string }>("/finance/inventory/categories", "POST", { name });
 
 export const createInventoryItem = (body: {
   item_name: string;
@@ -358,6 +373,9 @@ export const updateInventoryItem = (id: string, body: Record<string, unknown>) =
 
 export const setInventoryStatus = (id: string, status: POStatus) =>
   send<InventoryItem>(`/finance/inventory/${id}/status`, "PATCH", { status });
+
+export const payInventorySupplier = (id: string, amount: number | string, payment_method: PaymentMethod) =>
+  send<InventoryItem>(`/finance/inventory/${id}/pay-supplier`, "POST", { amount, payment_method });
 
 export const uploadInventoryInvoice = (id: string, file: File) =>
   upload<InventoryItem>(`/finance/inventory/${id}/invoice`, "invoice", file);

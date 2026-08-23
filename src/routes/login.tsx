@@ -166,10 +166,6 @@ function LoginPage() {
 
           <div className="mt-8 text-center text-xs text-[#5F6B7A] pt-6 border-t border-[#EEF4FF] space-y-2">
             <div>
-              Need a school account?{" "}
-              <Link to="/contact" className="text-[#42A5F5] font-bold hover:underline">Contact sales</Link>
-            </div>
-            <div>
               {isPlatform ? "School login?" : "Platform admin?"}{" "}
               <Link
                 to="/login"
@@ -189,4 +185,3 @@ function LoginPage() {
     </div>
   );
 }
- 

@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   School, TabletSmartphone, Cpu, ArrowRight,
   Plus, Trash2, RefreshCw, CheckCircle2, ArrowRightLeft,
-  Pencil, X, Save,
+  Pencil, X, Save, Link2, Zap, AlertTriangle, Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
@@ -343,11 +343,12 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
   schools: SchoolRecord[]; onRefresh: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState<string | null>(null);
   const [form, setForm] = useState({
     school_id: "", name: "", device_uid: "",
     mode: "gate" as "gate" | "boarding" | "classroom",
-    location: "", device_ip: "", device_port: "4370", license_number: "0",
-    device_serial: "", product_name: "",
+    location: "", device_ip: "", device_port: "5005", license_number: "1261",
+    device_serial: "", product_name: "", tablet_id: "",
   });
 
   // Edit state
@@ -363,7 +364,7 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
     if (!form.school_id) { toast.error("Select a school"); return; }
     setSaving(true);
     try {
-      await platformHardwareApi.createDevice({
+      const created = await platformHardwareApi.createDevice({
         school_id: form.school_id, device_uid: form.device_uid, name: form.name,
         type: "tablet", mode: form.mode, location: form.location || undefined,
         tablet_ip: form.device_ip || undefined,
@@ -371,8 +372,34 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
         license_number: form.license_number ? Number(form.license_number) : undefined,
         device_serial: form.device_serial || undefined,
         product_name: form.product_name || undefined,
+        tablet_id: form.tablet_id || undefined,
       } as any);
-      toast.success("Device registered");
+
+      // If a tablet was selected, auto-link and trigger the bridge connect
+      if (form.tablet_id && created) {
+        const deviceId = (created as any)?.id ?? (created as any)?.data?.id;
+        if (deviceId) {
+          // Link device to tablet
+          await platformHardwareApi.updateDevice(String(deviceId), { tablet_id: form.tablet_id } as any);
+          // Trigger bridge connect-saved so FK623 TCP handshake happens immediately
+          const tablet = tablets.find(t => t.id === form.tablet_id);
+          if (tablet) {
+            try {
+              await apiRequest(`/tablets/${form.tablet_id}/device/connect`, {
+                method: "POST",
+                body: JSON.stringify({ ipAddress: form.device_ip, port: Number(form.device_port), license: Number(form.license_number) }),
+                auth: "school",
+              });
+              toast.success("Device registered, linked and connected to FK623 — auto-pull is now active ✓");
+            } catch {
+              toast.success("Device registered and linked. Bridge connect will retry automatically.");
+            }
+          }
+        }
+      } else {
+        toast.success("Device registered. Link it to a tablet in the Assign tab to enable auto-pull.");
+      }
+
       setForm(f => ({ ...f, name: "", device_uid: "", location: "", device_serial: "", product_name: "" }));
       onRefresh();
     } catch (e: any) { toast.error(e?.message || "Failed"); }
@@ -401,6 +428,29 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
   };
 
   const cancelEdit = () => setEditingId(null);
+
+  const handleConnectDevice = async (d: PlatformDevice) => {
+    const tablet = tablets.find(t => String(t.id) === String(d.tablet_id));
+    if (!tablet) { toast.error("Device is not linked to a tablet. Link it first in the Assign tab."); return; }
+    setConnecting(d.id);
+    try {
+      await apiRequest(`/tablets/${tablet.id}/device/connect`, {
+        method: "POST",
+        body: JSON.stringify({
+          ipAddress: (d as any).tablet_ip,
+          port: (d as any).tablet_port ?? 5005,
+          license: (d as any).license_number ?? 1261,
+        }),
+        auth: "school",
+      });
+      toast.success(`Connected to FK623 via ${tablet.name} — auto-pull is active ✓`);
+      onRefresh();
+    } catch (e: any) {
+      toast.error(e?.message?.includes("timeout") 
+        ? `Timeout — check WireGuard VPN and bridge app on the Windows tablet`
+        : e?.message || "Connection failed");
+    } finally { setConnecting(null); }
+  };
 
   const handleSaveEdit = async (d: PlatformDevice) => {
     setSaving(true);
@@ -435,7 +485,7 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
           </div>
         </div>
         <form onSubmit={handleCreate} className="grid gap-4">
-          <SaSelect label="School *" value={form.school_id} onChange={e => setForm({...form, school_id: e.target.value})}>
+          <SaSelect label="School *" value={form.school_id} onChange={e => setForm({...form, school_id: e.target.value, tablet_id: ""})}>
             <option value="">-- select school --</option>
             {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </SaSelect>
@@ -453,17 +503,42 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <SaInput label="Serial Number" value={form.device_serial} onChange={e => setForm({...form, device_serial: e.target.value})} />
-            <SaInput label="Product Name" value={form.product_name} onChange={e => setForm({...form, product_name: e.target.value})} placeholder="FK623" />
+            <SaInput label="Product Name" value={form.product_name} onChange={e => setForm({...form, product_name: e.target.value})} placeholder="Pollo / FK623" />
           </div>
           <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 grid gap-3 md:grid-cols-3">
-            <p className="md:col-span-3 text-xs font-semibold text-amber-800">Network settings (internal — not shown to school users)</p>
-            <SaInput label="Device IP (LAN)" value={form.device_ip} onChange={e => setForm({...form, device_ip: e.target.value})} placeholder="192.168.1.x" />
+            <p className="md:col-span-3 text-xs font-semibold text-amber-800">FK623 network settings (school LAN — internal)</p>
+            <SaInput label="Device IP (LAN)" value={form.device_ip} onChange={e => setForm({...form, device_ip: e.target.value})} placeholder="192.168.1.118" />
             <SaInput label="Device Port" type="number" value={form.device_port} onChange={e => setForm({...form, device_port: e.target.value})} />
             <SaInput label="License No." type="number" value={form.license_number} onChange={e => setForm({...form, license_number: e.target.value})} />
           </div>
+
+          {/* ── Tablet link — optional but enables one-step setup ── */}
+          <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3 space-y-2">
+            <div className="flex items-center gap-1.5">
+              <Link2 className="h-3.5 w-3.5 text-blue-700" />
+              <p className="text-xs font-semibold text-blue-800">Link to Tablet (recommended)</p>
+            </div>
+            <p className="text-xs text-blue-700">
+              Linking now enables auto-pull immediately after registration — no need to visit the Assign tab.
+              Only tablets assigned to the selected school are shown.
+            </p>
+            <SaSelect label="Tablet (Windows Bridge)" value={form.tablet_id} onChange={e => setForm({...form, tablet_id: e.target.value})}>
+              <option value="">-- link later in Assign tab --</option>
+              {tablets
+                .filter(t => !form.school_id || String(t.school_id) === form.school_id)
+                .map(t => <option key={t.id} value={t.id}>{t.name} ({(t as any).ip}:{(t as any).port})</option>)}
+            </SaSelect>
+            {form.tablet_id && (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Auto-connect will trigger after registration
+              </div>
+            )}
+          </div>
+
           <button type="submit" disabled={saving || !form.school_id}
             className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-            <Plus className="h-4 w-4" /> Register Device
+            <Plus className="h-4 w-4" /> {form.tablet_id ? "Register & Connect Device" : "Register Device"}
           </button>
         </form>
       </section>
@@ -548,6 +623,21 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
                           d.is_connected ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
                           {d.is_connected ? "Online" : "Offline"}
                         </span>
+                        {linkedTablet && !d.is_connected && (
+                          <button
+                            onClick={() => void handleConnectDevice(d)}
+                            disabled={connecting === d.id}
+                            title="Connect to FK623 device via bridge"
+                            className="inline-flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">
+                            <Zap className={cn("h-3 w-3", connecting === d.id && "animate-pulse")} />
+                            {connecting === d.id ? "Connecting…" : "Connect"}
+                          </button>
+                        )}
+                        {d.is_connected && (
+                          <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                            <CheckCircle2 className="h-3 w-3" /> Auto-pull active
+                          </span>
+                        )}
                         <button onClick={() => startEdit(d)} title="Edit device"
                           className="p-1.5 rounded-md hover:bg-amber-50 hover:text-amber-600 text-muted-foreground border border-border">
                           <Pencil className="h-3.5 w-3.5" />
@@ -573,6 +663,7 @@ function AssignTab({ tablets, devices, schools, onRefresh }: {
   schools: SchoolRecord[]; onRefresh: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [connecting, setConnecting] = useState<string | null>(null);
   const [tabletSchoolForm, setTabletSchoolForm] = useState({ tablet_id: "", school_id: "" });
   const [linkForm, setLinkForm] = useState({ device_id: "", tablet_id: "" });
   const [deviceSchoolForm, setDeviceSchoolForm] = useState({ device_id: "", school_id: "" });
@@ -601,11 +692,49 @@ function AssignTab({ tablets, devices, schools, onRefresh }: {
     setBusy(true);
     try {
       await platformHardwareApi.updateDevice(linkForm.device_id, { tablet_id: linkForm.tablet_id });
-      toast.success(`"${device.name}" linked to "${tablet.name}"`);
+      toast.success(`"${device.name}" linked to "${tablet.name}" — triggering FK623 connect…`);
+      // Auto-trigger bridge connect after linking
+      try {
+        await apiRequest(`/tablets/${linkForm.tablet_id}/device/connect`, {
+          method: "POST",
+          body: JSON.stringify({
+            ipAddress: (device as any).tablet_ip,
+            port: (device as any).tablet_port ?? 5005,
+            license: (device as any).license_number ?? 1261,
+          }),
+          auth: "school",
+        });
+        toast.success("FK623 connected — auto-pull is now active ✓");
+      } catch {
+        toast.info("Linked. FK623 connect will retry automatically every 5s.");
+      }
       setLinkForm({ device_id: "", tablet_id: "" });
       onRefresh();
     } catch (e: any) { toast.error(e?.message || "Failed"); }
     finally { setBusy(false); }
+  };
+
+  const handleConnectFK623 = async (device: PlatformDevice) => {
+    const tablet = tablets.find(t => String(t.id) === String(device.tablet_id));
+    if (!tablet) { toast.error("Device not linked to a tablet"); return; }
+    setConnecting(device.id);
+    try {
+      await apiRequest(`/tablets/${tablet.id}/device/connect`, {
+        method: "POST",
+        body: JSON.stringify({
+          ipAddress: (device as any).tablet_ip,
+          port: (device as any).tablet_port ?? 5005,
+          license: (device as any).license_number ?? 1261,
+        }),
+        auth: "school",
+      });
+      toast.success(`FK623 connected via ${tablet.name} — auto-pull active ✓`);
+      onRefresh();
+    } catch (e: any) {
+      toast.error(e?.message?.includes("timeout")
+        ? "Timeout — check WireGuard VPN and FKBridge.exe on the Windows PC"
+        : e?.message || "Connection failed");
+    } finally { setConnecting(null); }
   };
 
   const handleReassignDevice = async (e: FormEvent) => {
@@ -627,8 +756,49 @@ function AssignTab({ tablets, devices, schools, onRefresh }: {
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
-        <strong>Auto-pull requires:</strong> (1) Tablet assigned to school, (2) Device linked to tablet, (3) WireGuard VPN active on the Windows PC, (4) Bridge app running on the Windows PC. Once all four are done, logs pull every 10 seconds automatically and SMS is sent to parents instantly.
+        <strong>Auto-pull requires 4 things — all manageable from this page:</strong>
+        <ol className="mt-1.5 ml-4 list-decimal space-y-0.5 text-xs">
+          <li>Tablet registered with correct WireGuard VPN IP (10.0.0.x)</li>
+          <li>Device registered with FK623 LAN IP, port and license, and linked to the tablet</li>
+          <li>WireGuard VPN tunnel active on the Windows PC at the school</li>
+          <li>FK623 Bridge app (FKBridge.exe) running on the Windows PC</li>
+        </ol>
+        <p className="mt-1.5 text-xs text-amber-700">
+          Steps 1–2 are done here. Steps 3–4 are done on the Windows PC at the school (one-time setup).
+          Once all four are done, logs pull every 5 seconds automatically and SMS is sent to parents instantly.
+        </p>
       </div>
+
+      {/* ── Live status summary cards ── */}
+      {devices.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          {(() => {
+            const linked = devices.filter(d => d.tablet_id);
+            const connected = devices.filter(d => d.is_connected);
+            const incomplete = devices.filter(d => !d.tablet_id || !d.school_id);
+            return [
+              { label: "Linked to tablet", count: linked.length, total: devices.length, color: "emerald" },
+              { label: "FK623 connected", count: connected.length, total: devices.length, color: "blue" },
+              { label: "Incomplete setup", count: incomplete.length, total: devices.length, color: "amber" },
+            ].map(s => (
+              <div key={s.label} className={cn(
+                "rounded-xl border p-4",
+                s.color === "emerald" ? "border-emerald-200 bg-emerald-50" :
+                s.color === "blue" ? "border-blue-200 bg-blue-50" :
+                "border-amber-200 bg-amber-50"
+              )}>
+                <div className={cn("text-2xl font-bold",
+                  s.color === "emerald" ? "text-emerald-700" :
+                  s.color === "blue" ? "text-blue-700" : "text-amber-700"
+                )}>
+                  {s.count}<span className="text-sm font-normal text-muted-foreground">/{s.total}</span>
+                </div>
+                <div className="text-xs font-medium mt-1">{s.label}</div>
+              </div>
+            ));
+          })()}
+        </div>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-3">
         {/* Action 1 */}
@@ -762,14 +932,14 @@ function AssignTab({ tablets, devices, schools, onRefresh }: {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40">
-                {["Device", "Mode", "School", "Linked Tablet", "Auto-pull", "Status"].map(h => (
+                {["Device", "Mode", "School", "Linked Tablet", "Auto-pull", "Status", "Action"].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {devices.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-xs text-muted-foreground">No devices registered yet</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-xs text-muted-foreground">No devices registered yet</td></tr>
               ) : devices.map(d => {
                 const school = schools.find(s => String(s.id) === String(d.school_id));
                 const linkedTablet = d.tablet ?? tablets.find(t => String(t.id) === String(d.tablet_id));
@@ -801,6 +971,23 @@ function AssignTab({ tablets, devices, schools, onRefresh }: {
                         d.is_connected ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
                         {d.is_connected ? "Online" : "Offline"}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {linkedTablet && !d.is_connected ? (
+                        <button
+                          onClick={() => void handleConnectFK623(d)}
+                          disabled={connecting === d.id}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50">
+                          <Zap className={cn("h-3 w-3", connecting === d.id && "animate-pulse")} />
+                          {connecting === d.id ? "Connecting…" : "Connect FK623"}
+                        </button>
+                      ) : d.is_connected ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                          <CheckCircle2 className="h-3 w-3" /> Active
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Link device first</span>
+                      )}
                     </td>
                   </tr>
                 );

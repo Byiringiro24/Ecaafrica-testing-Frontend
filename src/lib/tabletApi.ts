@@ -180,4 +180,25 @@ export const tabletApi = {
     ).then((response) => ({
       data: unwrapDeviceResult<{ savedCount: number; duplicateCount: number; count: number }>(response),
     })),
+
+  // Clear all attendance logs stored on the FK623 device (irreversible)
+  clearLogs: (tabletId: string) =>
+    apiRequest<{ success: boolean; message?: string }>(`/tablets/${tabletId}/device/clear-logs`, {
+      method: "POST",
+      auth: "school",
+    }),
+
+  // Delete all users enrolled on the FK623 device (irreversible)
+  clearUsers: (tabletId: string) =>
+    apiRequest<{ success: boolean; message?: string }>(`/tablets/${tabletId}/device/clear-all`, {
+      method: "POST",
+      auth: "school",
+    }),
+
+  // Reset / reboot the FK623 device
+  resetDevice: (tabletId: string) =>
+    apiRequest<{ success: boolean; message?: string }>(`/tablets/${tabletId}/device/poweroff`, {
+      method: "POST",
+      auth: "school",
+    }),
 };

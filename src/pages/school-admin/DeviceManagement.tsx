@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { RefreshCw, Download, Clock } from "lucide-react";
+import { RefreshCw, Download, Clock, RotateCcw, Trash2, Users } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { DeviceCard } from "../../components/device-management/DeviceCard";
 import { DeviceStatusPanel } from "../../components/device-management/DeviceStatusPanel";
@@ -109,6 +109,48 @@ export default function DeviceManagement() {
     }
   };
 
+  const handleResetDevice = async () => {
+    if (!selectedTablet) return;
+    if (!window.confirm(
+      `Reset / reboot "${selectedTablet.name}"?\n\nThis will reboot the FK623 device. It will reconnect automatically within 30–60 seconds.`
+    )) return;
+    try {
+      await tabletApi.resetDevice(selectedTablet.id);
+      toast.success("Reset command sent — device will reboot and reconnect automatically");
+      setTimeout(() => loadDeviceStatus(selectedTablet.id, true), 30_000);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to reset device");
+    }
+  };
+
+  const handleClearLogs = async () => {
+    if (!selectedTablet) return;
+    if (!window.confirm(
+      `Delete ALL attendance logs stored on "${selectedTablet.name}"?\n\n⚠️ This deletes logs from the FK623 device memory only.\nLogs already pulled to the server are NOT affected.\n\nThis action cannot be undone.`
+    )) return;
+    try {
+      await tabletApi.clearLogs(selectedTablet.id);
+      toast.success("All logs cleared from device memory");
+      await loadDeviceStatus(selectedTablet.id);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to clear logs");
+    }
+  };
+
+  const handleClearUsers = async () => {
+    if (!selectedTablet) return;
+    if (!window.confirm(
+      `Delete ALL enrolled users from "${selectedTablet.name}"?\n\n⚠️ This removes all fingerprints, face templates, and user records from the FK623 device.\nYou will need to re-enroll or re-push students to restore them.\n\nThis action cannot be undone.`
+    )) return;
+    try {
+      await tabletApi.clearUsers(selectedTablet.id);
+      toast.success("All users cleared from device. Re-push students to re-enroll them.");
+      await loadDeviceStatus(selectedTablet.id);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to clear users");
+    }
+  };
+
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -164,7 +206,8 @@ export default function DeviceManagement() {
                 {statusMessage && (
                   <span className="text-sm text-gray-500">{statusMessage}</span>
                 )}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 items-center">
+                  {/* Normal operations */}
                   <Button onClick={handleSyncTime} disabled={!deviceStatus?.connected} variant="outline" size="sm">
                     <Clock className="mr-2 h-4 w-4" />
                     Sync Time
@@ -176,6 +219,44 @@ export default function DeviceManagement() {
                   <Button onClick={handlePullLogs} disabled={!deviceStatus?.connected} size="sm">
                     <Download className="mr-2 h-4 w-4" />
                     Pull Logs
+                  </Button>
+
+                  {/* Divider */}
+                  <div className="h-6 w-px bg-gray-200 mx-1" />
+
+                  {/* Danger zone — destructive actions */}
+                  <Button
+                    onClick={handleResetDevice}
+                    disabled={!deviceStatus?.connected}
+                    variant="outline"
+                    size="sm"
+                    className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                    title="Reboot the FK623 device"
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Reset Device
+                  </Button>
+                  <Button
+                    onClick={handleClearLogs}
+                    disabled={!deviceStatus?.connected}
+                    variant="outline"
+                    size="sm"
+                    className="border-rose-300 text-rose-600 hover:bg-rose-50"
+                    title="Delete all attendance logs from FK623 device memory"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete All Logs
+                  </Button>
+                  <Button
+                    onClick={handleClearUsers}
+                    disabled={!deviceStatus?.connected}
+                    variant="outline"
+                    size="sm"
+                    className="border-rose-300 text-rose-600 hover:bg-rose-50"
+                    title="Delete all enrolled users and biometrics from FK623 device"
+                  >
+                    <Users className="mr-2 h-4 w-4" />
+                    Delete All Users
                   </Button>
                 </div>
               </div>

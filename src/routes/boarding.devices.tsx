@@ -47,6 +47,7 @@ import {
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest } from "@/lib/api";
+import { localDateInputValue } from "@/lib/dateInput";
 import { studentSearchText, studentIdNumber } from "@/lib/studentIdentity";
 import { DEFAULT_FK623_CONFIG } from "@/lib/tabletApi";
 import { cn } from "@/lib/utils";
@@ -265,7 +266,7 @@ function ServerCommandCenter() {
     scan_method: "fingerprint",
     scanned_at: "",
   });
-  const [absentDate, setAbsentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [absentDate, setAbsentDate] = useState(localDateInputValue());
   const refreshAllInFlight = useRef(false);
   const statusPollInFlight = useRef(false);
 
@@ -280,8 +281,8 @@ function ServerCommandCenter() {
   const [dbLogsLoading, setDbLogsLoading] = useState(false);
   const [dbLogsMeta, setDbLogsMeta] = useState({ total: 0, page: 1, limit: 20, totalPages: 1 });
   const [dbLogsPage, setDbLogsPage] = useState(1);
-  const [dbStartDate, setDbStartDate] = useState(new Date().toISOString().slice(0, 10));
-  const [dbEndDate, setDbEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dbStartDate, setDbStartDate] = useState(localDateInputValue());
+  const [dbEndDate, setDbEndDate] = useState(localDateInputValue());
   const [dbStartTime, setDbStartTime] = useState("00:00");
   const [dbEndTime, setDbEndTime] = useState("23:59");
   const [dbSearch, setDbSearch] = useState("");
@@ -371,7 +372,7 @@ function ServerCommandCenter() {
       setSelectedTabletId((current) => current || nextTablets[0]?.id || "");
 
       const currentDevice = nextDevices.find((device) => device.id === selectedDeviceId) ?? nextDevices[0];
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDateInputValue();
       if (currentDevice) {
         const [logsResult, sessionsResult] = await Promise.allSettled([
           apiRequest<AttendanceLog[]>(`/devices/${currentDevice.id}/logs?limit=500`, { auth: "school" }),

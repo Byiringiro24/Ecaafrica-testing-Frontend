@@ -7,6 +7,7 @@ import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchDeviceLogs, fetchAttendanceStats } from "@/lib/device-logs-api";
 import type { AttendanceStats, DeviceLog, PaginationMeta } from "@/lib/device-logs-types";
+import { localDateInputValue } from "@/lib/dateInput";
 
 export const Route = createFileRoute("/attendance/device-attendance")({
   component: DeviceAttendancePage,
@@ -50,7 +51,7 @@ const statusClasses = (status: string) => {
 };
 
 function DeviceAttendancePage() {
-  const todayValue = new Date().toISOString().slice(0, 10);
+  const todayValue = localDateInputValue();
   const [logs, setLogs] = useState<DeviceLog[]>([]);
   const [meta, setMeta] = useState<PaginationMeta>({ total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
   const [stats, setStats] = useState<AttendanceStats | null>(null);

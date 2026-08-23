@@ -37,6 +37,31 @@ type SessionFormState = {
   notification_template_id: string;
 };
 
+type SmsMapping = {
+  id: string;
+  source_type: string;
+  event_type: string;
+  scope_key: string;
+  template_id: string | null;
+  send_sms: boolean;
+  template?: Pick<NotificationTemplate, "name" | "trigger_type" | "body_en"> | null;
+};
+
+const SMS_MAPPING_OPTIONS = [
+  { source_type: "gate_device", event_type: "school_entry", label: "Gate device · School entry", description: "Biometric or gate scans when a learner enters." },
+  { source_type: "gate_device", event_type: "school_exit", label: "Gate device · School exit", description: "Biometric or gate scans when a learner leaves." },
+  { source_type: "classroom_manual", event_type: "class_entry", label: "Classroom manual · Present", description: "Teacher attendance marked as present." },
+  { source_type: "classroom_manual", event_type: "class_late", label: "Classroom manual · Late", description: "Teacher attendance marked as late." },
+  { source_type: "classroom_manual", event_type: "class_absent", label: "Classroom manual · Absent", description: "Teacher attendance marked as absent." },
+  { source_type: "classroom_manual", event_type: "class_excused", label: "Classroom manual · Excused", description: "Teacher attendance marked as excused." },
+  { source_type: "dormitory_manual", event_type: "dormitory_morning_present", label: "Dormitory manual · Morning present", description: "Morning dormitory roll call present." },
+  { source_type: "dormitory_manual", event_type: "dormitory_morning_absent", label: "Dormitory manual · Morning absent", description: "Morning dormitory roll call absent." },
+  { source_type: "dormitory_manual", event_type: "dormitory_morning_on_leave", label: "Dormitory manual · Morning on leave", description: "Morning dormitory roll call on leave." },
+  { source_type: "dormitory_manual", event_type: "dormitory_evening_present", label: "Dormitory manual · Evening present", description: "Evening dormitory roll call present." },
+  { source_type: "dormitory_manual", event_type: "dormitory_evening_absent", label: "Dormitory manual · Evening absent", description: "Evening dormitory roll call absent." },
+  { source_type: "dormitory_manual", event_type: "dormitory_evening_on_leave", label: "Dormitory manual · Evening on leave", description: "Evening dormitory roll call on leave." }
+] as const;
+
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error
     ? error.message
@@ -80,6 +105,8 @@ function DeviceSessionsPage() {
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [smsTemplates, setSmsTemplates] = useState<NotificationTemplate[]>([]);
+  const [smsMappings, setSmsMappings] = useState<SmsMapping[]>([]);
+  const [mappingSavingKey, setMappingSavingKey] = useState<string | null>(null);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState<SessionFormState>(createEmptySession());
@@ -90,7 +117,7 @@ function DeviceSessionsPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [deviceData, templateData] = await Promise.all([
+        const [deviceData, templateData, mappingData] = await Promise.all([
           apiRequest<Device[]>("/devices?limit=200&sort=created_at&order=desc", { auth: "school" }),
           apiRequest<NotificationTemplate[]>(
             "/notifications/templates?scope=global&is_active=true&limit=100",
@@ -98,6 +125,7 @@ function DeviceSessionsPage() {
               auth: "school",
             },
           ),
+          apiRequest<SmsMapping[]>("/attendance/sms-settings", { auth: "school" }),
         ]);
         const mappedDevices = (Array.isArray(deviceData) ? deviceData : []).map((device) => ({
           id: device.id,
@@ -106,6 +134,7 @@ function DeviceSessionsPage() {
         }));
         setDevices(mappedDevices);
         setSmsTemplates(Array.isArray(templateData) ? templateData : []);
+        setSmsMappings(Array.isArray(mappingData) ? mappingData : []);
         if (mappedDevices[0]) {
           setSelectedDeviceId((current) => current || mappedDevices[0].id);
         }
@@ -143,6 +172,38 @@ function DeviceSessionsPage() {
     () => devices.find((device) => device.id === selectedDeviceId)?.name ?? "selected device",
     [devices, selectedDeviceId],
   );
+
+  const mappingByKey = useMemo(
+    () => new Map(smsMappings.map((mapping) => [`${mapping.source_type}:${mapping.event_type}:${mapping.scope_key}`, mapping])),
+    [smsMappings],
+  );
+
+  const saveMapping = async (sourceType: string, eventType: string, templateId: string) => {
+    const key = `${sourceType}:${eventType}:global`;
+    setMappingSavingKey(key);
+    try {
+      const saved = await apiRequest<SmsMapping>("/attendance/sms-settings", {
+        method: "PUT",
+        auth: "school",
+        body: JSON.stringify({
+          source_type: sourceType,
+          event_type: eventType,
+          scope_key: "global",
+          template_id: templateId || null,
+          send_sms: Boolean(templateId),
+        }),
+      });
+      setSmsMappings((current) => [
+        ...current.filter((mapping) => `${mapping.source_type}:${mapping.event_type}:${mapping.scope_key}` !== key),
+        saved,
+      ]);
+      toast.success("Attendance SMS mapping saved");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, "Failed to save SMS mapping"));
+    } finally {
+      setMappingSavingKey(null);
+    }
+  };
 
   const openCreateModal = (template?: SessionFormState) => {
     setFormData(template ?? createEmptySession());
@@ -306,8 +367,61 @@ function DeviceSessionsPage() {
   return (
     <AppLayout
       title="Device Sessions"
-      subtitle="Create customizable attendance sessions for each device"
+      subtitle="Connect approved system SMS templates to every attendance source"
     >
+      <div className="mb-5 rounded-2xl border border-primary/20 bg-primary/5 p-5">
+        <div className="flex items-start gap-3">
+          <MessageSquareText className="mt-0.5 h-5 w-5 text-primary" />
+          <div>
+            <h2 className="font-semibold">Attendance SMS routing</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Your school can choose where each message is used, but the message text is registered and controlled by the system admin. A blank selection disables SMS for that attendance event.
+            </p>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          {SMS_MAPPING_OPTIONS.map((option) => {
+            const key = `${option.source_type}:${option.event_type}:global`;
+            const mapping = mappingByKey.get(key);
+            return (
+              <div key={key} className="rounded-xl border border-border bg-background p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">{option.label}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{option.description}</p>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${mapping?.send_sms ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
+                    {mapping?.send_sms ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <select
+                    value={mapping?.template_id ?? ""}
+                    onChange={(event) => void saveMapping(option.source_type, option.event_type, event.target.value)}
+                    disabled={mappingSavingKey === key}
+                    className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-xs"
+                  >
+                    <option value="">Do not send SMS</option>
+                    {smsTemplates
+                      .filter((template) => template.trigger_type === option.event_type)
+                      .map((template) => (
+                        <option key={template.id} value={template.id}>{template.name}</option>
+                      ))}
+                  </select>
+                  {mappingSavingKey === key && <span className="self-center text-xs text-muted-foreground">Saving…</span>}
+                </div>
+                {mapping?.template && (
+                  <p className="mt-2 line-clamp-2 whitespace-pre-wrap text-[11px] text-muted-foreground">{mapping.template.body_en}</p>
+                )}
+                {!smsTemplates.some((template) => template.trigger_type === option.event_type) && (
+                  <p className="mt-2 text-[11px] text-destructive">No system template is registered for this event yet.</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-[0.95fr_1.05fr] gap-5">
         <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">

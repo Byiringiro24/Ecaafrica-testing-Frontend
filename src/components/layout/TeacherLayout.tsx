@@ -4,7 +4,6 @@ import {
   LayoutDashboard, BookOpen, ClipboardCheck, GraduationCap, TrendingUp,
   Calendar, User, LogOut, Menu, X, MessageSquare,
 } from "lucide-react";
-import { toast } from "sonner";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
 import { TEACHER_ME } from "@/lib/teacherStaffData";
@@ -17,6 +16,9 @@ const NAV = [
     { to: "/teacher/classes", label: "My Classes", icon: BookOpen },
     { to: "/teacher/attendance", label: "Attendance", icon: ClipboardCheck },
     { to: "/teacher/exams", label: "Record Marks", icon: BookOpen },
+    { to: "/teacher/schedule", label: "My Timetable", icon: Calendar },
+    { to: "/teacher/profile", label: "My Profile", icon: User },
+    { to: "/exams/grade-update-requests", label: "Grade Requests", icon: MessageSquare },
     // { to: "/teacher/messages", label: "Communicate with parents", icon: MessageSquare },
   ]},
 ];
@@ -129,12 +131,13 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
                   >
                     View Profile
                   </Link>
-                  <button
-                    onClick={() => { toast.info("Account settings…"); setProfileOpen(false); }}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-muted"
+                  <Link
+                    to="/teacher/settings"
+                    onClick={() => setProfileOpen(false)}
+                    className="block w-full text-left px-4 py-2 text-sm hover:bg-muted"
                   >
                     Account Settings
-                  </button>
+                  </Link>
                   <button
                     onClick={() => {
                       clearSchoolAuth();

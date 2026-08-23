@@ -195,6 +195,14 @@ export async function updateExam(
   );
 }
 
+export async function requestExamModification(examId: string, reason: string) {
+  return apiRequest<{ id: string; status: string }>(`/exam-modification-requests/exams/${examId}`, {
+    method: "POST",
+    auth: "school",
+    body: JSON.stringify({ reason })
+  });
+}
+
 // Delete exam
 export async function deleteExam(examId: string) {
   return apiRequest(

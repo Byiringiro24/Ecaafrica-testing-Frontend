@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Eye, Send, Loader2 } from "lucide-react";
+import { Eye } from "lucide-react";
 import { toast } from "sonner";
 import { ExamFilters } from "@/components/exams/ExamFilters";
 import { ExamResultsModal } from "@/components/exams/ExamResultsModal";
@@ -8,7 +8,6 @@ import {
   listAdminExams,
   getFilterOptions,
   isPendingReview,
-  publishExamResults,
   examTypeLabel,
   statusBadgeClass,
   type AdminExam,
@@ -27,7 +26,6 @@ function ExamsReviewPage() {
   const [sectionId, setSectionId] = useState("");
   const [subjectId, setSubjectId] = useState("");
   const [loading, setLoading] = useState(true);
-  const [publishingId, setPublishingId] = useState<string | null>(null);
   const [viewExam, setViewExam] = useState<AdminExam | null>(null);
 
   useEffect(() => {
@@ -65,21 +63,6 @@ function ExamsReviewPage() {
     }
   };
 
-  const handleQuickPublish = async (exam: AdminExam) => {
-    if (!confirm(`Publish "${exam.name}" results to parents?`)) return;
-    try {
-      setPublishingId(exam.id);
-      await publishExamResults(exam.id);
-      toast.success("Results published successfully");
-      loadExams();
-    } catch (error) {
-      toast.error("Failed to publish results");
-      console.error(error);
-    } finally {
-      setPublishingId(null);
-    }
-  };
-
   const grouped = useMemo(() => {
     const map = new Map<string, AdminExam[]>();
     for (const exam of exams) {
@@ -95,7 +78,7 @@ function ExamsReviewPage() {
     <div>
       <div className="mb-4">
         <p className="text-sm text-muted-foreground">
-          Review marks submitted by teachers. Filter by class and subject, verify results, then publish so parents can view grades.
+          Review marks submitted by teachers. Open a submission to compare marks and grades. Publishing is a separate action after review.
         </p>
       </div>
 
@@ -144,7 +127,6 @@ function ExamsReviewPage() {
                     <th className="text-left p-3">Subject</th>
                     <th className="text-left p-3">Teacher</th>
                     <th className="text-left p-3">Date</th>
-                    <th className="text-left p-3">Type</th>
                     <th className="text-left p-3">Marked</th>
                     <th className="text-left p-3">Status</th>
                     <th className="text-right p-3">Actions</th>
@@ -161,7 +143,7 @@ function ExamsReviewPage() {
                       </td>
                       <td className="p-3">
                         <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">
-                          {examTypeLabel(exam.type)}
+                          {examTypeLabel(exam.type, exam.exam_type?.name)}
                         </span>
                       </td>
                       <td className="p-3">{exam.marked_count ?? 0} students</td>
@@ -178,18 +160,6 @@ function ExamsReviewPage() {
                           >
                             <Eye className="h-3.5 w-3.5" /> Review
                           </button>
-                          <button
-                            onClick={() => handleQuickPublish(exam)}
-                            disabled={publishingId === exam.id}
-                            className="h-8 px-3 rounded-md bg-primary text-primary-foreground text-xs font-semibold inline-flex items-center gap-1 disabled:opacity-50"
-                          >
-                            {publishingId === exam.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Send className="h-3.5 w-3.5" />
-                            )}
-                            Publish
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -205,7 +175,9 @@ function ExamsReviewPage() {
         <ExamResultsModal
           exam={viewExam}
           allowPublish
+          allowMarkReviewed
           onClose={() => setViewExam(null)}
+          onReviewed={loadExams}
           onPublished={loadExams}
         />
       )}

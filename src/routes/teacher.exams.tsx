@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { teacherRouteGuard } from "@/lib/schoolAuth";
-import { Plus, X, Award, Loader2 } from "lucide-react";
+import { Plus, X, Award, ChevronLeft, ChevronRight, Loader2, ArrowLeft, MessageSquare } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { toast } from "sonner";
 import { TeacherLayout } from "@/components/layout/TeacherLayout";
@@ -13,6 +13,7 @@ import {
   getExamResults,
   updateExam,
   getTeacherAssignments,
+  requestExamModification,
   computeGrade,
   studentDisplayName,
   type TeacherAssignmentPair,
@@ -21,7 +22,8 @@ import {
   type ExamResult,
 } from "@/lib/exams-api";
 import { listTerms, type TermOption } from "@/lib/report-cards-api";
-import { listGradingRoles, listExamTypes, type ExamTypeOption, type GradingRole } from "@/lib/exam-configuration-api";
+import { getPassPercentage, listGradingRoles, listExamTypes, type ExamTypeOption, type GradingRole } from "@/lib/exam-configuration-api";
+import { listExamModificationRequests, type ExamModificationRequest } from "@/lib/exams-admin-api";
 
 export const Route = createFileRoute("/teacher/exams")({
   beforeLoad: ({ location }) => teacherRouteGuard(location),
@@ -35,7 +37,7 @@ function computeConfiguredGrade(score: number, maxMarks: number, roles: GradingR
 }
 
 function TeacherExams() {
-  const [tab, setTab] = useState<"upcoming" | "enter" | "published" | "performance">("upcoming");
+  const [tab, setTab] = useState<"upcoming" | "enter" | "recorded" | "published" | "performance">("upcoming");
   const [createOpen, setCreateOpen] = useState(false);
   const [viewExam, setViewExam] = useState<TeacherExam | null>(null);
   const [exams, setExams] = useState<TeacherExam[]>([]);
@@ -56,13 +58,8 @@ function TeacherExams() {
     loadGradingRoles();
   }, []);
 
-  const mergedAssignmentSubjects = useMemo(
-    () => Array.from(new Set(assignments?.subjects.map((subject) => subject.name) || [])),
-    [assignments?.subjects]
-  );
-
   useEffect(() => {
-    if (tab === "enter" || tab === "performance") return;
+    if (tab === "enter" || tab === "recorded" || tab === "performance") return;
     loadExams();
   }, [tab, selectedSectionId, selectedSubjectId]);
 
@@ -113,7 +110,7 @@ function TeacherExams() {
     <TeacherLayout title="Exams & Results" subtitle="Schedule exams and submit student marks">
       <div className="flex items-center justify-between mb-5">
         <div className="flex gap-1 border-b border-border">
-          {([['upcoming', 'Upcoming Exams'], ['enter', 'Enter Results'], ['published', 'Published Results'], ['performance', 'Student Performance']] as const).map(([key, label]) => (
+          {([['upcoming', 'Upcoming Exams'], ['enter', 'Enter Results'], ['recorded', 'Recorded Grades'], ['published', 'Published Results'], ['performance', 'Student Performance']] as const).map(([key, label]) => (
             <button
               key={key}
               onClick={() => setTab(key)}
@@ -138,33 +135,6 @@ function TeacherExams() {
         <div className="rounded-xl border border-border bg-card p-4 mb-5 text-sm text-muted-foreground">Loading teacher assignments…</div>
       ) : assignments ? (
         <>
-          <div className="rounded-xl border border-border bg-card p-4 mb-5 grid gap-3 sm:grid-cols-3">
-            <div>
-              <div className="text-xs uppercase text-muted-foreground">Classes managed</div>
-              <div className="mt-1 font-semibold">{assignments.sections.length}</div>
-              <div className="mt-2 text-sm text-slate-600">{assignments.sections.map((section) => section.full_name).join(", ") || "No classes assigned"}</div>
-            </div>
-            <div>
-              <div className="text-xs uppercase text-muted-foreground">Subjects taught</div>
-              <div className="mt-1 font-semibold">{mergedAssignmentSubjects.length}</div>
-              <div className="mt-2 text-sm text-slate-600">{mergedAssignmentSubjects.join(", ") || "No subjects assigned"}</div>
-            </div>
-            <div>
-              <div className="text-xs uppercase text-muted-foreground">Teaching assignments</div>
-              <div className="mt-2 text-sm text-slate-600 space-y-1">
-                {assignments.assignments.length > 0 ? (
-                  assignments.assignments.map((item) => (
-                    <div key={`${item.section_id}-${item.subject_id}`}>
-                      {item.section.full_name} — {item.subject.name}
-                    </div>
-                  ))
-                ) : (
-                  "No class/subject assignments yet. Contact your administrator."
-                )}
-              </div>
-            </div>
-          </div>
-
           <div className="rounded-xl border border-border bg-card p-4 mb-5 grid gap-3 sm:grid-cols-2">
             <div>
               <label className="text-sm font-medium">Filter by class</label>
@@ -240,6 +210,10 @@ function TeacherExams() {
         />
       )}
 
+      {tab === 'recorded' && (
+        <RecordedGrades gradingRoles={gradingRoles} sectionId={selectedSectionId} subjectId={selectedSubjectId} />
+      )}
+
       {tab === 'published' && (
         <div>
           {loading ? (
@@ -289,13 +263,13 @@ function TeacherExams() {
         />
       )}
 
-      {createOpen && <CreateExamModal onClose={() => { setCreateOpen(false); loadExams(); }} />}
+      {createOpen && <CreateExamModal gradingRoles={gradingRoles} onClose={() => { setCreateOpen(false); loadExams(); }} />}
       {viewExam && <ResultsModal exam={viewExam} onClose={() => setViewExam(null)} />}
     </TeacherLayout>
   );
 }
 
-function CreateExamModal({ onClose }: { onClose: () => void }) {
+function CreateExamModal({ onClose, gradingRoles }: { onClose: () => void; gradingRoles: GradingRole[] }) {
   const [loading, setLoading] = useState(false);
   const [assignmentsLoading, setAssignmentsLoading] = useState(true);
   const [termsLoading, setTermsLoading] = useState(true);
@@ -316,6 +290,8 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
     max_marks: 100,
     pass_mark: 50,
   });
+  const passPercentage = useMemo(() => getPassPercentage(gradingRoles), [gradingRoles]);
+  const calculatedPassMark = Math.round(formData.max_marks * passPercentage) / 100;
 
   useEffect(() => {
     loadTeacherAssignments();
@@ -363,7 +339,12 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
   const loadExamTypes = async () => {
     try {
       setExamTypesLoading(true);
-      setExamTypes(await listExamTypes());
+      const types = await listExamTypes();
+      setExamTypes(types);
+      setFormData((current) => {
+        if (current.exam_type_id || types.length === 0) return current;
+        return { ...current, exam_type_id: types[0].id };
+      });
     } catch (error) {
       toast.error("Failed to load exam types");
       console.error(error);
@@ -374,14 +355,14 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!formData.name || !formData.section_id || !formData.subject_id || !formData.term_id) {
+    if (!formData.name || !formData.section_id || !formData.subject_id || !formData.term_id || !formData.exam_type_id) {
       toast.error("Please fill in all required fields");
       return;
     }
 
     try {
       setLoading(true);
-      await createExam(formData);
+      await createExam({ ...formData, pass_mark: calculatedPassMark });
       toast.success("Exam created successfully");
       onClose();
     } catch (error) {
@@ -499,25 +480,20 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
               </div>
               <div>
                 <label className="text-sm font-medium">Type</label>
-                  <select
-                  value={formData.exam_type_id ? `custom:${formData.exam_type_id}` : formData.type}
+                <select
+                  required
+                  value={formData.exam_type_id}
                   onChange={(e) => {
                     const value = e.target.value;
-                    const custom = value.startsWith("custom:");
-                    setFormData({ ...formData, type: custom ? "cat" : value, exam_type_id: custom ? value.slice(7) : "" });
+                    setFormData({ ...formData, exam_type_id: value, type: "cat" });
                   }}
                   className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
-                  <option value="cat">CAT</option>
-                  <option value="main_exam">Main Exam</option>
-                  <option value="mock">Mock</option>
-                  <option value="quiz">Quiz</option>
-                  <option value="assignment">Assignment</option>
                   {examTypes.map((examType) => (
-                    <option key={examType.id} value={`custom:${examType.id}`}>{examType.name}</option>
+                    <option key={examType.id} value={examType.id}>{examType.name}</option>
                   ))}
                 </select>
-                {examTypes.length > 0 && <p className="mt-2 text-xs text-muted-foreground">Custom types are managed by your school administrator.</p>}
+                <p className="mt-2 text-xs text-muted-foreground">Custom types are managed by your school administrator.</p>
               </div>
             </div>
 
@@ -532,13 +508,15 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">Pass Mark</label>
+                <label className="text-sm font-medium">Pass Mark (auto-calculated)</label>
                 <input
                   type="number"
-                  value={formData.pass_mark}
-                  onChange={(e) => setFormData({ ...formData, pass_mark: parseInt(e.target.value, 10) || 0 })}
-                  className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={calculatedPassMark}
+                  readOnly
+                  aria-readonly="true"
+                  className="mt-1 h-9 w-full rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground"
                 />
+                <p className="mt-2 text-xs text-muted-foreground">Based on the configured {passPercentage}% passing threshold.</p>
               </div>
             </div>
 
@@ -566,16 +544,63 @@ function CreateExamModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+function RecordedGrades({ gradingRoles, sectionId, subjectId }: { gradingRoles: GradingRole[]; sectionId: string; subjectId: string }) {
+  const [exams, setExams] = useState<TeacherExam[]>([]);
+  const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    try {
+      setLoading(true);
+      const data = await getTeacherExams({ section_id: sectionId || undefined, subject_id: subjectId || undefined });
+      setExams(data.filter((exam) => (exam.marked_count ?? 0) > 0));
+    } catch (error) {
+      toast.error("Failed to load recorded grades");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); }, [sectionId, subjectId]);
+
+  if (selectedExamId) {
+    return <EnterResults sectionId={sectionId} subjectId={subjectId} assignedSubjects={[]} gradingRoles={gradingRoles} initialExamId={selectedExamId} recordedMode onBack={() => { setSelectedExamId(null); load(); }} />;
+  }
+
+  return (
+    <div>
+      <p className="mb-4 text-sm text-muted-foreground">Select a recorded exam to review or edit draft marks.</p>
+      {loading ? <div className="p-8 text-center text-muted-foreground">Loading recorded grades…</div> : exams.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card p-12 text-center text-muted-foreground">No recorded grades yet.</div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {exams.map((exam) => (
+            <button key={exam.id} onClick={() => setSelectedExamId(exam.id)} className="rounded-xl border border-border bg-card p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary">
+              <div className="flex items-start justify-between gap-3"><div><div className="font-display font-bold">{exam.name}</div><div className="mt-1 text-xs text-muted-foreground">{exam.section?.full_name ?? "—"} · {exam.subject?.name ?? "—"}</div></div><Award className="h-5 w-5 text-amber-500" /></div>
+              <div className="mt-4 flex items-center justify-between text-sm"><span>{exam.marked_count ?? 0} marked · Max {exam.max_marks}</span><span className={`rounded-full px-2 py-1 text-xs font-semibold ${exam.status === "scheduled" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{exam.status === "scheduled" ? "Draft" : "Submitted"}</span></div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EnterResults({
   sectionId,
   subjectId,
   assignedSubjects,
   gradingRoles,
+  initialExamId,
+  recordedMode = false,
+  onBack,
 }: {
   sectionId: string;
   subjectId: string;
   assignedSubjects: Array<{ id: string; name: string; code?: string }>;
   gradingRoles: GradingRole[];
+  initialExamId?: string;
+  recordedMode?: boolean;
+  onBack?: () => void;
 }) {
   const [exams, setExams] = useState<TeacherExam[]>([]);
   const [selectedExam, setSelectedExam] = useState<TeacherExam | null>(null);
@@ -597,8 +622,7 @@ function EnterResults({
         section_id: sectionId || undefined,
         subject_id: subjectId || undefined,
       });
-      // Published exams stay in the list so the teacher can review their marks
-      // read-only; the grid disables editing when published_at is set.
+      // Submitted and published exams stay in the list for read-only review.
       const eligible = data.filter(
         (exam) =>
           exam.status === "scheduled" ||
@@ -606,7 +630,7 @@ function EnterResults({
           exam.status === "completed"
       );
       setExams(eligible);
-      setSelectedExam(eligible[0] || null);
+      setSelectedExam(eligible.find((exam) => exam.id === initialExamId) || eligible[0] || null);
     } catch (error) {
       toast.error("Failed to load exams");
       console.error(error);
@@ -646,6 +670,12 @@ function EnterResults({
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (initialExamId && selectedExam?.id === initialExamId && !loaded) {
+      handleLoadStudents();
+    }
+  }, [initialExamId, selectedExam?.id]);
 
   const buildPayload = () => {
     const maxMarks = selectedExam ? parseFloat(selectedExam.max_marks) : 100;
@@ -712,8 +742,44 @@ function EnterResults({
 
   const gradeForScore = (score: number, maxMarks: number) => computeConfiguredGrade(score, maxMarks, gradingRoles);
 
-  // Once the admin publishes, marks are frozen — the backend rejects edits with a 409.
+  // Publication controls visibility. Editing is controlled separately by the
+  // approved-request state (scheduled), so unpublishing does not unlock marks.
   const isPublished = Boolean(selectedExam?.published_at);
+  const canEdit = selectedExam?.status === "scheduled";
+  const [requestReason, setRequestReason] = useState("");
+  const [requesting, setRequesting] = useState(false);
+  const [modificationRequests, setModificationRequests] = useState<ExamModificationRequest[]>([]);
+  const [requestHistoryPage, setRequestHistoryPage] = useState(0);
+  const requestHistoryPageSize = 5;
+
+  useEffect(() => {
+    if (!selectedExam) {
+      setModificationRequests([]);
+      setRequestHistoryPage(0);
+      return;
+    }
+    setRequestHistoryPage(0);
+    listExamModificationRequests()
+      .then((requests) => setModificationRequests(requests.filter((request) => request.exam_id === selectedExam.id)))
+      .catch((error) => console.error("Failed to load modification request history", error));
+  }, [selectedExam?.id]);
+
+  const handleModificationRequest = async () => {
+    if (!selectedExam || requestReason.trim().length < 5) return toast.error("Please provide a reason of at least 5 characters");
+    try {
+      setRequesting(true);
+      await requestExamModification(selectedExam.id, requestReason.trim());
+      toast.success("Modification request sent to the school administrator");
+      setRequestReason("");
+      const requests = await listExamModificationRequests();
+      setModificationRequests(requests.filter((request) => request.exam_id === selectedExam.id));
+      setRequestHistoryPage(0);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to send modification request");
+    } finally {
+      setRequesting(false);
+    }
+  };
 
   return (
     <div>
@@ -763,8 +829,23 @@ function EnterResults({
 
       {loaded && selectedExam && (
         <div className="rounded-xl border border-border bg-card overflow-hidden shadow-sm">
-          <div className="px-4 py-3 border-b border-border text-sm">
+          <div className="px-4 py-3 border-b border-border text-sm flex items-center justify-between gap-3">
+            {onBack && <button onClick={onBack} className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> Back</button>}
             <b>{selectedExam.name}</b> · {selectedExam.section?.full_name} · Max marks: {selectedExam.max_marks} · {Object.keys(results).filter((key) => results[key].score || results[key].is_absent).length}/{students.length} marked
+          </div>
+          <div className="border-b border-border bg-muted/30 px-4 py-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Grade calculation</div>
+            {gradingRoles.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {gradingRoles.map((role) => (
+                  <span key={role.id} className="rounded-md border border-border bg-background px-2 py-1 text-xs">
+                    <b>{role.code}</b> {role.label} · {role.min_percentage}%–{role.max_percentage}%
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-1 text-xs text-muted-foreground">No active grading roles configured; the default grading scale is being used.</p>
+            )}
           </div>
           {isPublished && (
             <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -798,7 +879,7 @@ function EnterResults({
                         type="number"
                         min={0}
                         max={maxMarks}
-                        disabled={result.is_absent || isPublished}
+                        disabled={result.is_absent || isPublished || !canEdit}
                         value={result.score}
                         onChange={(e) => setResults({
                           ...results,
@@ -826,7 +907,7 @@ function EnterResults({
                         <input
                           type="checkbox"
                           checked={result.is_absent}
-                          disabled={isPublished}
+                          disabled={isPublished || !canEdit}
                           onChange={(e) => setResults({
                             ...results,
                             [student.id]: { ...result, is_absent: e.target.checked, score: e.target.checked ? '' : result.score },
@@ -840,7 +921,7 @@ function EnterResults({
                       <input
                         className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs disabled:opacity-50"
                         placeholder="Comment shown on the report card"
-                        disabled={isPublished}
+                        disabled={isPublished || !canEdit}
                         value={result.remarks}
                         onChange={(e) => setResults({
                           ...results,
@@ -853,7 +934,7 @@ function EnterResults({
               })}
             </tbody>
           </table>
-          {!isPublished && (
+          {!isPublished && canEdit && (
             <div className="p-4 border-t border-border flex justify-end gap-2">
               <button
                 onClick={handleSaveDraft}
@@ -869,6 +950,43 @@ function EnterResults({
               >
                 {submitting ? 'Submitting...' : 'Submit for Review'}
               </button>
+            </div>
+          )}
+          {!canEdit && (
+            <div className="border-t border-border bg-amber-50 p-4">
+              <div className="text-sm font-semibold text-amber-900">These results are locked for editing.</div>
+              <p className="mt-1 text-xs text-amber-800">Unpublishing does not unlock results. Ask the school administrator to approve a grade-update request.</p>
+              <textarea value={requestReason} onChange={(e) => setRequestReason(e.target.value)} className="mt-3 min-h-20 w-full rounded-md border border-amber-200 bg-white p-2 text-sm" placeholder="Reason for modification request" />
+              <button onClick={handleModificationRequest} disabled={requesting} className="mt-2 inline-flex h-9 items-center gap-2 rounded-md bg-amber-700 px-4 text-sm font-semibold text-white disabled:opacity-50"><MessageSquare className="h-4 w-4" />{requesting ? "Sending…" : "Request modification"}</button>
+              <div className="mt-4 border-t border-amber-200 pt-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-amber-900">Recent request history</div>
+                {modificationRequests.length === 0 ? (
+                  <p className="mt-2 text-xs text-amber-800">No modification requests for this exam yet.</p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {modificationRequests.slice(requestHistoryPage * requestHistoryPageSize, (requestHistoryPage + 1) * requestHistoryPageSize).map((request) => (
+                      <div key={request.id} className="rounded-md border border-amber-200 bg-white/70 p-2 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold capitalize">{request.status}</span>
+                          <span className="text-amber-800">{new Date(request.created_at).toLocaleString()}</span>
+                        </div>
+                        <div className="mt-1 text-amber-950">{request.reason}</div>
+                      </div>
+                    ))}
+                    {modificationRequests.length > requestHistoryPageSize && (
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[11px] text-amber-800">
+                          Showing {requestHistoryPage * requestHistoryPageSize + 1}–{Math.min((requestHistoryPage + 1) * requestHistoryPageSize, modificationRequests.length)} of {modificationRequests.length}
+                        </span>
+                        <div className="flex gap-1">
+                          <button onClick={() => setRequestHistoryPage((page) => page - 1)} disabled={requestHistoryPage === 0} className="inline-flex h-7 items-center gap-1 rounded border border-amber-300 px-2 text-[11px] font-semibold text-amber-900 disabled:opacity-40"><ChevronLeft className="h-3 w-3" /> Previous</button>
+                          <button onClick={() => setRequestHistoryPage((page) => page + 1)} disabled={(requestHistoryPage + 1) * requestHistoryPageSize >= modificationRequests.length} className="inline-flex h-7 items-center gap-1 rounded border border-amber-300 px-2 text-[11px] font-semibold text-amber-900 disabled:opacity-40">Next <ChevronRight className="h-3 w-3" /></button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

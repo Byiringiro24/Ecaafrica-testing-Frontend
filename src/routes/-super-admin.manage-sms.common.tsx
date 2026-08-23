@@ -16,10 +16,20 @@ import {
 } from "@/lib/template-api";
 
 export const SMS_TRIGGER_TYPES = [
-  { value: "school_entry", label: "School Entry" },
-  { value: "school_exit", label: "School Exit" },
-  { value: "class_entry", label: "Class Entry" },
-  { value: "class_absent", label: "Class Absent" }
+  { value: "school_entry", label: "School Entry", group: "Gate & school" },
+  { value: "school_exit", label: "School Exit", group: "Gate & school" },
+  { value: "class_entry", label: "Class Present", group: "Classroom" },
+  { value: "class_late", label: "Class Late", group: "Classroom" },
+  { value: "class_absent", label: "Class Absent", group: "Classroom" },
+  { value: "class_excused", label: "Class Excused", group: "Classroom" },
+  { value: "dormitory_morning_present", label: "Dormitory Morning Present", group: "Dormitory" },
+  { value: "dormitory_morning_absent", label: "Dormitory Morning Absent", group: "Dormitory" },
+  { value: "dormitory_morning_on_leave", label: "Dormitory Morning On Leave", group: "Dormitory" },
+  { value: "dormitory_evening_present", label: "Dormitory Evening Present", group: "Dormitory" },
+  { value: "dormitory_evening_absent", label: "Dormitory Evening Absent", group: "Dormitory" },
+  { value: "dormitory_evening_on_leave", label: "Dormitory Evening On Leave", group: "Dormitory" },
+  { value: "device_late", label: "Attendance Device Late", group: "Device status" },
+  { value: "device_absent", label: "Attendance Device Absent", group: "Device status" }
 ] as const;
 
 const normalizeTemplates = (value: unknown) => {
@@ -34,17 +44,38 @@ const renderTemplateText = (
   body: string,
   variables: Record<string, string | number | boolean> = {}
 ) =>
-  body.replace(/\{\{\s*([\w.]+)\s*\}\}|\$\{\s*([\w.]+)\s*\}/g, (_, keyA: string, keyB: string) => {
-    const key = keyA ?? keyB;
-    const value = variables[key];
-    return value !== undefined && value !== null ? String(value) : "";
-  });
+  body
+    .replace(/\{\{\s*([\w.]+)\s*\}\}|\$\{\s*([\w.]+)\s*\}/g, (_, keyA: string, keyB: string) => {
+      const key = keyA ?? keyB;
+      const value = variables[key];
+      return value !== undefined && value !== null ? String(value) : "";
+    })
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\n")
+    .replace(/&#x20;|&nbsp;/gi, " ")
+    .replace(/&#x0a;|&#10;/gi, "\n")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
 
 const defaultBodies: Record<string, string> = {
-  school_entry: "Education Care\nAttendance: ${student_name} has checked in at ${time}.\nThank you for staying connected.",
-  school_exit: "Education Care\nAttendance: ${student_name} has checked out at ${time}.\nThank you for staying connected.",
-  class_entry: "Education Care\nAttendance: ${student_name} has entered class at ${time}.\nThank you for staying connected.",
-  class_absent: "Education Care\nAttendance: ${student_name} was absent from class today.\nPlease contact the school for details."
+  school_entry: "Education Care\nAttendance: Your child, ${student_name}, has arrived safely at school.\nDate: ${date}\nTime: ${time}",
+  school_exit: "Education Care\nAttendance: Your child, ${student_name}, has left school safely.\nDate: ${date}\nTime: ${time}",
+  class_entry: "Education Care\nAttendance: ${student_name} is present in class.\nDate: ${date}\nTime: ${time}",
+  class_late: "Education Care\nAttendance: ${student_name} arrived late to class.\nDate: ${date}\nTime: ${time}",
+  class_absent: "Education Care\nAttendance alert: ${student_name} was absent from class.\nDate: ${date}\nTime: ${time}\nPlease follow up with the school.",
+  class_excused: "Education Care\nAttendance: ${student_name} was excused from class.\nDate: ${date}\nTime: ${time}",
+  dormitory_morning_present: "Education Care\nBoarding attendance: ${student_name} was present during the morning dormitory roll call.\nDate: ${date}\nTime: ${time}",
+  dormitory_morning_absent: "Education Care\nBoarding attendance alert: ${student_name} was absent from the morning dormitory roll call.\nDate: ${date}\nTime: ${time}",
+  dormitory_morning_on_leave: "Education Care\nBoarding attendance: ${student_name} was recorded on leave during the morning roll call.\nDate: ${date}\nTime: ${time}",
+  dormitory_evening_present: "Education Care\nBoarding attendance: ${student_name} was present during the evening dormitory roll call.\nDate: ${date}\nTime: ${time}",
+  dormitory_evening_absent: "Education Care\nBoarding attendance alert: ${student_name} was absent from the evening dormitory roll call.\nDate: ${date}\nTime: ${time}",
+  dormitory_evening_on_leave: "Education Care\nBoarding attendance: ${student_name} was recorded on leave during the evening roll call.\nDate: ${date}\nTime: ${time}",
+  device_late: "Education Care\nAttendance alert: ${student_name} was recorded late.\nDate: ${date}\nTime: ${time}",
+  device_absent: "Education Care\nAttendance alert: ${student_name} was not recorded during the configured attendance window.\nDate: ${date}\nTime: ${time}"
 };
 
 type ManageSmsTypePageProps = {
@@ -117,7 +148,11 @@ export function ManageSmsTypePage({ triggerType, typeLabel }: ManageSmsTypePageP
     const variables = {
       student_name: "Jane Doe",
       studentName: "Jane Doe",
-      time: "08:30"
+      time: "08:30",
+      date: "23/08/2026",
+      attendance_status: "present",
+      status: "present",
+      session_name: "Morning"
     };
 
     if (selectedTemplate) {
@@ -283,7 +318,7 @@ export function ManageSmsTypePage({ triggerType, typeLabel }: ManageSmsTypePageP
             <div className="space-y-4 rounded-xl border border-border bg-background p-6 shadow-sm">
               <div className="space-y-2">
                 <h2 className="text-lg font-semibold">{selectedTemplate ? "Edit SMS Template" : "Create SMS Template"}</h2>
-                <p className="text-sm text-muted-foreground">This template will be used for {typeLabel.toLowerCase()} attendance SMS messages.</p>
+                <p className="text-sm text-muted-foreground">This registered system template can be selected by schools for {typeLabel.toLowerCase()} attendance events.</p>
               </div>
 
               <div className="space-y-4">
@@ -294,7 +329,7 @@ export function ManageSmsTypePage({ triggerType, typeLabel }: ManageSmsTypePageP
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-foreground">English Template</label>
                   <div className="text-xs text-muted-foreground">
-                    Use <code className="rounded bg-muted px-1 py-0.5 text-xs">${"{student_name}"}</code> and <code className="rounded bg-muted px-1 py-0.5 text-xs">${"{time}"}</code>.
+                    Available placeholders: <code className="rounded bg-muted px-1 py-0.5 text-xs">${"{student_name}"}</code>, <code className="rounded bg-muted px-1 py-0.5 text-xs">${"{time}"}</code>, <code className="rounded bg-muted px-1 py-0.5 text-xs">${"{date}"}</code>, <code className="rounded bg-muted px-1 py-0.5 text-xs">${"{status}"}</code>, and <code className="rounded bg-muted px-1 py-0.5 text-xs">${"{session_name}"}</code>.
                   </div>
                   <Textarea rows={6} value={messageBodyEn} onChange={(e) => setMessageBodyEn(e.target.value)} className="min-h-[120px]" />
                 </div>

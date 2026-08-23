@@ -9,6 +9,7 @@ import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { localDateInputValue } from "@/lib/dateInput";
 import { studentSearchText, studentIdNumber } from "@/lib/studentIdentity";
 
 export const Route = createFileRoute("/teacher/attendance")({
@@ -172,7 +173,7 @@ function TeacherAttendance() {
   const auth = getSchoolAuth();
   const teacherId = auth?.user?.id;
   
-  const todayValue = new Date().toISOString().slice(0, 10);
+  const todayValue = localDateInputValue();
   const [tab, setTab] = useState<"history" | "manual">("history");
   const [classRecords, setClassRecords] = useState<ClassRecord[]>([]);
   const [sectionRecords, setSectionRecords] = useState<SectionRecord[]>([]);

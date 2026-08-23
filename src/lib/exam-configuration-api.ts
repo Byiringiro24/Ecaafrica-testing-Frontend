@@ -19,6 +19,17 @@ export interface GradingRole {
   sort_order: number;
 }
 
+/** Returns the configured percentage at which an exam is considered passed. */
+export function getPassPercentage(roles: GradingRole[]): number {
+  const passingRoles = roles.filter((role) => !/^(f|fail)/i.test(role.code.trim()));
+  if (passingRoles.length > 0) {
+    return Math.min(...passingRoles.map((role) => Number(role.min_percentage)));
+  }
+
+  const failingRole = roles.find((role) => /^(f|fail)/i.test(role.code.trim()));
+  return failingRole ? Math.min(Number(failingRole.max_percentage) + 1, 100) : 50;
+}
+
 export const listExamTypes = (includeInactive = false) =>
   apiRequest<ExamTypeOption[]>(`/exam-configuration/exam-types${includeInactive ? "?include_inactive=true" : ""}`, { method: "GET", auth: "school" });
 

@@ -1,10 +1,11 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { studentSearchText, studentIdNumber } from "@/lib/studentIdentity";
 import { syncLiveAttendanceFromTablets, type SyncSummary } from "@/lib/liveAttendanceSync";
 import {
   type ApiRecord,
@@ -20,6 +21,9 @@ import {
 } from "@/lib/gateKeeperAttendance";
 
 export const Route = createFileRoute("/gate-keeper/attendance/make-attendance")({
+  beforeLoad: () => {
+    throw redirect({ to: "/gate-keeper/attendance/device-attendance" });
+  },
   component: MakeAttendancePage,
 });
 
@@ -144,7 +148,7 @@ function MakeAttendancePage() {
       const name = `${student.first_name} ${student.last_name}`.toLowerCase();
       return (
         name.includes(needle) ||
-        (student.student_id_number ?? "").toLowerCase().includes(needle)
+        studentSearchText(student).includes(needle)
       );
     });
   }, [students, classFilter, sectionFilter, search]);
@@ -394,7 +398,7 @@ function MakeAttendancePage() {
                             </div>
                           </td>
                           <td className="px-5 py-3 font-mono text-xs text-muted-foreground">
-                            {student.student_id_number ?? "—"}
+                            {studentIdNumber(student)}
                           </td>
                           <td className="px-5 py-3">
                             {classLabelForSection(student.current_section?.id)}

@@ -6,6 +6,7 @@ import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { studentIdNumber } from "@/lib/studentIdentity";
 import { todayIso } from "@/lib/gateKeeperAttendance";
 
 export const Route = createFileRoute("/gate-keeper/attendance/device-attendance")({
@@ -109,7 +110,7 @@ function DeviceAttendancePage() {
         return {
           id: log.id,
           studentName,
-          studentNumber: student?.student_id_number ?? "—",
+          studentNumber: studentIdNumber(student),
           className,
           eventType: log.event_type === "entry" ? "Entry" : "Exit",
           scanMethod: log.scan_method ?? "manual",

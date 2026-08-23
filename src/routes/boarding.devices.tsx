@@ -48,6 +48,8 @@ import {
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest } from "@/lib/api";
+import { localDateInputValue } from "@/lib/dateInput";
+import { studentSearchText, studentIdNumber } from "@/lib/studentIdentity";
 import { DEFAULT_FK623_CONFIG } from "@/lib/tabletApi";
 import { cn } from "@/lib/utils";
 
@@ -223,7 +225,7 @@ const unwrapList = <T,>(payload: unknown): T[] => {
 };
 
 const studentName = (student: Student) =>
-  `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim() || student.student_id_number || student.id;
+  `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim() || studentIdNumber(student);
 
 const buildDeviceUserId = (student: Student) => {
   if (student.device_user_id) return student.device_user_id;
@@ -265,7 +267,7 @@ function ServerCommandCenter() {
     scan_method: "fingerprint",
     scanned_at: "",
   });
-  const [absentDate, setAbsentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [absentDate, setAbsentDate] = useState(localDateInputValue());
   const refreshAllInFlight = useRef(false);
   const statusPollInFlight = useRef(false);
 
@@ -280,8 +282,8 @@ function ServerCommandCenter() {
   const [dbLogsLoading, setDbLogsLoading] = useState(false);
   const [dbLogsMeta, setDbLogsMeta] = useState({ total: 0, page: 1, limit: 20, totalPages: 1 });
   const [dbLogsPage, setDbLogsPage] = useState(1);
-  const [dbStartDate, setDbStartDate] = useState(new Date().toISOString().slice(0, 10));
-  const [dbEndDate, setDbEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dbStartDate, setDbStartDate] = useState(localDateInputValue());
+  const [dbEndDate, setDbEndDate] = useState(localDateInputValue());
   const [dbStartTime, setDbStartTime] = useState("00:00");
   const [dbEndTime, setDbEndTime] = useState("23:59");
   const [dbSearch, setDbSearch] = useState("");
@@ -317,7 +319,7 @@ function ServerCommandCenter() {
     const normalizedQuery = query.trim().toLowerCase();
     return students.filter((student) => {
       const inClass = !classId || student.current_section?.class_id === classId;
-      const searchable = `${studentName(student)} ${student.student_id_number ?? ""} ${student.current_section?.full_name ?? ""}`.toLowerCase();
+      const searchable = `${studentSearchText(student)} ${student.current_section?.full_name ?? ""}`.toLowerCase();
       return inClass && (!normalizedQuery || searchable.includes(normalizedQuery));
     });
   }, [classId, query, students]);
@@ -371,7 +373,7 @@ function ServerCommandCenter() {
       setSelectedTabletId((current) => current || nextTablets[0]?.id || "");
 
       const currentDevice = nextDevices.find((device) => device.id === selectedDeviceId) ?? nextDevices[0];
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDateInputValue();
       if (currentDevice) {
         const [logsResult, sessionsResult] = await Promise.allSettled([
           apiRequest<AttendanceLog[]>(`/devices/${currentDevice.id}/logs?limit=500`, { auth: "school" }),
@@ -1273,7 +1275,7 @@ function ServerCommandCenter() {
                         </td>
                         <td>
                           <div className="font-semibold text-slate-900">{studentName(student)}</div>
-                          <div className="text-xs text-slate-500">{student.student_id_number ?? student.id}</div>
+                          <div className="text-xs text-slate-500">Student ID Number: {studentIdNumber(student)}</div>
                         </td>
                         <td>{student.current_section?.full_name ?? "Unassigned"}</td>
                         <td className="font-mono">{buildDeviceUserId(student)}</td>
@@ -1635,7 +1637,7 @@ function ServerCommandCenter() {
                     <form onSubmit={recordManualAttendanceEvent} className="grid gap-3">
                       <SelectField label="Student" value={manualEventForm.student_id} onChange={(value) => setManualEventForm({ ...manualEventForm, student_id: value })}>
                         <option value="">No student selected</option>
-                        {students.map((student) => <option key={student.id} value={student.id}>{studentName(student)}</option>)}
+                        {students.map((student) => <option key={student.id} value={student.id}>{studentName(student)} · {studentIdNumber(student)}</option>)}
                       </SelectField>
                       <SelectField label="Session" value={manualEventForm.session_name} onChange={(value) => setManualEventForm({ ...manualEventForm, session_name: value })}>
                         <option value="">Default session</option>
@@ -1935,7 +1937,7 @@ function LogTable({ logs }: { logs: AttendanceLog[] }) {
             <tr key={log.id}>
               <td>
                 <div className="font-semibold text-foreground">{`${log.first_name ?? ""} ${log.last_name ?? ""}`.trim() || log.student_id_number || log.student_id || "Unknown"}</div>
-                <div className="text-xs text-muted-foreground">{log.student_id_number ?? log.student_id ?? "-"}</div>
+                <div className="text-xs text-muted-foreground">Student ID Number: {log.student_id_number ?? log.student_id ?? "-"}</div>
               </td>
               <td>{log.device_id ?? "-"}</td>
               <td>{log.scan_method ?? "-"}</td>

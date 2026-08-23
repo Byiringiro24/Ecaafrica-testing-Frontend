@@ -112,7 +112,7 @@ function AnalyticsPage() {
                 <StatCard label="SMS This Month" value="248,120" />
                 <StatCard label="All Time" value="2.4M" />
                 <StatCard label="Delivery Rate" value="98.2%" tone="success" />
-                <StatCard label="Cost / SMS" value="RWF 12" />
+                <StatCard label="Cost / SMS" value="12" />
               </div>
               <ChartCard title="SMS by Provider" className="mb-5">
                 <ResponsiveContainer width="100%" height={220}>

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { X, Award, Loader2, Send } from "lucide-react";
+import { X, Award, CheckCircle2, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import {
   type AdminExam,
   getExamResults,
   publishExamResults,
+  updateExam,
   studentDisplayName,
   gradeBadgeClass,
   examTypeLabel,
@@ -15,12 +16,22 @@ interface Props {
   exam: AdminExam;
   onClose: () => void;
   onPublished?: () => void;
+  onReviewed?: () => void;
   allowPublish?: boolean;
+  allowMarkReviewed?: boolean;
 }
 
-export function ExamResultsModal({ exam, onClose, onPublished, allowPublish = false }: Props) {
+export function ExamResultsModal({
+  exam,
+  onClose,
+  onPublished,
+  onReviewed,
+  allowPublish = false,
+  allowMarkReviewed = false,
+}: Props) {
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
+  const [markingReviewed, setMarkingReviewed] = useState(false);
   const [data, setData] = useState<Awaited<ReturnType<typeof getExamResults>> | null>(null);
 
   useEffect(() => {
@@ -37,6 +48,23 @@ export function ExamResultsModal({ exam, onClose, onPublished, allowPublish = fa
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMarkReviewed = async () => {
+    if (!confirm(`Mark "${exam.name}" as reviewed?`)) return;
+
+    try {
+      setMarkingReviewed(true);
+      await updateExam(exam.id, { status: "completed" });
+      toast.success("Exam marked as reviewed");
+      onReviewed?.();
+      onClose();
+    } catch (error) {
+      toast.error("Failed to mark exam as reviewed");
+      console.error(error);
+    } finally {
+      setMarkingReviewed(false);
     }
   };
 
@@ -76,7 +104,7 @@ export function ExamResultsModal({ exam, onClose, onPublished, allowPublish = fa
             <div className="mt-1 text-sm text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
               <span>{exam.section?.full_name ?? "—"}</span>
               <span>{exam.subject?.name ?? "—"}</span>
-              <span>{examTypeLabel(exam.type)}</span>
+              <span>{examTypeLabel(exam.type, exam.exam_type?.name)}</span>
               {exam.exam_date && (
                 <span>{new Date(exam.exam_date).toLocaleDateString()}</span>
               )}
@@ -88,9 +116,21 @@ export function ExamResultsModal({ exam, onClose, onPublished, allowPublish = fa
               </span>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-md p-1 hover:bg-muted">
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {allowMarkReviewed && exam.status !== "completed" && (
+              <button
+                onClick={handleMarkReviewed}
+                disabled={markingReviewed}
+                className="h-9 rounded-md bg-emerald-600 px-3 text-sm font-semibold text-white inline-flex items-center gap-2 hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {markingReviewed ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                Mark as reviewed
+              </button>
+            )}
+            <button onClick={onClose} className="rounded-md p-1 hover:bg-muted">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {loading ? (

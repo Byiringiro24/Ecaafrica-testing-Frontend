@@ -9,6 +9,8 @@ import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { localDateInputValue } from "@/lib/dateInput";
+import { studentSearchText, studentIdNumber } from "@/lib/studentIdentity";
 
 export const Route = createFileRoute("/teacher/attendance")({
   beforeLoad: ({ location }) => teacherRouteGuard(location),
@@ -35,6 +37,7 @@ type SectionRecord = {
 
 type ApiStudent = {
   id: string;
+  student_school_id?: string | null;
   first_name: string;
   last_name: string;
   student_id_number?: string | null;
@@ -47,6 +50,7 @@ type ApiSession = {
   section_id: string;
   session_date: string;
   session_type?: string | null;
+  submitted_at?: string | null;
 };
 
 type ApiRecord = {
@@ -95,17 +99,6 @@ const MANUAL_STATUS_CLASSES: Record<ApiStatus, string> = {
   absent: "bg-destructive/15 text-destructive border-destructive/30",
   late: "bg-amber-100 text-amber-700 border-amber-200",
   excused: "bg-blue-100 text-blue-700 border-blue-200"
-};
-
-const formatLongDate = (value: string) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-GB", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric"
-  });
 };
 
 const formatTime = (value?: string | null, status?: ApiStatus) => {
@@ -180,21 +173,17 @@ function TeacherAttendance() {
   const auth = getSchoolAuth();
   const teacherId = auth?.user?.id;
   
-  const todayValue = new Date().toISOString().slice(0, 10);
-  const [tab, setTab] = useState<"live" | "history" | "manual">("live");
+  const todayValue = localDateInputValue();
+  const [tab, setTab] = useState<"history" | "manual">("history");
   const [classRecords, setClassRecords] = useState<ClassRecord[]>([]);
   const [sectionRecords, setSectionRecords] = useState<SectionRecord[]>([]);
   const [studentsById, setStudentsById] = useState<Record<string, ApiStudent>>({});
-  const [sessions, setSessions] = useState<ApiSession[]>([]);
-  const [records, setRecords] = useState<ApiRecord[]>([]);
-  const [dateFilter, setDateFilter] = useState(todayValue);
   const [sectionFilter, setSectionFilter] = useState("");
   const [search, setSearch] = useState("");
   const [historyStartDate, setHistoryStartDate] = useState(todayValue);
   const [historyEndDate, setHistoryEndDate] = useState(todayValue);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [recordsLoading, setRecordsLoading] = useState(false);
 
   const [manualSectionId, setManualSectionId] = useState("");
   const [manualDate, setManualDate] = useState(todayValue);
@@ -205,6 +194,7 @@ function TeacherAttendance() {
   const [manualSaving, setManualSaving] = useState(false);
   const [manualSearch, setManualSearch] = useState("");
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
+  const [manualSubmitted, setManualSubmitted] = useState(false);
 
   const clampManualDate = (value: string) => {
     if (value && value > todayValue) {
@@ -215,14 +205,6 @@ function TeacherAttendance() {
   };
 
   const clampHistoryDate = (value: string) => {
-    if (value && value > todayValue) {
-      toast.error("Future dates are not allowed");
-      return todayValue;
-    }
-    return value;
-  };
-
-  const clampDate = (value: string) => {
     if (value && value > todayValue) {
       toast.error("Future dates are not allowed");
       return todayValue;
@@ -308,37 +290,6 @@ function TeacherAttendance() {
     }
   };
 
-  const loadAttendanceData = async (targetDate: string, targetSectionId: string) => {
-    if (!targetSectionId) return;
-    setRecordsLoading(true);
-    try {
-      const sessionList = await apiRequest<ApiSession[]>(
-        `/attendance/sessions?date=${targetDate}&section_id=${targetSectionId}&limit=200`,
-        { auth: "school" }
-      );
-      setSessions(sessionList);
-
-      if (sessionList.length === 0) {
-        setRecords([]);
-      } else {
-        const recordBatches = await Promise.all(
-          sessionList.map((session) =>
-            apiRequest<ApiRecord[]>(`/attendance/records?session_id=${session.id}&limit=2000`, {
-              auth: "school"
-            }).catch(() => [])
-          )
-        );
-        setRecords(recordBatches.flat());
-      }
-
-      await fetchStudentsForSection(targetSectionId);
-    } catch (error: any) {
-      toast.error(error?.message ?? "Failed to load attendance records");
-    } finally {
-      setRecordsLoading(false);
-    }
-  };
-
   const [historySessions, setHistorySessions] = useState<ApiSession[]>([]);
   const [historyRecords, setHistoryRecords] = useState<ApiRecord[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
@@ -417,6 +368,7 @@ function TeacherAttendance() {
 
     setManualLoading(true);
     setManualLoaded(false);
+    setManualSubmitted(false);
     try {
       const [students, existingSessions] = await Promise.all([
         apiRequest<ApiStudent[]>(`/students?section_id=${manualSectionId}&limit=500`, {
@@ -433,6 +385,7 @@ function TeacherAttendance() {
 
       const existingSession = existingSessions[0] ?? null;
       setManualSessionId(existingSession?.id ?? null);
+      setManualSubmitted(Boolean(existingSession?.submitted_at));
 
       if (existingSession) {
         const existingRecords = await apiRequest<ApiRecord[]>(
@@ -504,11 +457,15 @@ function TeacherAttendance() {
         })
       });
 
-      toast.success("Attendance saved");
-      setDateFilter(manualDate);
+      await apiRequest(`/attendance/sessions/${sessionId}/close`, {
+        method: "PATCH",
+        auth: "school"
+      });
+
+      setManualSubmitted(true);
+      toast.success("Attendance submitted");
       setSectionFilter(manualSectionId);
-      await loadAttendanceData(manualDate, manualSectionId);
-      setTab("live");
+      setTab("history");
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to save attendance");
     } finally {
@@ -530,46 +487,9 @@ function TeacherAttendance() {
   }, [classOptions, sectionFilter, manualSectionId]);
 
   useEffect(() => {
-    if (sectionFilter) {
-      loadAttendanceData(dateFilter, sectionFilter);
-    }
-  }, [dateFilter, sectionFilter]);
-
-  useEffect(() => {
     setManualSessionId(null);
     setManualLoaded(false);
   }, [manualSectionId, manualDate]);
-
-  const todayLabel = useMemo(() => formatLongDate(dateFilter), [dateFilter]);
-
-  const sessionMap = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);
-
-  const rows = useMemo<AttendanceRow[]>(() => {
-    return records.map((record) => {
-      const session = sessionMap.get(record.session_id);
-      const sectionId = session?.section_id ?? "";
-      const student = studentsById[record.student_id];
-      const studentName = student
-        ? `${student.first_name} ${student.last_name}`.trim()
-        : "Unknown student";
-      const cardId = student?.student_id_number ?? "--";
-      const status = STATUS_LABEL[record.status];
-      const timeIn = formatTime(record.scanned_at ?? record.created_at, record.status);
-      const className = classLabelForSection(sectionId);
-
-      return {
-        id: record.id,
-        studentId: record.student_id,
-        studentName,
-        cardId,
-        className,
-        timeIn,
-        status,
-        sessionId: record.session_id,
-        sectionId
-      };
-    });
-  }, [records, sessionMap, studentsById, classMap, sectionMap]);
 
   const historyRows = useMemo<AttendanceRow[]>(() => {
     return historyRecords.map((record) => {
@@ -579,7 +499,7 @@ function TeacherAttendance() {
       const studentName = student
         ? `${student.first_name} ${student.last_name}`.trim()
         : "Unknown student";
-      const cardId = student?.student_id_number ?? "--";
+      const cardId = studentIdNumber(student);
       const status = STATUS_LABEL[record.status];
       const timeIn = formatTime(record.scanned_at ?? record.created_at, record.status);
       const className = classLabelForSection(sectionId);
@@ -596,21 +516,7 @@ function TeacherAttendance() {
         sectionId
       };
     });
-  }, [historyRecords, historySessions, sessionMap, studentsById, classMap, sectionMap]);
-
-  const counts = useMemo(() => {
-    return records.reduce(
-      (acc, record) => {
-        acc.total += 1;
-        if (record.status === "present") acc.present += 1;
-        if (record.status === "absent") acc.absent += 1;
-        if (record.status === "late") acc.late += 1;
-        if (record.status === "excused") acc.excused += 1;
-        return acc;
-      },
-      { total: 0, present: 0, absent: 0, late: 0, excused: 0 }
-    );
-  }, [records]);
+  }, [historyRecords, historySessions, studentsById, classMap, sectionMap]);
 
   const historyCounts = useMemo(() => {
     return historyRecords.reduce(
@@ -625,14 +531,6 @@ function TeacherAttendance() {
       { total: 0, present: 0, absent: 0, late: 0, excused: 0 }
     );
   }, [historyRecords]);
-
-  const filtered = useMemo(() => {
-    if (!search) return rows;
-    const target = search.toLowerCase();
-    return rows.filter((row) =>
-      `${row.studentName} ${row.cardId}`.toLowerCase().includes(target)
-    );
-  }, [rows, search]);
 
   const historyFiltered = useMemo(() => {
     if (!search) return historyRows;
@@ -744,7 +642,7 @@ function TeacherAttendance() {
       const name = `${student.first_name} ${student.last_name}`.toLowerCase();
       return (
         name.includes(target) ||
-        (student.student_id_number ?? "").toLowerCase().includes(target)
+        studentSearchText(student).includes(target)
       );
     });
   }, [manualStudents, manualSearch]);
@@ -763,9 +661,9 @@ function TeacherAttendance() {
   }, [manualStudents, manualMarks]);
 
   return (
-    <TeacherLayout title="Attendance" subtitle="Live attendance and manual entry">
+    <TeacherLayout title="Attendance" subtitle="Attendance history and manual entry">
       <div className="flex gap-1 border-b border-border mb-5">
-        {(["live", "history", "manual"] as const).map((item) => (
+        {(["history", "manual"] as const).map((item) => (
           <button
             key={item}
             onClick={() => setTab(item)}
@@ -775,103 +673,10 @@ function TeacherAttendance() {
                 : "border-transparent text-muted-foreground"
             }`}
           >
-            {item === "live" ? "Live Attendance" : item === "history" ? "Attendance History" : "Make Attendance"}
+            {item === "history" ? "Attendance History" : "Make Attendance"}
           </button>
         ))}
       </div>
-
-      {tab === "live" && (
-        <>
-          <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap gap-3 items-center">
-            <input
-              type="date"
-              value={dateFilter}
-              max={todayValue}
-              onChange={(event) => setDateFilter(clampDate(event.target.value))}
-              className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
-            />
-            <select
-              value={sectionFilter}
-              onChange={(event) => setSectionFilter(event.target.value)}
-              className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
-              disabled={loading}
-            >
-              {classOptions.length === 0 && (
-                <option value="">No classes yet</option>
-              )}
-              {classOptions.map((option) => (
-                <option key={option.id} value={option.id}>{option.label}</option>
-              ))}
-            </select>
-            <div className="relative flex-1 min-w-52">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search by name..."
-                className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm"
-              />
-            </div>
-          </div>
-
-          <div className="mt-5 rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-border flex flex-wrap gap-2 items-center justify-between">
-              <h3 className="font-display font-bold">Attendance - {todayLabel}</h3>
-              <div className="text-xs text-muted-foreground space-x-3">
-                <span>Total: <b className="text-foreground">{counts.total}</b></span>
-                <span>Present: <b className="text-success">{counts.present}</b></span>
-                <span>Absent: <b className="text-destructive">{counts.absent}</b></span>
-                <span>Late: <b className="text-amber-600">{counts.late}</b></span>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
-                  <tr>
-                    <th className="text-left px-5 py-3">#</th>
-                    <th className="text-left px-5 py-3">Student</th>
-                    <th className="text-left px-5 py-3">Card ID</th>
-                    <th className="text-left px-5 py-3">Class</th>
-                    <th className="text-left px-5 py-3">Time In</th>
-                    <th className="text-left px-5 py-3">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recordsLoading && (
-                    <tr>
-                      <td colSpan={6} className="px-5 py-6">
-                        <Skeleton className="h-6 w-full" />
-                      </td>
-                    </tr>
-                  )}
-                  {!recordsLoading && filtered.map((row, i) => (
-                    <tr key={row.id} className="border-t border-border odd:bg-background even:bg-muted/20">
-                      <td className="px-5 py-3 text-muted-foreground">{i + 1}</td>
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <Avatar name={row.studentName} size="sm" />
-                          <span className="font-medium">{row.studentName}</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{row.cardId}</td>
-                      <td className="px-5 py-3">{row.className}</td>
-                      <td className="px-5 py-3">{row.timeIn}</td>
-                      <td className="px-5 py-3"><StatusBadge status={row.status} /></td>
-                    </tr>
-                  ))}
-                  {!recordsLoading && filtered.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
-                        No records available for this selection.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
 
       {tab === "history" && (
         <>
@@ -1035,7 +840,7 @@ function TeacherAttendance() {
                 });
                 setManualMarks(next);
               }}
-              disabled={!manualLoaded}
+              disabled={!manualLoaded || manualSubmitted}
               className="h-9 px-4 rounded-md border border-border text-sm font-semibold hover:bg-muted disabled:opacity-50"
             >
               Mark All Present
@@ -1051,10 +856,10 @@ function TeacherAttendance() {
             </div>
             <button
               onClick={submitManualAttendance}
-              disabled={!manualLoaded || manualSaving}
+              disabled={!manualLoaded || manualSaving || manualSubmitted}
               className="h-9 px-4 rounded-md bg-success text-success-foreground text-sm font-semibold hover:bg-success/90 disabled:opacity-50"
             >
-              Save Attendance
+              {manualSubmitted ? "Attendance Submitted" : "Save Attendance"}
             </button>
           </div>
 
@@ -1097,17 +902,19 @@ function TeacherAttendance() {
                               </div>
                             </td>
                             <td className="px-5 py-3 font-mono text-xs text-muted-foreground">
-                              {student.student_id_number ?? "--"}
+                              {studentIdNumber(student)}
                             </td>
                             <td className="px-5 py-3">
                               <button
                                 onClick={() =>
+                                  !manualSubmitted &&
                                   setManualMarks((prev) => ({
                                     ...prev,
                                     [student.id]: nextManualStatus(prev[student.id])
                                   }))
                                 }
-                                className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                                disabled={manualSubmitted}
+                                className={`text-xs font-semibold px-2.5 py-1 rounded-full border disabled:cursor-not-allowed ${
                                   status ? MANUAL_STATUS_CLASSES[status] : "bg-muted text-muted-foreground border-border"
                                 }`}
                               >
@@ -1154,13 +961,19 @@ function TeacherAttendance() {
                 <div className="mt-3 text-xs text-muted-foreground">
                   {Object.keys(manualMarks).length} of {manualStudents.length} marked
                 </div>
-                <button
-                  onClick={submitManualAttendance}
-                  disabled={!manualAllMarked || manualSaving}
-                  className="mt-4 w-full h-10 rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90 disabled:opacity-50"
-                >
-                  Submit Attendance
-                </button>
+                {manualSubmitted ? (
+                  <div className="mt-4 rounded-md bg-success/10 px-3 py-2 text-center text-sm font-semibold text-success">
+                    Attendance submitted and locked
+                  </div>
+                ) : (
+                  <button
+                    onClick={submitManualAttendance}
+                    disabled={!manualAllMarked || manualSaving}
+                    className="mt-4 w-full h-10 rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    Submit Attendance
+                  </button>
+                )}
               </div>
             </div>
           )}

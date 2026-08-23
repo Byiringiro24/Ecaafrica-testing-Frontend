@@ -78,7 +78,7 @@ function ExamsOverviewPage() {
   const typeChart = useMemo(() => {
     const map = new Map<string, number>();
     for (const exam of exams) {
-      const label = examTypeLabel(exam.type);
+      const label = examTypeLabel(exam.type, exam.exam_type?.name);
       map.set(label, (map.get(label) ?? 0) + 1);
     }
     return Array.from(map.entries()).map(([name, count]) => ({ name, count }));

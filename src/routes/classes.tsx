@@ -13,6 +13,7 @@ import {
   type ClassInfo,
 } from "@/lib/mockData";
 import { apiRequest } from "@/lib/api";
+import { studentIdNumber } from "@/lib/studentIdentity";
 import {
   downloadStudentImportTemplate,
   makeStudentImportCsvFile,
@@ -97,6 +98,7 @@ type ApiSession = {
 };
 
 const normalizeSectionKey = (value: string) => value.toLowerCase().replace(/\s+/g, "");
+const MAX_CAPACITY = 32767;
 const parseLevelNumber = (value: string) => {
   const match = value.match(/\d+/);
   return match ? Number(match[0]) : 1;
@@ -346,6 +348,11 @@ function ClassesPage() {
 
     if (!selectedLevel) {
       toast.error("Select a level first");
+      return false;
+    }
+
+    if (!Number.isInteger(payload.capacity) || payload.capacity < 1 || payload.capacity > MAX_CAPACITY) {
+      toast.error(`Capacity must be a whole number between 1 and ${MAX_CAPACITY}`);
       return false;
     }
 
@@ -628,6 +635,7 @@ function ClassesPage() {
 
 type StudentLite = {
   id: string;
+  student_school_id?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   student_id_number?: string | null;
@@ -713,7 +721,7 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
 
   const filtered = students.filter((s) => {
     const name = fullName(s).toLowerCase();
-    const id = (s.student_id_number ?? "").toLowerCase();
+    const id = studentIdNumber(s).toLowerCase();
     const search = q.toLowerCase();
     return name.includes(search) || id.includes(search);
   });
@@ -750,7 +758,7 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
             <>
               <div className="relative mb-3">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name or ID…"
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by name or Student ID Number…"
                   className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
               </div>
 
@@ -778,7 +786,7 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
                       <Avatar name={fullName(s)} size="sm" />
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">{fullName(s)}</div>
-                        <div className="text-xs text-muted-foreground font-mono">{s.student_id_number ?? s.id}</div>
+                        <div className="text-xs text-muted-foreground font-mono">Student ID Number: {studentIdNumber(s)}</div>
                       </div>
                       {s.student_type && (
                         <span className="text-xs font-semibold bg-muted text-muted-foreground px-2 py-0.5 rounded-md capitalize">
@@ -950,7 +958,7 @@ function ClassFormModal({
             </select>
           </Field>
           <Field label="Room (optional)"><input value={room} onChange={e => setRoom(e.target.value)} className={inp} /></Field>
-          <Field label="Capacity"><input type="number" value={capacity} onChange={e => setCapacity(+e.target.value)} className={inp} /></Field>
+          <Field label="Capacity"><input type="number" min={1} max={MAX_CAPACITY} step={1} value={capacity} onChange={e => setCapacity(+e.target.value)} className={inp} /></Field>
         </div>
         <div className="flex justify-between gap-2 px-6 py-4 border-t border-border">
           {cls && onDelete ? (
@@ -1174,7 +1182,7 @@ function ClassImportModal({
           )}
 
           <label className="block">
-            <span className="text-xs font-semibold mb-1.5 block">Upload File</span>
+            <span className="text-xs font-semibold mb-1.5 block">Upload Excel or CSV file</span>
             <input
               type="file"
               accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
@@ -1188,7 +1196,7 @@ function ClassImportModal({
             onClick={() => downloadStudentImportTemplate()}
             className="inline-flex items-center gap-2 text-xs font-semibold text-primary hover:underline"
           >
-            <Download className="h-3.5 w-3.5" /> Download Template
+            <Download className="h-3.5 w-3.5" /> Download Excel Template
           </button>
 
           {parsing && (

@@ -3,8 +3,6 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
   { to: "/gate-keeper/attendance/device-attendance", label: "Device Attendance" },
-  { to: "/gate-keeper/attendance/make-attendance", label: "Make Attendance" },
-  { to: "/gate-keeper/attendance/history", label: "Attendance History" },
 ] as const;
 
 export function GateKeeperAttendanceNav() {

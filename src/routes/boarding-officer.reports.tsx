@@ -8,6 +8,7 @@ import { boardingOfficerRouteGuard } from "@/lib/schoolAuth";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { studentIdNumber } from "@/lib/studentIdentity";
 import {
   type ApiRecord,
   type ApiSession,
@@ -219,7 +220,7 @@ function BoardingOfficerReportsPage() {
       return {
         id: student.id,
         name: `${student.first_name} ${student.last_name}`.trim(),
-        studentId: student.student_id_number ?? "—",
+        studentId: studentIdNumber(student),
         className: classLabelForSection(student.current_section?.id),
         dormName,
         gender: student.gender ?? "—",

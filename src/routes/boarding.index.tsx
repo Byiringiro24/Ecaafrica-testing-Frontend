@@ -6,6 +6,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { studentIdNumber } from "@/lib/studentIdentity";
 
 export const Route = createFileRoute("/boarding/")({ component: BoardingPage });
 
@@ -101,7 +102,7 @@ function BoardingPage() {
       return {
         id: student.id,
         studentName: `${student.first_name} ${student.last_name}`.trim(),
-        studentNumber: student.student_id_number ?? "—",
+        studentNumber: studentIdNumber(student),
         className:
           student.current_section?.full_name ?? student.current_section?.name ?? "—",
         dormitoryName,

@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
   { to: "/attendance/manual", label: "Manual Attendance" },
+  { to: "/attendance/boarding-manual", label: "Boarding Attendance" },
   { to: "/attendance/device-attendance", label: "Device Attendance" },
 ] as const;
 

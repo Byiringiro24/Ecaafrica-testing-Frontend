@@ -58,11 +58,9 @@ function ManageSmsPage() {
   // Form state for editing/creating template
   const [templateName, setTemplateName] = useState("");
   const [messageBodyEn, setMessageBodyEn] = useState("");
-  const [messageBodyKin, setMessageBodyKin] = useState("");
   const [isActive, setIsActive] = useState(true);
   // Preview state
   const [previewText, setPreviewText] = useState("");
-  const [previewLanguage, setPreviewLanguage] = useState<"en" | "kin">("en");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -122,7 +120,6 @@ function ManageSmsPage() {
   const populateFormFromTemplate = (template: NotificationTemplate) => {
     setTemplateName(template.name);
     setMessageBodyEn(template.body_en);
-    setMessageBodyKin(template.body_kin || "");
     setIsActive(template.is_active);
   };
 
@@ -130,14 +127,12 @@ function ManageSmsPage() {
   const resetForm = () => {
     setTemplateName(`Attendance SMS Template - ${selectedTriggerType?.replace("_", " ").toUpperCase() || ""}`);
     setMessageBodyEn("Education Care\nAttendance: ${student_name} has checked in at ${time}.\nThank you for staying connected.");
-    setMessageBodyKin("Esoho y'Icare\nAhazwe: ${student_name} yaraze ku ishuri ku ${time}.\nMurakoze cyane kugira intege.");
     setIsActive(true);
   };
 
   // Generate preview text
   const generatePreview = useCallback(async () => {
-    const language = previewLanguage;
-    const body = language === "en" ? messageBodyEn : messageBodyKin;
+    const body = messageBodyEn;
 
     if (!body.trim()) {
       setPreviewText("");
@@ -155,7 +150,7 @@ function ManageSmsPage() {
         const response = await renderNotificationTemplate(
           selectedTemplate.id,
           variables,
-          language
+          "en"
         );
         setPreviewText(response.rendered);
         return;
@@ -165,7 +160,7 @@ function ManageSmsPage() {
     }
 
     setPreviewText(renderTemplateText(body, variables));
-  }, [messageBodyEn, messageBodyKin, previewLanguage, selectedTemplate]);
+  }, [messageBodyEn, selectedTemplate]);
 
   // Handle template selection change
   const handleTemplateSelect = (templateId: string) => {
@@ -198,7 +193,7 @@ function ManageSmsPage() {
           .replace(/^-+|-+$/g, ""),
         trigger_type: selectedTriggerType,
         body_en: messageBodyEn.trim(),
-        body_kin: messageBodyKin.trim() || null,
+        body_kin: null,
         is_active: isActive
       };
 
@@ -227,7 +222,6 @@ function ManageSmsPage() {
   }, [
     templateName, 
     messageBodyEn, 
-    messageBodyKin, 
     isActive, 
     selectedTemplate, 
     selectedTriggerType,
@@ -262,12 +256,6 @@ function ManageSmsPage() {
       toast.error("Failed to delete SMS template");
     }
   }, [selectedTemplate, templates, loadTemplates]);
-
-  // Handle language change for preview
-  const handlePreviewLanguageChange = (language: "en" | "kin") => {
-    setPreviewLanguage(language);
-    generatePreview();
-  };
 
   useEffect(() => {
     void generatePreview();
@@ -472,39 +460,10 @@ function ManageSmsPage() {
                   <Textarea
                     rows={6}
                     value={messageBodyEn}
-                    onChange={(e) => {
-                      setMessageBodyEn(e.target.value);
-                      // Auto-update preview when English text changes and English is selected
-                      if (previewLanguage === "en") {
-                        generatePreview();
-                      }
-                    }}
+                    onChange={(e) => setMessageBodyEn(e.target.value)}
                     className="min-h-[120px]"
                   />
                 </div>
-
-                {messageBodyKin !== undefined && (
-                  <div className="space-y-2">
-                    <label className="text-xs font-semibold mb-1.5 text-foreground">Kinyarwanda Template (Optional)</label>
-                    <div className="flex items-baseline gap-2 mb-1">
-                      <span className="text-xs text-muted-foreground">
-                        Use <code className="text-xs">${"{student_name}"}</code> and <code className="text-xs">${"{time}"}</code> for placeholders
-                      </span>
-                    </div>
-                    <Textarea
-                      rows={6}
-                      value={messageBodyKin}
-                      onChange={(e) => {
-                        setMessageBodyKin(e.target.value);
-                        // Auto-update preview when Kinyarwanda text changes and Kinyarwanda is selected
-                        if (previewLanguage === "kin") {
-                          generatePreview();
-                        }
-                      }}
-                      className="min-h-[120px]"
-                    />
-                  </div>
-                )}
 
                 <div className="space-y-2">
                   <label className="text-xs font-semibold mb-1.5 text-foreground">Status</label>
@@ -529,22 +488,7 @@ function ManageSmsPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold">Live Preview</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setPreviewLanguage("en")}
-                    className={`px-2 py-1 rounded-md text-xs font-semibold 
-                      ${previewLanguage === "en" ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/70"}`}
-                  >
-                    English
-                  </button>
-                  <button
-                    onClick={() => setPreviewLanguage("kin")}
-                    className={`px-2 py-1 rounded-md text-xs font-semibold 
-                      ${previewLanguage === "kin" ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/70"}`}
-                  >
-                    Kinyarwanda
-                  </button>
-                </div>
+                <span className="rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">English</span>
               </div>
               <p className="text-xs text-muted-foreground">
                 Rendered preview with example placeholders.

@@ -2,6 +2,7 @@ export type Status = "Present" | "Absent" | "Late" | "Excused";
 
 export interface Student {
   id: string;
+  student_id_number: string;
   cardId: string;
   name: string;
   gender: "Male" | "Female";
@@ -59,6 +60,7 @@ export const STUDENTS: Student[] = Array.from({ length: 60 }, (_, i) => {
   const parent = `${FIRST_NAMES[(i * 7) % FIRST_NAMES.length]} ${SECOND_NAMES[(i * 5) % SECOND_NAMES.length]}`;
   return {
     id: `STU-${String(1000 + i)}`,
+    student_id_number: String(i + 1),
     cardId: `RW${String(20240000 + i)}`,
     name,
     gender: i % 2 === 0 ? "Female" : "Male",

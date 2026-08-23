@@ -6,6 +6,7 @@ import {
   Users,
   ShieldCheck,
   Wifi,
+  Headphones,
   LogOut,
   Menu,
   X,
@@ -28,6 +29,7 @@ const NAV = [
         icon: ShieldCheck,
       },
       { to: "/gate-keeper/device-status", label: "Device Status", icon: Wifi },
+      { to: "/gate-keeper/support", label: "Support Tickets", icon: Headphones },
     ],
   },
 ];

@@ -1,172 +1,42 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { Search, Trash2, CheckCircle2, Clock3, CalendarDays } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Clock3, Mail, MapPin, Phone, Search, Trash2, UsersRound, X } from "lucide-react";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminBreadcrumbs } from "@/components/layout/SuperAdminBreadcrumbs";
 import { getDemoRequests, updateDemoRequestStatus, deleteDemoRequest, DemoRequest, DemoRequestStatus } from "@/lib/demoRequests";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/super-admin/demo-requests")({ component: DemoRequestsPage });
-
 const STATUS_OPTIONS: Array<DemoRequestStatus | "All"> = ["All", "Pending", "Contacted", "Scheduled", "Completed"];
+const statuses: DemoRequestStatus[] = ["Pending", "Contacted", "Scheduled", "Completed"];
+const statusStyles: Record<DemoRequestStatus, string> = { Pending: "bg-amber-50 text-amber-700 ring-amber-200", Contacted: "bg-blue-50 text-blue-700 ring-blue-200", Scheduled: "bg-emerald-50 text-emerald-700 ring-emerald-200", Completed: "bg-slate-100 text-slate-700 ring-slate-200" };
 
 function DemoRequestsPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<DemoRequestStatus | "All">("All");
   const [requests, setRequests] = useState<DemoRequest[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  useEffect(() => { getDemoRequests().then(setRequests).catch(() => toast.error("Unable to load demo requests.")); }, []);
+  const counts = useMemo(() => ({ total: requests.length, pending: requests.filter(r => r.status === "Pending").length, scheduled: requests.filter(r => r.status === "Scheduled").length, completed: requests.filter(r => r.status === "Completed").length }), [requests]);
+  const filteredRequests = useMemo(() => { const query = search.trim().toLowerCase(); return requests.filter(r => (status === "All" || r.status === status) && (!query || `${r.schoolName} ${r.contactName} ${r.email} ${r.phone} ${r.country}`.toLowerCase().includes(query))); }, [requests, search, status]);
+  const handleStatusChange = async (id: string, nextStatus: DemoRequestStatus) => { try { setRequests(await updateDemoRequestStatus(id, nextStatus)); toast.success("Demo request status updated."); } catch { toast.error("Unable to update demo request."); } };
+  const handleDelete = async (id: string) => { if (!window.confirm("Delete this demo request? This action cannot be undone.")) return; try { setRequests(await deleteDemoRequest(id)); setExpandedId(null); toast.success("Demo request deleted."); } catch { toast.error("Unable to delete demo request."); } };
 
-  useEffect(() => {
-    setRequests(getDemoRequests());
-  }, []);
-
-  const filteredRequests = useMemo(() => {
-    return requests.filter((request) => {
-      const matchesStatus = status === "All" || request.status === status;
-      const query = search.trim().toLowerCase();
-      const matchesSearch =
-        !query ||
-        request.schoolName.toLowerCase().includes(query) ||
-        request.contactName.toLowerCase().includes(query) ||
-        request.email.toLowerCase().includes(query) ||
-        request.phone.toLowerCase().includes(query);
-      return matchesStatus && matchesSearch;
-    });
-  }, [requests, search, status]);
-
-  const handleStatusChange = (id: string, nextStatus: DemoRequestStatus) => {
-    const updated = updateDemoRequestStatus(id, nextStatus);
-    setRequests(updated);
-    toast.success("Demo request status updated.");
-  };
-
-  const handleDelete = (id: string) => {
-    const updated = deleteDemoRequest(id);
-    setRequests(updated);
-    toast.success("Demo request deleted.");
-  };
-
-  return (
-    <SuperAdminLayout
-      title="Demo Requests"
-      subtitle="Review and manage demo requests from schools."
-      breadcrumbs={
-        <SuperAdminBreadcrumbs
-          items={[
-            { label: "Super Admin", to: "/super-admin" },
-            { label: "Demo Requests" },
-          ]}
-        />
-      }
-    >
-      <div className="space-y-5">
-        <div className="grid gap-4 xl:grid-cols-[1.5fr_0.9fr]">
-          <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-foreground">All demo requests</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Track status, search by school, and update requests quickly.</p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search by school, contact, email or phone"
-                  className="max-w-sm"
-                />
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value as DemoRequestStatus | "All")}
-                  className="rounded-xl border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
-                >
-                  {STATUS_OPTIONS.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-border bg-card p-6 shadow-sm">
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <CalendarDays className="h-4 w-4" />
-              <div>
-                Demo requests are stored locally and sent to the backend when the API is available.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm">
-          <table className="min-w-full divide-y divide-border text-sm">
-            <thead className="bg-slate-950/90 text-left text-xs uppercase tracking-[0.16em] text-slate-300">
-              <tr>
-                <th className="px-4 py-4">School</th>
-                <th className="px-4 py-4">Contact</th>
-                <th className="px-4 py-4">Request Date</th>
-                <th className="px-4 py-4">Status</th>
-                <th className="px-4 py-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border bg-white">
-              {filteredRequests.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-muted-foreground">
-                    No demo requests found. Encourage schools to submit a request via the public demo page.
-                  </td>
-                </tr>
-              ) : (
-                filteredRequests.map((request) => (
-                  <tr key={request.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-4">
-                      <div className="font-semibold text-slate-900">{request.schoolName}</div>
-                      <div className="text-xs text-muted-foreground">{request.country}</div>
-                    </td>
-                    <td className="px-4 py-4">
-                      <div className="font-medium text-slate-900">{request.contactName}</div>
-                      <div className="text-xs text-muted-foreground">{request.email}</div>
-                      <div className="text-xs text-muted-foreground">{request.phone}</div>
-                    </td>
-                    <td className="px-4 py-4 text-slate-700">{new Date(request.createdAt).toLocaleDateString()}</td>
-                    <td className="px-4 py-4">
-                      <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                        request.status === "Pending" ? "bg-amber-100 text-amber-800" :
-                        request.status === "Contacted" ? "bg-sky-100 text-sky-800" :
-                        request.status === "Scheduled" ? "bg-emerald-100 text-emerald-800" :
-                        "bg-slate-100 text-slate-700"
-                      }`}>
-                        {request.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 space-y-2">
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {(["Pending", "Contacted", "Scheduled", "Completed"] as DemoRequestStatus[]).map((nextStatus) => (
-                          <button
-                            key={nextStatus}
-                            type="button"
-                            onClick={() => handleStatusChange(request.id, nextStatus)}
-                            className="rounded-xl border border-slate-200 bg-slate-50 px-2 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
-                          >
-                            {nextStatus}
-                          </button>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(request.id)}
-                        className="inline-flex items-center gap-2 rounded-xl border border-destructive bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive hover:bg-destructive/20"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" /> Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </SuperAdminLayout>
-  );
+  return <SuperAdminLayout title="Demo Requests" subtitle="Turn school interest into your next successful demo." breadcrumbs={<SuperAdminBreadcrumbs items={[{ label: "Super Admin", to: "/super-admin" }, { label: "Demo Requests" }]} />}>
+    <div className="space-y-6">
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#062d68] via-[#0a3d91] to-[#1768a8] px-6 py-7 text-white shadow-lg md:px-8"><div className="relative z-10 max-w-2xl"><div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-blue-50 ring-1 ring-white/20"><CalendarDays className="h-3.5 w-3.5" /> Lead management</div><h2 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">Keep every school conversation moving.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-blue-100">Review new submissions, follow up with the right contact, and keep your demo pipeline organized.</p></div><div className="pointer-events-none absolute -right-8 -top-16 h-64 w-64 rounded-full border-[28px] border-white/10" /><div className="pointer-events-none absolute -bottom-28 right-24 h-48 w-48 rounded-full border-[18px] border-cyan-300/10" /></section>
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><SummaryCard label="Total requests" value={counts.total} icon={UsersRound} tone="blue" /><SummaryCard label="Needs follow-up" value={counts.pending} icon={Clock3} tone="amber" /><SummaryCard label="Scheduled demos" value={counts.scheduled} icon={CalendarDays} tone="green" /><SummaryCard label="Completed" value={counts.completed} icon={CheckCircle2} tone="slate" /></section>
+      <section className="rounded-3xl border border-border bg-card p-4 shadow-sm md:p-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><h3 className="font-display text-lg font-semibold">Request inbox</h3><p className="mt-1 text-sm text-muted-foreground">{filteredRequests.length} {filteredRequests.length === 1 ? "request" : "requests"} match your filters.</p></div><div className="flex flex-col gap-3 sm:flex-row"><div className="relative sm:min-w-[320px]"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search school, contact, email..." className="h-11 rounded-xl pl-9 pr-9" />{search && <button type="button" onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label="Clear search"><X className="h-4 w-4" /></button>}</div><select value={status} onChange={e => setStatus(e.target.value as DemoRequestStatus | "All")} className="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">{STATUS_OPTIONS.map(option => <option key={option} value={option}>{option === "All" ? "All statuses" : option}</option>)}</select></div></div></section>
+      {filteredRequests.length === 0 ? <div className="rounded-3xl border border-dashed border-border bg-card px-6 py-16 text-center shadow-sm"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-blue-50 text-[#0A3D91]"><Search className="h-6 w-6" /></div><h3 className="mt-4 font-display text-lg font-semibold">No requests found</h3><p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">Try a different search or status filter. New submissions from the public demo page will appear here.</p></div> : <div className="grid gap-4">{filteredRequests.map(request => <RequestCard key={request.id} request={request} expanded={expandedId === request.id} onToggle={() => setExpandedId(expandedId === request.id ? null : request.id)} onStatusChange={handleStatusChange} onDelete={handleDelete} />)}</div>}
+    </div>
+  </SuperAdminLayout>;
 }
+
+function SummaryCard({ label, value, icon: Icon, tone }: { label: string; value: number; icon: typeof UsersRound; tone: "blue" | "amber" | "green" | "slate" }) { const styles = { blue: "bg-blue-50 text-blue-700", amber: "bg-amber-50 text-amber-700", green: "bg-emerald-50 text-emerald-700", slate: "bg-slate-100 text-slate-700" }; return <div className="rounded-2xl border border-border bg-card p-5 shadow-sm"><div className={`mb-5 grid h-10 w-10 place-items-center rounded-xl ${styles[tone]}`}><Icon className="h-5 w-5" /></div><p className="text-sm text-muted-foreground">{label}</p><p className="mt-1 font-display text-3xl font-semibold tracking-tight">{value}</p></div>; }
+
+function RequestCard({ request, expanded, onToggle, onStatusChange, onDelete }: { request: DemoRequest; expanded: boolean; onToggle: () => void; onStatusChange: (id: string, status: DemoRequestStatus) => void; onDelete: (id: string) => void }) {
+  return <article className="overflow-hidden rounded-3xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md"><div className="p-5 md:p-6"><div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between"><div className="flex min-w-0 items-start gap-4"><div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#0A3D91] text-lg font-bold text-white">{request.schoolName.slice(0, 1).toUpperCase()}</div><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate font-display text-lg font-semibold text-foreground">{request.schoolName}</h3><span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${statusStyles[request.status]}`}>{request.status}</span></div><p className="mt-1 text-sm text-muted-foreground">{request.contactName} · {request.jobTitle}</p><div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground"><span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{request.country}</span><span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />{request.email}</span><span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" />{request.phone}</span></div></div></div><div className="flex flex-wrap items-center gap-2 xl:justify-end"><span className="mr-2 text-xs text-muted-foreground">{new Date(request.createdAt).toLocaleDateString()}</span><button type="button" onClick={onToggle} className="inline-flex h-10 items-center gap-2 rounded-xl border border-border px-3 text-xs font-semibold hover:bg-muted">{expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}{expanded ? "Hide details" : "View details"}</button><button type="button" onClick={() => onDelete(request.id)} className="grid h-10 w-10 place-items-center rounded-xl border border-red-200 text-red-600 hover:bg-red-50" aria-label="Delete demo request"><Trash2 className="h-4 w-4" /></button></div></div><div className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4">{statuses.map(nextStatus => <button key={nextStatus} type="button" onClick={() => onStatusChange(request.id, nextStatus)} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${request.status === nextStatus ? `${statusStyles[nextStatus]} ring-1` : "bg-muted text-muted-foreground hover:bg-slate-200"}`}>{nextStatus}</button>)}</div></div>{expanded && <div className="border-t border-border bg-slate-50/70 px-5 py-5 md:px-6"><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Detail label="Preferred demo" value={`${request.preferredDate || "Not specified"} · ${request.preferredTime || "Any time"}`} /><Detail label="School size" value={`${request.studentCount} students · ${request.teacherCount} teachers · ${request.staffCount} staff`} /><Detail label="WhatsApp" value={request.whatsapp ? "Available" : "Not available"} /><Detail label="Current system" value={request.hasCurrentSystem === "yes" ? request.currentSoftware || "Yes" : "No"} /><Detail label="Interested modules" value={request.modules.length ? request.modules.join(", ") : "None selected"} wide />{request.additionalDetails && <Detail label="Additional requirements" value={request.additionalDetails} wide />}</div></div>}</article>;
+}
+
+function Detail({ label, value, wide }: { label: string; value: string; wide?: boolean }) { return <div className={wide ? "sm:col-span-2 lg:col-span-4" : ""}><p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium text-foreground">{value}</p></div>; }

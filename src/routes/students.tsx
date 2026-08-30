@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search, UserPlus, Grid3X3, List, X, Phone, Pencil, Check, Loader2, Camera, Mail, MapPin } from "lucide-react";
+import { Search, UserPlus, Grid3X3, List, X, Phone, Pencil, Check, Loader2, Camera, Mail, MapPin, Ban } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatCard } from "@/components/ui-kit/StatCard";
@@ -26,6 +26,7 @@ type ApiStudent = {
   gender: "male" | "female" | "other" | null;
   student_type: "boarding" | "day" | null;
   status: string | null;
+  visitor_access_restricted?: boolean;
   combination: string | null;
   enrollment_year: number | null;
   blood_group: string | null;
@@ -249,6 +250,7 @@ function StudentsPage() {
                       <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${pushStatusClass(s)}`}>
                         {pushStatusLabel(s)}
                       </span>
+                      {s.visitor_access_restricted && <span className="inline-flex items-center rounded-md bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">Visitors blocked</span>}
                     </div>
                     {parentPhone && (
                       <div className="mt-3 pt-3 border-t border-border flex items-center gap-2 text-xs text-muted-foreground">
@@ -442,6 +444,8 @@ function StudentProfileSlideOver({
     student.photo_url ? `${SERVER_BASE_URL}/${student.photo_url}` : null
   );
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [updatingVisitorAccess, setUpdatingVisitorAccess] = useState(false);
+  const [visitorAccessConfirmOpen, setVisitorAccessConfirmOpen] = useState(false);
 
   const fullName = `${student.first_name} ${student.last_name}`;
   const residency = student.student_type ? capitalize(student.student_type) : null;
@@ -452,6 +456,25 @@ function StudentProfileSlideOver({
     : "—";
   const parentPhone = student.primary_parent?.phone ?? "—";
   const dob = student.date_of_birth ? new Date(student.date_of_birth).toLocaleDateString() : "—";
+
+  const toggleVisitorAccess = async () => {
+    const blocked = !student.visitor_access_restricted;
+    setUpdatingVisitorAccess(true);
+    try {
+      await apiRequest(`/students/${student.id}/visitor-access`, {
+        method: "PATCH",
+        auth: "school",
+        body: JSON.stringify({ blocked })
+      });
+      toast.success(blocked ? "Visitors blocked for this student" : "Visitors allowed for this student");
+      onEditSuccess();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to update visitor access");
+    } finally {
+      setUpdatingVisitorAccess(false);
+      setVisitorAccessConfirmOpen(false);
+    }
+  };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -570,6 +593,28 @@ function StudentProfileSlideOver({
               <DetailRow label="Status" value={student.status ? capitalize(student.status) : "—"} />
             </DetailSection>
 
+            <div className={`rounded-xl border p-4 ${student.visitor_access_restricted ? "border-destructive/30 bg-destructive/5" : "border-border bg-background"}`}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="font-semibold">Visitor access</div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {student.visitor_access_restricted
+                      ? "Only a registered parent or guardian can register a visit for this student."
+                      : "Visitors can currently be registered for this student."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setVisitorAccessConfirmOpen(true)}
+                  disabled={updatingVisitorAccess}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50 ${student.visitor_access_restricted ? "border border-border hover:bg-muted" : "bg-destructive text-destructive-foreground hover:bg-destructive/90"}`}
+                >
+                  <Ban className="h-3.5 w-3.5" />
+                  {updatingVisitorAccess ? "Saving…" : student.visitor_access_restricted ? "Allow visitors" : "Block visitors"}
+                </button>
+              </div>
+            </div>
+
             <DetailSection title="Parent / Guardian">
               {student.primary_parent ? (
                 <button
@@ -601,6 +646,45 @@ function StudentProfileSlideOver({
           </div>
         </div>
       </div>
+
+      {visitorAccessConfirmOpen && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4" onClick={() => setVisitorAccessConfirmOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="rounded-full bg-destructive/10 p-2 text-destructive">
+                <Ban className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-display text-lg font-bold">
+                  {student.visitor_access_restricted ? "Allow visitors again?" : "Block visitors?"}
+                </h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {student.visitor_access_restricted
+                    ? `Visitors will be allowed to register visits for ${fullName} again.`
+                    : `Only a registered parent or guardian will be allowed to register a visit for ${fullName}.`}
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setVisitorAccessConfirmOpen(false)}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={updatingVisitorAccess}
+                onClick={() => void toggleVisitorAccess()}
+                className="rounded-lg bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              >
+                {updatingVisitorAccess ? "Saving…" : student.visitor_access_restricted ? "Allow visitors" : "Block visitors"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editOpen && (
         <EditStudentModal

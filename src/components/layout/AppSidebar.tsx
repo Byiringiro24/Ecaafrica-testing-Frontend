@@ -48,6 +48,7 @@ const SECTIONS: Section[] = [
   { id: "comm", label: "Communication", items: [
     { to: "/parents", label: "Parents", icon: Heart, module: "parents" },
     { to: "/notifications", label: "Notifications", icon: MessageSquare, module: "notifications" },
+    { to: "/attendance/messages", label: "Attendance Messages", icon: MessageSquare, module: "notifications" },
   ]},
   { id: "support", label: "Support", items: [
     { to: "/support", label: "Support Tickets", icon: Headphones, module: "support", role: "school_admin" },

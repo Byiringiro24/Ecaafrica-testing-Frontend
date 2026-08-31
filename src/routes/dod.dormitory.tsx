@@ -2,8 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Building2, Plus, Search, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
-import { BoardingOfficerLayout } from "@/components/layout/BoardingOfficerLayout";
-import { boardingOfficerRouteGuard } from "@/lib/schoolAuth";
+import { DodLayout } from "@/components/layout/DodLayout";
+import { dodRouteGuard } from "@/lib/schoolAuth";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
@@ -11,9 +11,9 @@ import { todayIso } from "@/lib/gateKeeperAttendance";
 
 const MAX_CAPACITY = 32767;
 
-export const Route = createFileRoute("/boarding-officer/dormitory")({
-  beforeLoad: ({ location }) => boardingOfficerRouteGuard(location),
-  component: BoardingOfficerDormitoryPage,
+export const Route = createFileRoute("/dod/dormitory")({
+  beforeLoad: ({ location }) => dodRouteGuard(location),
+  component: DodDormitoryPage,
 });
 
 type ApiStudent = {
@@ -90,7 +90,7 @@ const STATUS_STYLES: Record<StudentRow["status"], string> = {
   Absent: "bg-destructive/15 text-destructive",
 };
 
-function BoardingOfficerDormitoryPage() {
+function DodDormitoryPage() {
   const today = todayIso();
   const [loading, setLoading] = useState(true);
   const [savingDormitory, setSavingDormitory] = useState(false);
@@ -489,7 +489,7 @@ function BoardingOfficerDormitoryPage() {
   };
 
   return (
-    <BoardingOfficerLayout
+    <DodLayout
       title="Dormitory Management"
       subtitle="Create dormitories and assign boarding students by class"
     >
@@ -891,7 +891,7 @@ function BoardingOfficerDormitoryPage() {
           onConfirm={(dormitoryId) => transferStudent(transferTarget, dormitoryId)}
         />
       ) : null}
-    </BoardingOfficerLayout>
+    </DodLayout>
   );
 }
 

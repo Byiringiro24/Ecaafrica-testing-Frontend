@@ -11,16 +11,16 @@ import {
   UserX,
 } from "lucide-react";
 import { toast } from "sonner";
-import { BoardingOfficerLayout } from "@/components/layout/BoardingOfficerLayout";
-import { boardingOfficerRouteGuard } from "@/lib/schoolAuth";
+import { DodLayout } from "@/components/layout/DodLayout";
+import { dodRouteGuard } from "@/lib/schoolAuth";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 
-export const Route = createFileRoute("/boarding-officer/dashboard")({
-  beforeLoad: ({ location }) => boardingOfficerRouteGuard(location),
-  component: BoardingOfficerDashboard,
+export const Route = createFileRoute("/dod/dashboard")({
+  beforeLoad: ({ location }) => dodRouteGuard(location),
+  component: DodDashboard,
 });
 
 type LeaveRecord = {
@@ -45,7 +45,7 @@ type ApiSession = {
   session_date: string;
 };
 
-function BoardingOfficerDashboard() {
+function DodDashboard() {
   const currentUser = useCurrentUser();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -65,7 +65,7 @@ function BoardingOfficerDashboard() {
     month: "long",
     year: "numeric",
   });
-  const displayName = currentUser?.name?.split(" ").slice(0, 2).join(" ") ?? "Boarding Officer";
+  const displayName = currentUser?.name?.split(" ").slice(0, 2).join(" ") ?? "Director of Discipline";
 
   useEffect(() => {
     const loadStats = async () => {
@@ -140,7 +140,7 @@ function BoardingOfficerDashboard() {
   }, [today]);
 
   return (
-    <BoardingOfficerLayout title={`${greeting}, ${displayName}`} subtitle={dateLabel}>
+    <DodLayout title={`${greeting}, ${displayName}`} subtitle={dateLabel}>
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
         {loading ? (
           <>
@@ -194,28 +194,28 @@ function BoardingOfficerDashboard() {
           <h3 className="font-display font-bold text-lg mb-4">Quick Actions</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Link
-              to="/boarding-officer/attendance"
+              to="/dod/attendance"
               className="rounded-lg bg-primary text-primary-foreground p-4 hover:bg-primary/90 transition flex flex-col items-start gap-2"
             >
               <ClipboardCheck className="h-5 w-5" />
               <span className="font-semibold text-sm">Record Attendance</span>
             </Link>
             <Link
-              to="/boarding-officer/leaves"
+              to="/dod/leaves"
               className="rounded-lg border border-border bg-card p-4 hover:bg-muted/40 transition flex flex-col items-start gap-2"
             >
               <CalendarDays className="h-5 w-5 text-primary" />
               <span className="font-semibold text-sm">Manage Leave Requests</span>
             </Link>
             <Link
-              to="/boarding-officer/dormitory"
+              to="/dod/dormitory"
               className="rounded-lg border border-border bg-card p-4 hover:bg-muted/40 transition flex flex-col items-start gap-2"
             >
               <Home className="h-5 w-5 text-primary" />
               <span className="font-semibold text-sm">Dormitory Status</span>
             </Link>
             <Link
-              to="/boarding-officer/reports"
+              to="/dod/reports"
               className="rounded-lg border border-border bg-card p-4 hover:bg-muted/40 transition flex flex-col items-start gap-2"
             >
               <BarChart3 className="h-5 w-5 text-primary" />
@@ -228,7 +228,7 @@ function BoardingOfficerDashboard() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-display font-bold text-lg">Today&apos;s Summary</h3>
             <Link
-              to="/boarding-officer/dormitory"
+              to="/dod/dormitory"
               className="text-xs text-primary font-semibold inline-flex items-center gap-1 hover:underline"
             >
               View details <ArrowRight className="h-3 w-3" />
@@ -254,6 +254,6 @@ function BoardingOfficerDashboard() {
           )}
         </div>
       </div>
-    </BoardingOfficerLayout>
+    </DodLayout>
   );
 }

@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus, X, Check, Search } from "lucide-react";
 import { toast } from "sonner";
-import { BoardingOfficerLayout } from "@/components/layout/BoardingOfficerLayout";
-import { boardingOfficerRouteGuard } from "@/lib/schoolAuth";
+import { DodLayout } from "@/components/layout/DodLayout";
+import { dodRouteGuard } from "@/lib/schoolAuth";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { apiRequest } from "@/lib/api";
 
-export const Route = createFileRoute("/boarding-officer/leaves")({
-  beforeLoad: ({ location }) => boardingOfficerRouteGuard(location),
-  component: BoardingOfficerLeavesPage,
+export const Route = createFileRoute("/dod/leaves")({
+  beforeLoad: ({ location }) => dodRouteGuard(location),
+  component: DodLeavesPage,
 });
 
 const TABS = ["Pending", "Approved", "All History"] as const;
@@ -106,7 +106,7 @@ const formatDate = (value?: string | null) => {
   return date.toISOString().slice(0, 10);
 };
 
-function BoardingOfficerLeavesPage() {
+function DodLeavesPage() {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Pending");
   const [requests, setRequests] = useState<LeaveRecord[]>([]);
   const [students, setStudents] = useState<StudentRecord[]>([]);
@@ -230,7 +230,7 @@ function BoardingOfficerLeavesPage() {
   }, []);
 
   return (
-    <BoardingOfficerLayout
+    <DodLayout
       title="Manage Leave Requests"
       subtitle="Create, approve, and track boarding student leave"
     >
@@ -452,7 +452,7 @@ function BoardingOfficerLeavesPage() {
           }}
         />
       )}
-    </BoardingOfficerLayout>
+    </DodLayout>
   );
 }
 

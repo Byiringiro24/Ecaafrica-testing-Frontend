@@ -14,16 +14,16 @@ import {
   YAxis,
 } from "recharts";
 import { toast } from "sonner";
-import { BoardingOfficerLayout } from "@/components/layout/BoardingOfficerLayout";
-import { boardingOfficerRouteGuard } from "@/lib/schoolAuth";
+import { DodLayout } from "@/components/layout/DodLayout";
+import { dodRouteGuard } from "@/lib/schoolAuth";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { todayIso } from "@/lib/gateKeeperAttendance";
 
-export const Route = createFileRoute("/boarding-officer/dormitory-analytics")({
-  beforeLoad: ({ location }) => boardingOfficerRouteGuard(location),
-  component: BoardingOfficerDormitoryAnalyticsPage,
+export const Route = createFileRoute("/dod/dormitory-analytics")({
+  beforeLoad: ({ location }) => dodRouteGuard(location),
+  component: DodDormitoryAnalyticsPage,
 });
 
 type ApiStudent = {
@@ -63,7 +63,7 @@ const DORM_COLORS = ["#3b5998", "#22C55E", "#F59E0B", "#EF4444", "#8B5CF6", "#64
 const STATUS_COLORS = { Present: "#22C55E", "On Leave": "#F59E0B", Absent: "#EF4444" };
 const UNASSIGNED = "Unassigned";
 
-function BoardingOfficerDormitoryAnalyticsPage() {
+function DodDormitoryAnalyticsPage() {
   const today = todayIso();
   const [loading, setLoading] = useState(true);
   const [students, setStudents] = useState<ApiStudent[]>([]);
@@ -246,7 +246,7 @@ function BoardingOfficerDormitoryAnalyticsPage() {
 
   if (loading) {
     return (
-      <BoardingOfficerLayout
+      <DodLayout
         title="Dormitory Analytics"
         subtitle="Occupancy, status and distribution across boarding houses"
       >
@@ -262,12 +262,12 @@ function BoardingOfficerDormitoryAnalyticsPage() {
           <Skeleton className="h-80" />
           <Skeleton className="h-80" />
         </div>
-      </BoardingOfficerLayout>
+      </DodLayout>
     );
   }
 
   return (
-    <BoardingOfficerLayout
+    <DodLayout
       title="Dormitory Analytics"
       subtitle="Occupancy, status and distribution across boarding houses"
     >
@@ -376,6 +376,6 @@ function BoardingOfficerDormitoryAnalyticsPage() {
           </div>
         </div>
       )}
-    </BoardingOfficerLayout>
+    </DodLayout>
   );
 }

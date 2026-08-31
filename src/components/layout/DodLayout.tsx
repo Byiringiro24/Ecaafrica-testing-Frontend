@@ -7,6 +7,7 @@ import {
   Home,
   BarChart3,
   PieChart,
+  UserRoundCog,
   LogOut,
   Menu,
   X,
@@ -20,17 +21,18 @@ const NAV = [
   {
     section: "Main",
     items: [
-      { to: "/boarding-officer/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/boarding-officer/attendance", label: "Boarding Attendance", icon: ClipboardCheck },
-      { to: "/boarding-officer/leaves", label: "Manage Leave Requests", icon: CalendarDays },
-      { to: "/boarding-officer/dormitory", label: "Dormitory Status", icon: Home },
-      { to: "/boarding-officer/dormitory-analytics", label: "Dormitory Analytics", icon: PieChart },
-      { to: "/boarding-officer/reports", label: "Boarding Reports", icon: BarChart3 },
+      { to: "/dod/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { to: "/dod/attendance", label: "Boarding Attendance", icon: ClipboardCheck },
+      { to: "/dod/leaves", label: "Manage Leave Requests", icon: CalendarDays },
+      { to: "/dod/dormitory", label: "Dormitory Status", icon: Home },
+      { to: "/dod/supervisors", label: "Patrons & Matrons", icon: UserRoundCog },
+      { to: "/dod/dormitory-analytics", label: "Dormitory Analytics", icon: PieChart },
+      { to: "/dod/reports", label: "Boarding Reports", icon: BarChart3 },
     ],
   },
 ];
 
-export function BoardingOfficerLayout({
+export function DodLayout({
   title,
   subtitle,
   children,
@@ -42,9 +44,9 @@ export function BoardingOfficerLayout({
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const currentUser = useCurrentUser();
-  const displayName = currentUser?.name ?? "Boarding Officer";
-  const displayRole = currentUser?.role ? formatRole(currentUser.role) : "Boarding Officer";
-  const initials = currentUser?.name ? getInitials(currentUser.name) : "BO";
+  const displayName = currentUser?.name ?? "Director of Discipline";
+  const displayRole = currentUser?.role ? formatRole(currentUser.role) : "Director of Discipline";
+  const initials = currentUser?.name ? getInitials(currentUser.name) : "DOD";
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -58,12 +60,12 @@ export function BoardingOfficerLayout({
         )}
       >
         <div className="flex items-center justify-between px-5 py-5 border-b border-sidebar-border">
-          <Link to="/boarding-officer/dashboard" className="flex items-center gap-2.5">
+          <Link to="/dod/dashboard" className="flex items-center gap-2.5">
             <img src={logo} alt="ecareafrica logo" className="h-9 w-9 rounded-lg object-contain" />
             <div className="font-display font-bold text-sidebar-foreground text-base leading-tight">
               ecareafrica
               <div className="text-[10px] font-normal text-sidebar-foreground/70">
-                Boarding Officer Panel
+                Director of Discipline Panel
               </div>
             </div>
           </Link>
@@ -83,7 +85,7 @@ export function BoardingOfficerLayout({
                   const Icon = item.icon;
                   const active =
                     pathname === item.to ||
-                    (item.to !== "/boarding-officer/dashboard" && pathname.startsWith(item.to));
+                    (item.to !== "/dod/dashboard" && pathname.startsWith(item.to));
                   return (
                     <Link
                       key={item.to}

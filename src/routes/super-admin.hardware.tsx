@@ -24,7 +24,7 @@ type PlatformDevice = Device & {
   tablet?: { id: string; name: string } | null;
 };
 
-const TABS = ["Schools", "Tablets", "Devices", "Assign", "VPN Setup"] as const;
+const TABS = ["Schools", "Tablets", "Devices", "Assign", "Device Locations", "VPN Setup"] as const;
 type Tab = (typeof TABS)[number];
 
 const statusColor = (s?: string | null) =>
@@ -85,6 +85,7 @@ function HardwarePage() {
       {tab === "Tablets" && <TabletsTab tablets={tablets} schools={schools} onRefresh={loadAll} />}
       {tab === "Devices" && <DevicesTab devices={devices} tablets={tablets} schools={schools} onRefresh={loadAll} />}
       {tab === "Assign"  && <AssignTab  tablets={tablets} devices={devices} schools={schools} onRefresh={loadAll} />}
+      {tab === "Device Locations" && <DeviceLocationsTab devices={devices} schools={schools} onRefresh={loadAll} />}
       {tab === "VPN Setup" && <VpnSetupTab />}
     </SuperAdminLayout>
   );
@@ -1479,6 +1480,196 @@ function VpnSetupTab() {
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+
+// ── Device Location Assignment Tab ───────────────────────────────────────────
+
+function DeviceLocationsTab({
+  devices,
+  schools,
+  onRefresh,
+}: {
+  devices: PlatformDevice[];
+  schools: SchoolRecord[];
+  onRefresh: () => void;
+}) {
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState<{
+    location_scope: string;
+    dormitory_id: string;
+    location_label: string;
+  }>({ location_scope: "gate", dormitory_id: "", location_label: "" });
+  const [dormitories, setDormitories] = useState<{ id: string; name: string; block_name?: string | null }[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const loadDormitories = async (schoolId: string) => {
+    try {
+      const res = await apiRequest<{ data: { id: string; name: string; block_name?: string | null }[] }>(
+        `/boarding/dormitories?limit=200`,
+        { auth: "school" }
+      );
+      setDormitories(res.data ?? []);
+    } catch { setDormitories([]); }
+  };
+
+  const startEdit = (d: PlatformDevice) => {
+    setEditId(d.id);
+    setForm({
+      location_scope: (d as any).location_scope ?? "gate",
+      dormitory_id: (d as any).dormitory_id ?? "",
+      location_label: (d as any).location_label ?? "",
+    });
+    if (d.school?.id) void loadDormitories(d.school.id);
+  };
+
+  const handleSave = async () => {
+    if (!editId) return;
+    setSaving(true);
+    try {
+      await apiRequest(`/devices/${editId}/assign-location`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          location_scope: form.location_scope,
+          dormitory_id: form.dormitory_id || null,
+          location_label: form.location_label || null,
+        }),
+        auth: "school",
+      });
+      toast.success("Device location updated");
+      setEditId(null);
+      onRefresh();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update device location");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const SCOPES = [
+    { value: "gate", label: "Gate (entry/exit)" },
+    { value: "dormitory", label: "Dormitory" },
+    { value: "dining_hall", label: "Dining Hall" },
+    { value: "classroom", label: "Classroom" },
+    { value: "library", label: "Library" },
+    { value: "other", label: "Other" },
+  ];
+
+  const scopeColor = (s?: string) => {
+    if (s === "dormitory") return "bg-blue-100 text-blue-700";
+    if (s === "dining_hall") return "bg-amber-100 text-amber-700";
+    if (s === "gate") return "bg-emerald-100 text-emerald-700";
+    return "bg-muted text-muted-foreground";
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Cpu className="h-4 w-4 text-primary" />
+          <h2 className="font-display font-bold">Device Location Assignment</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Assign each device to a specific location (gate, dormitory, dining hall). Dormitory-assigned devices
+          enable boarding attendance to be automatically linked to the correct block/hostel.
+        </p>
+      </div>
+
+      {devices.length === 0 ? (
+        <EmptyState message="No devices registered yet. Register devices in the Devices tab." />
+      ) : (
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="divide-y divide-border">
+            {devices.map((d) => (
+              <div key={d.id} className="px-5 py-4">
+                {editId === d.id ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Cpu className="h-4 w-4 text-primary" />
+                      <span className="font-semibold text-sm">{d.name}</span>
+                      <span className="text-xs text-muted-foreground font-mono">{d.device_uid}</span>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <SaSelect
+                        label="Location Type"
+                        value={form.location_scope}
+                        onChange={(e) => setForm({ ...form, location_scope: e.target.value })}
+                      >
+                        {SCOPES.map((s) => (
+                          <option key={s.value} value={s.value}>{s.label}</option>
+                        ))}
+                      </SaSelect>
+                      <SaSelect
+                        label="Dormitory (if applicable)"
+                        value={form.dormitory_id}
+                        onChange={(e) => setForm({ ...form, dormitory_id: e.target.value })}
+                      >
+                        <option value="">— no specific dormitory —</option>
+                        {dormitories.map((dorm) => (
+                          <option key={dorm.id} value={dorm.id}>
+                            {dorm.name}{dorm.block_name ? ` (${dorm.block_name})` : ""}
+                          </option>
+                        ))}
+                      </SaSelect>
+                      <SaInput
+                        label="Location Label"
+                        value={form.location_label}
+                        onChange={(e) => setForm({ ...form, location_label: e.target.value })}
+                        placeholder="e.g. Boys Block A — Main Door"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        <Save className="h-3.5 w-3.5" />
+                        {saving ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        onClick={() => setEditId(null)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted"
+                      >
+                        <X className="h-3.5 w-3.5" /> Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted shrink-0">
+                      <Cpu className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm">{d.name}</span>
+                        <span className="text-xs text-muted-foreground font-mono">{d.device_uid}</span>
+                        {d.school && (
+                          <span className="text-xs bg-muted rounded px-1.5 py-0.5">{d.school.name}</span>
+                        )}
+                        <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold capitalize", scopeColor((d as any).location_scope))}>
+                          {(d as any).location_scope ?? "unassigned"}
+                        </span>
+                      </div>
+                      {(d as any).location_label && (
+                        <div className="text-xs text-muted-foreground mt-0.5">{(d as any).location_label}</div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => startEdit(d)}
+                      className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Assign
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

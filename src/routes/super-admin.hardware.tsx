@@ -4,7 +4,7 @@ import {
   School, TabletSmartphone, Cpu, ArrowRight,
   Plus, Trash2, RefreshCw, CheckCircle2, ArrowRightLeft,
   Pencil, X, Save, Link2, Zap, AlertTriangle, Info,
-  Wifi, Key, Copy, ClipboardPaste, WifiOff, ShieldCheck,
+  Wifi, Key, Copy, ClipboardPaste, WifiOff, ShieldCheck, Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
@@ -1075,6 +1075,11 @@ function VpnSetupTab() {
   const [peerAdded,       setPeerAdded]        = useState(false);
   const [addedVpnIp,      setAddedVpnIp]       = useState("");
 
+  // Ping — server pings a VPN IP (ICMP, same as running ping in server terminal)
+  const [pingTarget,  setPingTarget]  = useState("");
+  const [pinging2,    setPinging2]    = useState(false);
+  const [pingResult,  setPingResult]  = useState<{ success: boolean; output: string; rttMs?: number } | null>(null);
+
   useEffect(() => { void loadServerStatus(); }, []);
 
   const loadServerStatus = async () => {
@@ -1110,6 +1115,25 @@ function VpnSetupTab() {
     } catch (e: any) {
       toast.error(e?.message || "Failed to add peer");
     } finally { setAddingPeer(false); }
+  };
+
+  const handlePingVpn = async () => {
+    const t = pingTarget.trim();
+    if (!t) { toast.error("Enter an IP address to ping"); return; }
+    setPinging2(true); setPingResult(null);
+    try {
+      const res = await apiRequest<{ data: { success: boolean; output: string; rttMs?: number } }>(
+        "/platform/hardware/vpn/ping",
+        { method: "POST", auth: "platform", body: JSON.stringify({ target: t, count: 4 }) }
+      );
+      const data = (res as any)?.data ?? res;
+      setPingResult(data);
+      if (data.success) toast.success(`Ping ${t} — ${data.rttMs != null ? `avg ${data.rttMs}ms` : "reachable"}`);
+      else toast.error(`Ping ${t} — no response`);
+    } catch (e: any) {
+      setPingResult({ success: false, output: e?.message || "Request failed" });
+      toast.error(e?.message || "Ping request failed");
+    } finally { setPinging2(false); }
   };
 
   return (
@@ -1206,6 +1230,77 @@ function VpnSetupTab() {
                 ))}
               </div>
             )}
+
+            {/* ── Ping from server ── */}
+            <div className="border-t border-border pt-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Ping from Server — test VPN reachability
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Sends ICMP ping from the server to any VPN IP — exactly like running{" "}
+                <code className="font-mono text-xs bg-muted px-1 rounded">ping -c 4 10.0.0.3</code> in the server terminal.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  value={pingTarget}
+                  onChange={e => { setPingTarget(e.target.value); setPingResult(null); }}
+                  placeholder="10.0.0.3 (tablet VPN IP)"
+                  className="flex-1 rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+                  onKeyDown={e => e.key === "Enter" && void handlePingVpn()}
+                />
+                <button
+                  onClick={() => void handlePingVpn()}
+                  disabled={pinging2 || !pingTarget.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-xs font-semibold hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {pinging2
+                    ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Pinging…</>
+                    : <><Activity className="h-3.5 w-3.5" /> Ping</>}
+                </button>
+              </div>
+              {/* Auto-fill from peer list */}
+              {serverStatus && serverStatus.peers.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {serverStatus.peers.map((p, i) => {
+                    const ip = p.allowedIps.split("/")[0];
+                    return (
+                      <button key={i} onClick={() => { setPingTarget(ip); setPingResult(null); }}
+                        className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-mono hover:border-primary hover:text-primary transition">
+                        {ip}
+                      </button>
+                    );
+                  })}
+                  <span className="self-center text-xs text-muted-foreground">← click to ping</span>
+                </div>
+              )}
+              {pingResult && (
+                <div className={cn(
+                  "rounded-xl border p-4 space-y-2",
+                  pingResult.success
+                    ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-800"
+                    : "border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800"
+                )}>
+                  <div className={cn("flex items-center gap-2 font-semibold text-sm",
+                    pingResult.success ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"
+                  )}>
+                    {pingResult.success
+                      ? <><CheckCircle2 className="h-4 w-4" /> {pingTarget} is reachable via VPN{pingResult.rttMs != null ? ` — avg ${pingResult.rttMs}ms` : ""}</>
+                      : <><WifiOff className="h-4 w-4" /> {pingTarget} did not respond — VPN tunnel may not be active</>}
+                  </div>
+                  <pre className="rounded-lg bg-black/10 dark:bg-white/5 p-3 text-xs font-mono text-foreground/80 overflow-x-auto whitespace-pre-wrap max-h-40">
+                    {pingResult.output}
+                  </pre>
+                  {!pingResult.success && (
+                    <ul className="list-disc pl-4 text-xs space-y-0.5 text-muted-foreground">
+                      <li>Make sure the tablet has activated its WireGuard tunnel (wizard Step 4)</li>
+                      <li>Make sure the server added this tablet as a peer (Step 2 above)</li>
+                      <li>Check server firewall: <code className="font-mono">ufw allow 51820/udp</code></li>
+                      <li>Check WireGuard status: <code className="font-mono">wg show</code></li>
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </section>
 

@@ -1227,7 +1227,7 @@ function VpnSetupTab() {
             <KeyBox
               label="Server Public Key (give this to the tablet)"
               value={serverStatus?.serverPublicKey || ""}
-              placeholder="Loading…"
+              placeholder={serverLoading ? "Loading…" : serverStatus ? "Not found — run: wg show wg0 public-key on server" : "Click refresh to load"}
             />
 
             <div className="grid grid-cols-2 gap-3">

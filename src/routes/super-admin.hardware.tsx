@@ -1024,6 +1024,7 @@ type VpnServerStatus = {
   nextAvailableIp: string;
   peerCount: number;
   serverEndpoint: string;
+  vpnSubnet: string;
   peers: Array<{ publicKey: string; allowedIps: string; endpoint: string; latestHandshake: string }>;
 };
 
@@ -1101,7 +1102,7 @@ function VpnSetupTab() {
       const data = (res as any)?.data ?? res;
       setServerStatus(data);
       setAssignedVpnIp(data.nextAvailableIp || "");
-      // Pre-fill tablet install fields with server info
+      // Pre-fill tablet install fields with server info — comes from server config, not hardcoded
       if (data.serverPublicKey) setServerPublicKeyPaste(data.serverPublicKey);
       if (data.serverEndpoint) setServerEndpointPaste(data.serverEndpoint);
     } catch (e: any) {
@@ -1233,6 +1234,13 @@ function VpnSetupTab() {
               <KeyBox label="Server Endpoint" value={serverStatus?.serverEndpoint || ""} />
               <KeyBox label="Next Available VPN IP" value={serverStatus?.nextAvailableIp || ""} />
             </div>
+            {serverStatus?.vpnSubnet && (
+              <div className="rounded-lg border border-muted bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                VPN subnet: <span className="font-mono font-semibold text-foreground">{serverStatus.vpnSubnet}</span>
+                {" · "}Server: <span className="font-mono font-semibold text-foreground">{serverStatus.serverVpnIp}</span>
+                {" · "}Peers: <span className="font-semibold text-foreground">{serverStatus.peerCount}</span>
+              </div>
+            )}
 
             <div className="border-t border-border pt-4 space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Step 3 — Add tablet as VPN peer</p>
@@ -1440,7 +1448,7 @@ function VpnSetupTab() {
                   <input
                     value={serverEndpointPaste}
                     onChange={e => setServerEndpointPaste(e.target.value)}
-                    placeholder="169.58.124.150:51820"
+                    placeholder={serverStatus?.serverEndpoint || "169.58.124.150:51820"}
                     className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
                   />
                 </label>

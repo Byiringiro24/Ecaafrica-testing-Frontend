@@ -1284,7 +1284,7 @@ function VpnSetupTab() {
                 </label>
               </div>
 
-              <button
+      <button
                 onClick={() => void handleAddPeer()}
                 disabled={addingPeer || !tabletPublicKey.trim() || !assignedVpnIp.trim()}
                 className={cn("w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50",
@@ -1295,6 +1295,11 @@ function VpnSetupTab() {
                   ? <><CheckCircle2 className="h-4 w-4" /> Peer Added — VPN active on server</>
                   : <><Key className="h-4 w-4" /> Add Peer to VPN</>}
               </button>
+              {peerAdded && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                  ✓ Peer added. Now go to the <strong>Tablets tab</strong> and register this tablet with IP <strong>{assignedVpnIp}</strong> and port <strong>5000</strong>. The school server will then be able to pull attendance logs from it.
+                </div>
+              )}
             </div>
 
             {/* Peers list */}

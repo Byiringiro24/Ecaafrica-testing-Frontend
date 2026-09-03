@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+﻿import { FormEvent, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   School, TabletSmartphone, Cpu, ArrowRight,
@@ -1061,6 +1061,67 @@ function KeyBox({ label, value, placeholder }: { label: string; value: string; p
     </div>
   );
 }
+function FixPeerPanel({ serverStatus, onFixed }: { serverStatus: VpnServerStatus | null; onFixed: () => void }) {
+  const [correctKey, setCorrectKey] = useState("");
+  const [vpnIp, setVpnIp]           = useState("");
+  const [fixing, setFixing]          = useState(false);
+
+  const handleFix = async () => {
+    if (!correctKey.trim()) { toast.error("Paste the correct active key"); return; }
+    if (!vpnIp.trim())      { toast.error("Enter the VPN IP this tablet should use"); return; }
+    setFixing(true);
+    try {
+      // Find which peer currently has this VPN IP so we can remove the wrong key
+      const oldPeer = serverStatus?.peers.find(p => p.allowedIps.startsWith(vpnIp.trim()));
+      await apiRequest("/platform/hardware/vpn/fix-peer", {
+        method: "POST", auth: "platform",
+        body: JSON.stringify({
+          oldPublicKey: oldPeer?.publicKey,
+          newPublicKey: correctKey.trim(),
+          vpnIp: vpnIp.trim(),
+        }),
+      });
+      toast.success(`Fixed — ${vpnIp} now registered with the correct key`);
+      setCorrectKey(""); setVpnIp("");
+      onFixed();
+    } catch (e: any) {
+      toast.error(e?.message || "Fix failed");
+    } finally { setFixing(false); }
+  };
+
+  return (
+    <div className="space-y-3">
+      <label className="block">
+        <span className="mb-1 block text-xs font-semibold">Correct Active Key <span className="text-muted-foreground font-normal">(from tablet wizard Step 5 diagnosis)</span></span>
+        <div className="flex gap-2">
+          <input value={correctKey} onChange={e => setCorrectKey(e.target.value)}
+            placeholder="Paste the key shown as active on the tablet…"
+            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs" />
+          {correctKey && <button onClick={() => setCorrectKey("")} className="p-2 rounded-md border border-border hover:bg-muted text-muted-foreground"><X className="h-3.5 w-3.5" /></button>}
+        </div>
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs font-semibold">VPN IP this tablet should have</span>
+        <input value={vpnIp} onChange={e => setVpnIp(e.target.value)}
+          placeholder="10.0.0.3"
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs" />
+        {serverStatus?.peers && vpnIp && (() => {
+          const existing = serverStatus.peers.find(p => p.allowedIps.startsWith(vpnIp.trim()));
+          return existing ? (
+            <p className="mt-1 text-xs text-amber-600">
+              Currently registered: <span className="font-mono">{existing.publicKey.slice(0, 20)}…</span> — will be replaced
+            </p>
+          ) : null;
+        })()}
+      </label>
+      <button onClick={handleFix} disabled={fixing || !correctKey.trim() || !vpnIp.trim()}
+        className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50">
+        {fixing ? <><RefreshCw className="h-4 w-4 animate-spin" /> Fixing…</> : <><Key className="h-4 w-4" /> Fix Peer Registration</>}
+      </button>
+    </div>
+  );
+}
+
 
 function VpnSetupTab() {
   // ── State ──
@@ -1385,6 +1446,18 @@ function VpnSetupTab() {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* Fix Peer — key mismatch repair */}
+            <div className="border-t border-border pt-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Fix Key Mismatch
+              </p>
+              <p className="text-xs text-muted-foreground">
+                If the tablet wizard shows a key mismatch, paste the correct active key + VPN IP here.
+                The server will replace the wrong registration instantly.
+              </p>
+              <FixPeerPanel serverStatus={serverStatus} onFixed={loadServerStatus} />
             </div>
           </div>
         </section>

@@ -3,8 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Download, Search } from "lucide-react";
 import { toast } from "sonner";
 import ExcelJS from "exceljs";
-import { BoardingOfficerLayout } from "@/components/layout/BoardingOfficerLayout";
-import { boardingOfficerRouteGuard } from "@/lib/schoolAuth";
+import { DodLayout } from "@/components/layout/DodLayout";
+import { dodRouteGuard } from "@/lib/schoolAuth";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
@@ -19,9 +19,9 @@ import {
   todayIso,
 } from "@/lib/gateKeeperAttendance";
 
-export const Route = createFileRoute("/boarding-officer/reports")({
-  beforeLoad: ({ location }) => boardingOfficerRouteGuard(location),
-  component: BoardingOfficerReportsPage,
+export const Route = createFileRoute("/dod/reports")({
+  beforeLoad: ({ location }) => dodRouteGuard(location),
+  component: DodReportsPage,
 });
 
 const REPORT_TABS = ["Boarding Students", "Boarding Attendance"] as const;
@@ -61,7 +61,7 @@ type AttendanceReportRow = {
   status: string;
 };
 
-function BoardingOfficerReportsPage() {
+function DodReportsPage() {
   const todayValue = todayIso();
   const [tab, setTab] = useState<(typeof REPORT_TABS)[number]>("Boarding Students");
   const [loading, setLoading] = useState(true);
@@ -381,7 +381,7 @@ function BoardingOfficerReportsPage() {
   };
 
   return (
-    <BoardingOfficerLayout title="Boarding Reports" subtitle="Student and attendance reporting">
+    <DodLayout title="Boarding Reports" subtitle="Student and attendance reporting">
       <div className="flex gap-1 border-b border-border mb-5 items-end">
         {REPORT_TABS.map((t) => (
           <button
@@ -656,6 +656,6 @@ function BoardingOfficerReportsPage() {
           </div>
         </>
       )}
-    </BoardingOfficerLayout>
+    </DodLayout>
   );
 }

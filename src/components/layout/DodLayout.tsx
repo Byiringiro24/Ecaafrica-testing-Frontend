@@ -2,15 +2,18 @@ import { ReactNode, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
-  ClipboardCheck,
   CalendarDays,
   Home,
+  ClipboardCheck,
+  Utensils,
+  AlertTriangle,
+  Settings,
   BarChart3,
-  PieChart,
-  UserRoundCog,
+  Users,
   LogOut,
   Menu,
   X,
+  ShieldCheck,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
@@ -19,15 +22,28 @@ import logo from "@/assets/logo.png";
 
 const NAV = [
   {
-    section: "Main",
+    section: "Operations",
     items: [
-      { to: "/dod/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/dod/attendance", label: "Boarding Attendance", icon: ClipboardCheck },
-      { to: "/dod/leaves", label: "Manage Leave Requests", icon: CalendarDays },
-      { to: "/dod/dormitory", label: "Dormitory Status", icon: Home },
-      { to: "/dod/supervisors", label: "Patrons & Matrons", icon: UserRoundCog },
-      { to: "/dod/dormitory-analytics", label: "Dormitory Analytics", icon: PieChart },
-      { to: "/dod/reports", label: "Boarding Reports", icon: BarChart3 },
+      { to: "/dod/dashboard",    label: "Dashboard",           icon: LayoutDashboard },
+      { to: "/dod/leaves",       label: "Leave Management",    icon: CalendarDays },
+      { to: "/dod/gate-exits",   label: "Gate Exits",          icon: ShieldCheck },
+      { to: "/dod/attendance",   label: "Boarding Attendance", icon: ClipboardCheck },
+      { to: "/dod/dormitories",  label: "Dormitories",         icon: Home },
+      { to: "/dod/patrons",      label: "Patrons & Matrons",   icon: Users },
+    ],
+  },
+  {
+    section: "Dining",
+    items: [
+      { to: "/dod/dining",       label: "Dining Management",   icon: Utensils },
+    ],
+  },
+  {
+    section: "Admin",
+    items: [
+      { to: "/dod/alerts",       label: "Alerts & Exceptions", icon: AlertTriangle },
+      { to: "/dod/reports",      label: "Boarding Reports",    icon: BarChart3 },
+      { to: "/dod/config",       label: "Configuration",       icon: Settings },
     ],
   },
 ];
@@ -46,7 +62,7 @@ export function DodLayout({
   const currentUser = useCurrentUser();
   const displayName = currentUser?.name ?? "Director of Discipline";
   const displayRole = currentUser?.role ? formatRole(currentUser.role) : "Director of Discipline";
-  const initials = currentUser?.name ? getInitials(currentUser.name) : "DOD";
+  const initials = currentUser?.name ? getInitials(currentUser.name) : "DD";
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -61,12 +77,10 @@ export function DodLayout({
       >
         <div className="flex items-center justify-between px-5 py-5 border-b border-sidebar-border">
           <Link to="/dod/dashboard" className="flex items-center gap-2.5">
-            <img src={logo} alt="ecareafrica logo" className="h-9 w-9 rounded-lg object-contain" />
+            <img src={logo} alt="ecareafrica" className="h-9 w-9 rounded-lg object-contain" />
             <div className="font-display font-bold text-sidebar-foreground text-base leading-tight">
               ecareafrica
-              <div className="text-[10px] font-normal text-sidebar-foreground/70">
-                Director of Discipline Panel
-              </div>
+              <div className="text-[10px] font-normal text-sidebar-foreground/70">DOD Panel</div>
             </div>
           </Link>
           <button onClick={() => setOpen(false)} className="lg:hidden p-1.5 text-sidebar-foreground/70">
@@ -74,7 +88,7 @@ export function DodLayout({
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
           {NAV.map((sec) => (
             <div key={sec.section}>
               <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold text-sidebar-foreground/50">
@@ -121,10 +135,7 @@ export function DodLayout({
               <div className="text-[11px] text-sidebar-foreground/60">{displayRole}</div>
             </div>
             <button
-              onClick={() => {
-                clearSchoolAuth();
-                window.location.replace("/login");
-              }}
+              onClick={() => { clearSchoolAuth(); window.location.replace("/login"); }}
               className="rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-foreground"
               aria-label="Logout"
             >
@@ -142,9 +153,7 @@ export function DodLayout({
             </button>
             <div className="min-w-0 flex-1">
               <h1 className="font-display text-xl md:text-2xl font-bold truncate">{title}</h1>
-              {subtitle && (
-                <p className="text-xs md:text-sm text-muted-foreground mt-0.5">{subtitle}</p>
-              )}
+              {subtitle && <p className="text-xs md:text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
             </div>
             <div className="hidden sm:flex items-center gap-3 rounded-lg px-2 py-1.5">
               <div className="text-right leading-tight">

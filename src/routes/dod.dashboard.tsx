@@ -1,255 +1,217 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
-  ClipboardCheck,
-  CalendarDays,
-  Home,
-  BarChart3,
-  ArrowRight,
-  Users,
-  UserCheck,
-  UserX,
+  Users, UserCheck, UserX, CalendarDays, Clock, Utensils,
+  AlertTriangle, ShieldCheck, Settings, BarChart3, ArrowRight,
+  Home, ClipboardCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DodLayout } from "@/components/layout/DodLayout";
-import { dodRouteGuard } from "@/lib/schoolAuth";
+import { directorOfDisciplineRouteGuard } from "@/lib/schoolAuth";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { leavesApi, type LeaveRecord } from "@/lib/boardingApi";
 
 export const Route = createFileRoute("/dod/dashboard")({
-  beforeLoad: ({ location }) => dodRouteGuard(location),
+  beforeLoad: ({ location }) => directorOfDisciplineRouteGuard(location),
   component: DodDashboard,
 });
 
-type LeaveRecord = {
-  id: string;
-  student_id: string;
-  status: string;
-  start_date: string;
-  end_date: string;
-  returned_at?: string | null;
-};
-
-type ApiRecord = {
-  id: string;
-  student_id: string;
-  status: string;
-  session_id: string;
-};
-
-type ApiSession = {
-  id: string;
-  session_type?: string | null;
-  session_date: string;
-};
+type Student = { id: string; student_type?: string | null };
+type Dormitory = { id: string; name: string; block_name?: string | null };
+type DormAssignment = { student_id: string; dormitory_id: string };
 
 function DodDashboard() {
   const currentUser = useCurrentUser();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalBoarders: 0,
-    presentToday: 0,
+    insideSchool: 0,
     onLeave: 0,
-    absentToday: 0,
+    returned: 0,
+    missingAttendance: 0,
+    lateReturns: 0,
     pendingLeaves: 0,
+    diningExceptions: 0,
   });
+  const [missingStudents, setMissingStudents] = useState<LeaveRecord[]>([]);
+  const [dormSummary, setDormSummary] = useState<{ id: string; name: string; total: number; present: number; missing: number; onLeave: number }[]>([]);
 
   const today = new Date().toISOString().slice(0, 10);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  const dateLabel = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-  const displayName = currentUser?.name?.split(" ").slice(0, 2).join(" ") ?? "Director of Discipline";
+  const dateLabel = new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const displayName = currentUser?.name?.split(" ").slice(0, 2).join(" ") ?? "Director";
 
   useEffect(() => {
-    const loadStats = async () => {
+    const load = async () => {
       setLoading(true);
       try {
-        const [students, leaves, sessions, records] = await Promise.all([
-          apiRequest<{ id: string }[]>("/students?student_type=boarding&limit=2000", {
-            auth: "school",
-          }).catch(() => []),
-          apiRequest<LeaveRecord[]>("/boarding/student-leaves?limit=1000", { auth: "school" }).catch(
-            () => []
-          ),
-          apiRequest<ApiSession[]>(`/attendance/sessions?date=${today}&limit=500`, {
-            auth: "school",
-          }).catch(() => []),
-          apiRequest<ApiRecord[]>(`/attendance/records?date=${today}&limit=5000`, {
-            auth: "school",
-          }).catch(() => []),
+        const [students, leaves, dormitories, assignments] = await Promise.all([
+          apiRequest<Student[]>("/students?student_type=boarding&limit=2000", { auth: "school" }).catch(() => [] as Student[]),
+          leavesApi.list({ limit: "2000" }).then(r => Array.isArray(r) ? r : (r as any)?.data ?? []).catch(() => [] as LeaveRecord[]),
+          apiRequest<Dormitory[]>("/boarding/dormitories?limit=100", { auth: "school" }).catch(() => [] as Dormitory[]),
+          apiRequest<DormAssignment[]>("/boarding/assignments?is_active=true&limit=5000", { auth: "school" }).catch(() => [] as DormAssignment[]),
         ]);
 
-        const boarderList = Array.isArray(students) ? students : [];
+        const boarders = (Array.isArray(students) ? students : []).filter(s => s.student_type === "boarding");
         const leaveList = Array.isArray(leaves) ? leaves : [];
-        const sessionList = Array.isArray(sessions) ? sessions : [];
-        const recordList = Array.isArray(records) ? records : [];
+        const dormList = Array.isArray(dormitories) ? dormitories : [];
+        const assignList = Array.isArray(assignments) ? assignments : [];
 
-        const boardingSessionIds = new Set(
-          sessionList
-            .filter(
-              (s) =>
-                s.session_type === "boarding_morning" || s.session_type === "boarding_evening"
-            )
-            .map((s) => s.id)
+        const onLeaveToday = leaveList.filter(l =>
+          l.leave_state === "outside_school" ||
+          (l.status === "approved" && !l.returned_at && l.start_date <= today && l.end_date >= today)
         );
+        const returnedToday = leaveList.filter(l => l.returned_at?.startsWith(today));
+        const lateReturns = leaveList.filter(l => l.late_return_flagged && !l.returned_at);
+        const pendingLeaves = leaveList.filter(l => l.status === "pending" || l.leave_state === "requested" || l.leave_state === "pending_dod_approval");
 
-        const presentIds = new Set(
-          recordList
-            .filter(
-              (r) =>
-                boardingSessionIds.has(r.session_id) &&
-                (r.status === "present" || r.status === "late" || r.status === "excused")
-            )
-            .map((r) => r.student_id)
-        );
+        // dormitory-level summary
+        const onLeaveIds = new Set(onLeaveToday.map(l => l.student_id));
+        const dormMap = new Map(dormList.map(d => [d.id, { id: d.id, name: d.name, total: 0, present: 0, missing: 0, onLeave: 0 }]));
+        for (const a of assignList) {
+          const dorm = dormMap.get(a.dormitory_id);
+          if (!dorm) continue;
+          dorm.total++;
+          if (onLeaveIds.has(a.student_id)) dorm.onLeave++;
+          else dorm.missing++; // simplification until reconciliation data is available
+        }
 
-        const onLeaveIds = new Set(
-          leaveList
-            .filter(
-              (leave) =>
-                leave.status === "approved" &&
-                !leave.returned_at &&
-                leave.start_date <= today &&
-                leave.end_date >= today
-            )
-            .map((leave) => leave.student_id)
-        );
-
-        const totalBoarders = boarderList.length;
-        const onLeave = onLeaveIds.size;
-        const presentToday = [...presentIds].filter((id) => !onLeaveIds.has(id)).length;
-        const absentToday = Math.max(0, totalBoarders - presentToday - onLeave);
-        const pendingLeaves = leaveList.filter((leave) => leave.status === "pending").length;
-
-        setStats({ totalBoarders, presentToday, onLeave, absentToday, pendingLeaves });
-      } catch (error: any) {
-        toast.error(error?.message ?? "Failed to load dashboard data");
+        setStats({
+          totalBoarders: boarders.length,
+          insideSchool: boarders.length - onLeaveToday.length,
+          onLeave: onLeaveToday.length,
+          returned: returnedToday.length,
+          missingAttendance: 0, // populated from attendance sessions when available
+          lateReturns: lateReturns.length,
+          pendingLeaves: pendingLeaves.length,
+          diningExceptions: 0,
+        });
+        setDormSummary(Array.from(dormMap.values()).filter(d => d.total > 0));
+      } catch (e: any) {
+        toast.error(e?.message ?? "Failed to load dashboard");
       } finally {
         setLoading(false);
       }
     };
-
-    void loadStats();
+    void load();
   }, [today]);
 
   return (
     <DodLayout title={`${greeting}, ${displayName}`} subtitle={dateLabel}>
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
+      {/* ── Today's Overview ── */}
+      <div className="grid gap-4 grid-cols-2 xl:grid-cols-4 mb-6">
         {loading ? (
-          <>
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-            <Skeleton className="h-32" />
-          </>
+          Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-28" />)
         ) : (
           <>
-            <StatCard
-              label="Total Boarders"
-              value={stats.totalBoarders}
-              icon={<Users className="h-5 w-5" />}
-              trend="Students in boarding"
-              tone="primary"
-            />
-            <StatCard
-              label="Present in Dorm"
-              value={stats.presentToday}
-              icon={<UserCheck className="h-5 w-5" />}
-              trend="Marked present today"
-              tone="success"
-            />
-            <StatCard
-              label="On Approved Leave"
-              value={stats.onLeave}
-              icon={<CalendarDays className="h-5 w-5" />}
-              trend="Currently away"
-              tone="warning"
-            />
-            <StatCard
-              label="Absent from Dorm"
-              value={stats.absentToday}
-              icon={<UserX className="h-5 w-5" />}
-              trend="Not present & not on leave"
-              tone="destructive"
-            />
+            <StatCard label="Total Boarders"       value={stats.totalBoarders}      icon={<Users className="h-5 w-5" />}         tone="primary" />
+            <StatCard label="Students Inside"      value={stats.insideSchool}       icon={<UserCheck className="h-5 w-5" />}     tone="success" />
+            <StatCard label="On Leave"             value={stats.onLeave}            icon={<CalendarDays className="h-5 w-5" />}  tone="warning" />
+            <StatCard label="Returned Today"       value={stats.returned}           icon={<UserCheck className="h-5 w-5" />}     tone="secondary" />
+            <StatCard label="Pending Leave Requests" value={stats.pendingLeaves}    icon={<Clock className="h-5 w-5" />}         tone="warning" trend="Awaiting your approval" />
+            <StatCard label="Late Returns"         value={stats.lateReturns}        icon={<AlertTriangle className="h-5 w-5" />} tone="destructive" />
+            <StatCard label="Dining Exceptions"    value={stats.diningExceptions}   icon={<Utensils className="h-5 w-5" />}     tone="secondary" />
+            <StatCard label="Missing Attendance"   value={stats.missingAttendance}  icon={<UserX className="h-5 w-5" />}         tone="destructive" />
           </>
         )}
       </div>
 
+      {/* ── Red alert for pending approvals ── */}
       {!loading && stats.pendingLeaves > 0 && (
-        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {stats.pendingLeaves} leave request{stats.pendingLeaves === 1 ? "" : "s"} awaiting approval.
+        <div className="mb-5 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-destructive text-sm font-semibold">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {stats.pendingLeaves} leave request{stats.pendingLeaves !== 1 ? "s" : ""} awaiting your approval.
+          </div>
+          <Link to="/dod/leaves" className="text-xs font-bold text-destructive hover:underline inline-flex items-center gap-1">
+            Review now <ArrowRight className="h-3 w-3" />
+          </Link>
         </div>
       )}
 
-      <div className="grid gap-5 mt-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+      {!loading && stats.lateReturns > 0 && (
+        <div className="mb-5 rounded-lg border border-amber-400/40 bg-amber-50 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-amber-800 text-sm font-semibold">
+            <Clock className="h-4 w-4 shrink-0" />
+            {stats.lateReturns} student{stats.lateReturns !== 1 ? "s" : ""} have not returned from leave yet — overdue.
+          </div>
+          <Link to="/dod/leaves" className="text-xs font-bold text-amber-700 hover:underline inline-flex items-center gap-1">
+            View <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+      )}
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        {/* ── Quick Actions ── */}
+        <div className="rounded-xl border border-border bg-card p-5">
           <h3 className="font-display font-bold text-lg mb-4">Quick Actions</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Link
-              to="/dod/attendance"
-              className="rounded-lg bg-primary text-primary-foreground p-4 hover:bg-primary/90 transition flex flex-col items-start gap-2"
-            >
-              <ClipboardCheck className="h-5 w-5" />
-              <span className="font-semibold text-sm">Record Attendance</span>
-            </Link>
-            <Link
-              to="/dod/leaves"
-              className="rounded-lg border border-border bg-card p-4 hover:bg-muted/40 transition flex flex-col items-start gap-2"
-            >
-              <CalendarDays className="h-5 w-5 text-primary" />
-              <span className="font-semibold text-sm">Manage Leave Requests</span>
-            </Link>
-            <Link
-              to="/dod/dormitory"
-              className="rounded-lg border border-border bg-card p-4 hover:bg-muted/40 transition flex flex-col items-start gap-2"
-            >
-              <Home className="h-5 w-5 text-primary" />
-              <span className="font-semibold text-sm">Dormitory Status</span>
-            </Link>
-            <Link
-              to="/dod/reports"
-              className="rounded-lg border border-border bg-card p-4 hover:bg-muted/40 transition flex flex-col items-start gap-2"
-            >
-              <BarChart3 className="h-5 w-5 text-primary" />
-              <span className="font-semibold text-sm">Boarding Reports</span>
-            </Link>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { to: "/dod/leaves",      label: "Approve Leave",          icon: CalendarDays,  primary: true },
+              { to: "/dod/gate-exits",  label: "Gate Exits",             icon: ShieldCheck,   primary: false },
+              { to: "/dod/attendance",  label: "Boarding Attendance",    icon: ClipboardCheck,primary: false },
+              { to: "/dod/dormitories", label: "Manage Dormitories",     icon: Home,          primary: false },
+              { to: "/dod/patrons",     label: "Patrons & Matrons",      icon: Users,         primary: false },
+              { to: "/dod/dining",      label: "Dining Schedules",       icon: Utensils,      primary: false },
+              { to: "/dod/reports",     label: "Boarding Reports",       icon: BarChart3,     primary: false },
+              { to: "/dod/config",      label: "Configuration",          icon: Settings,      primary: false },
+            ].map(({ to, label, icon: Icon, primary }) => (
+              <Link
+                key={to}
+                to={to}
+                className={`rounded-lg p-4 flex flex-col items-start gap-2 transition ${
+                  primary
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "border border-border bg-card hover:bg-muted/40"
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="font-semibold text-sm leading-snug">{label}</span>
+              </Link>
+            ))}
           </div>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+        {/* ── Dormitory Summary ── */}
+        <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display font-bold text-lg">Today&apos;s Summary</h3>
-            <Link
-              to="/dod/dormitory"
-              className="text-xs text-primary font-semibold inline-flex items-center gap-1 hover:underline"
-            >
-              View details <ArrowRight className="h-3 w-3" />
+            <h3 className="font-display font-bold text-lg">Dormitory Overview</h3>
+            <Link to="/dod/dormitories" className="text-xs text-primary font-semibold hover:underline inline-flex items-center gap-1">
+              Manage <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
           {loading ? (
-            <Skeleton className="h-24" />
+            <div className="space-y-3">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-16" />)}
+            </div>
+          ) : dormSummary.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No dormitories configured yet.</p>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg border border-border p-4">
-                <div className="text-xs text-muted-foreground uppercase tracking-wider">Present</div>
-                <div className="font-display text-2xl font-bold text-success mt-1">
-                  {stats.presentToday}
+            <div className="space-y-3">
+              {dormSummary.map(d => (
+                <div key={d.id} className="rounded-lg border border-border p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold text-sm">{d.name}</span>
+                    <span className="text-xs text-muted-foreground">{d.total} students</span>
+                  </div>
+                  <div className="flex gap-3 text-xs">
+                    <span className="text-emerald-600 font-semibold">{d.present} Present</span>
+                    <span className="text-amber-600 font-semibold">{d.onLeave} On Leave</span>
+                    <span className="text-destructive font-semibold">{d.missing} Missing</span>
+                  </div>
+                  {/* simple progress bar */}
+                  <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-emerald-500"
+                      style={{ width: d.total > 0 ? `${Math.round((d.present / d.total) * 100)}%` : "0%" }}
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="rounded-lg border border-border p-4">
-                <div className="text-xs text-muted-foreground uppercase tracking-wider">Absent</div>
-                <div className="font-display text-2xl font-bold text-destructive mt-1">
-                  {stats.absentToday}
-                </div>
-              </div>
+              ))}
             </div>
           )}
         </div>

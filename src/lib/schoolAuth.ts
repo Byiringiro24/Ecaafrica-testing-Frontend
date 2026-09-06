@@ -65,6 +65,23 @@ export const isDodRole = (role?: string | null) => {
   return role.trim().toLowerCase() === "director_of_discipline";
 };
 
+export const isDirectorOfDisciplineRole = (role?: string | null) => {
+  if (!role) return false;
+  return role.trim().toLowerCase() === "director_of_discipline";
+};
+
+export const isPatronRole = (role?: string | null) => {
+  if (!role) return false;
+  return ["patron", "matron"].includes(role.trim().toLowerCase());
+};
+
+/** Any boarding operations role (BOO, DOD, patron, matron, school_admin) */
+export const isBoardingRole = (role?: string | null) => {
+  if (!role) return false;
+  const r = role.trim().toLowerCase();
+  return ["boarding_officer", "director_of_discipline", "patron", "matron", "school_admin"].includes(r);
+};
+
 export const isFinanceOfficerRole = (role?: string | null) => {
   if (!role) return false;
   return role.trim().toLowerCase() === "finance_officer";
@@ -75,7 +92,10 @@ export const roleHome = (role?: string | null) => {
     case "finance_officer": return "/finance";
     case "teacher": return "/teacher/dashboard";
     case "gate_keeper": return "/gate-keeper/dashboard";
+    case "boarding_officer": return "/boarding-officer/dashboard";
     case "director_of_discipline": return "/dod/dashboard";
+    case "patron": case "matron": return "/patron/dashboard";
+    case "director_of_studies": return "/dos/dashboard";
     default: return "/login";
   }
 };
@@ -163,4 +183,36 @@ export const dodRouteGuard = (location: { pathname: string; search?: unknown }) 
     : "";
   const redirectTo = `${location.pathname}${searchSuffix}`;
   throw redirect({ to: "/login", search: { redirect: redirectTo } });
+};
+
+export const directorOfDisciplineRouteGuard = (location: { pathname: string; search?: unknown }) => {
+  const auth = getSchoolAuth();
+  if (auth?.accessToken && isDirectorOfDisciplineRole(auth.user?.role)) return;
+  const rawSearch = location.search;
+  const search = typeof rawSearch === "string" ? rawSearch : new URLSearchParams((rawSearch as Record<string, string>) ?? {}).toString();
+  const suffix = search ? (search.startsWith("?") ? search : `?${search}`) : "";
+  throw redirect({ to: "/login", search: { redirect: `${location.pathname}${suffix}` } });
+};
+
+export const patronRouteGuard = (location: { pathname: string; search?: unknown }) => {
+  const auth = getSchoolAuth();
+  if (auth?.accessToken && isPatronRole(auth.user?.role)) return;
+  const rawSearch = location.search;
+  const search = typeof rawSearch === "string" ? rawSearch : new URLSearchParams((rawSearch as Record<string, string>) ?? {}).toString();
+  const suffix = search ? (search.startsWith("?") ? search : `?${search}`) : "";
+  throw redirect({ to: "/login", search: { redirect: `${location.pathname}${suffix}` } });
+};
+
+export const isDirectorOfStudiesRole = (role?: string | null) => {
+  if (!role) return false;
+  return role.trim().toLowerCase() === "director_of_studies";
+};
+
+export const directorOfStudiesRouteGuard = (location: { pathname: string; search?: unknown }) => {
+  const auth = getSchoolAuth();
+  if (auth?.accessToken && isDirectorOfStudiesRole(auth.user?.role)) return;
+  const rawSearch = location.search;
+  const search = typeof rawSearch === "string" ? rawSearch : new URLSearchParams((rawSearch as Record<string, string>) ?? {}).toString();
+  const suffix = search ? (search.startsWith("?") ? search : `?${search}`) : "";
+  throw redirect({ to: "/login", search: { redirect: `${location.pathname}${suffix}` } });
 };

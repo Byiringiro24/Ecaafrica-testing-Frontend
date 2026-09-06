@@ -2,8 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Building2, Plus, Search, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
-import { BoardingOfficerLayout } from "@/components/layout/BoardingOfficerLayout";
-import { boardingOfficerRouteGuard } from "@/lib/schoolAuth";
+import { DodLayout } from "@/components/layout/DodLayout";
+import { dodRouteGuard } from "@/lib/schoolAuth";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
@@ -11,9 +11,9 @@ import { todayIso } from "@/lib/gateKeeperAttendance";
 
 const MAX_CAPACITY = 32767;
 
-export const Route = createFileRoute("/boarding-officer/dormitory")({
-  beforeLoad: ({ location }) => boardingOfficerRouteGuard(location),
-  component: BoardingOfficerDormitoryPage,
+export const Route = createFileRoute("/dod/dormitory")({
+  beforeLoad: ({ location }) => dodRouteGuard(location),
+  component: DodDormitoryPage,
 });
 
 type ApiStudent = {
@@ -36,13 +36,6 @@ type DormitoryRecord = {
   gender?: string | null;
   capacity?: number | null;
   description?: string | null;
-};
-
-type DormRoomRecord = {
-  id: string;
-  dormitory_id: string;
-  room_number: string;
-  capacity?: number | null;
 };
 
 type DormAssignment = {
@@ -97,14 +90,13 @@ const STATUS_STYLES: Record<StudentRow["status"], string> = {
   Absent: "bg-destructive/15 text-destructive",
 };
 
-function BoardingOfficerDormitoryPage() {
+function DodDormitoryPage() {
   const today = todayIso();
   const [loading, setLoading] = useState(true);
   const [savingDormitory, setSavingDormitory] = useState(false);
   const [savingAssignment, setSavingAssignment] = useState(false);
   const [students, setStudents] = useState<ApiStudent[]>([]);
   const [dormitories, setDormitories] = useState<DormitoryRecord[]>([]);
-  const [rooms, setRooms] = useState<DormRoomRecord[]>([]);
   const [assignments, setAssignments] = useState<DormAssignment[]>([]);
   const [classRecords, setClassRecords] = useState<{ id: string; name: string }[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYearRecord[]>([]);
@@ -124,8 +116,6 @@ function BoardingOfficerDormitoryPage() {
     classId: "",
     studentId: "",
     dormitoryId: "",
-    roomId: "",
-    bedNumber: "",
     academicYearId: "",
     assignedAt: today,
   });
@@ -192,15 +182,6 @@ function BoardingOfficerDormitoryPage() {
     return map;
   }, [assignments]);
 
-  const roomOccupancy = useMemo(() => {
-    const map = new Map<string, number>();
-    assignments.forEach((assignment) => {
-      if (!assignment.room_id) return;
-      map.set(assignment.room_id, (map.get(assignment.room_id) ?? 0) + 1);
-    });
-    return map;
-  }, [assignments]);
-
   // A student can only go into a dormitory matching their gender; "other" and
   // missing genders are unconstrained, matching the backend rule.
   const compatibleDormitories = useMemo(() => {
@@ -208,11 +189,6 @@ function BoardingOfficerDormitoryPage() {
     if (gender !== "male" && gender !== "female") return dormitories;
     return dormitories.filter((dormitory) => !dormitory.gender || dormitory.gender === gender);
   }, [dormitories, activeAssignmentStudent]);
-
-  const availableRooms = useMemo(
-    () => rooms.filter((room) => room.dormitory_id === assignmentForm.dormitoryId),
-    [rooms, assignmentForm.dormitoryId]
-  );
 
   const dormitoryStats = useMemo(
     () =>
@@ -274,13 +250,12 @@ function BoardingOfficerDormitoryPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [studentList, dormList, roomList, assignmentList, classes, years, leaves, sessions, records] =
+      const [studentList, dormList, assignmentList, classes, years, leaves, sessions, records] =
         await Promise.all([
           apiRequest<ApiStudent[]>("/students?student_type=boarding&limit=2000", {
             auth: "school",
           }),
           apiRequest<DormitoryRecord[]>("/boarding/dormitories?limit=100", { auth: "school" }),
-          apiRequest<DormRoomRecord[]>("/boarding/rooms?limit=1000", { auth: "school" }),
           apiRequest<DormAssignment[]>("/boarding/assignments?is_active=true&limit=2000", {
             auth: "school",
           }),
@@ -297,7 +272,6 @@ function BoardingOfficerDormitoryPage() {
 
       setStudents(Array.isArray(studentList) ? studentList : []);
       setDormitories(Array.isArray(dormList) ? dormList : []);
-      setRooms(Array.isArray(roomList) ? roomList : []);
       setAssignments(Array.isArray(assignmentList) ? assignmentList : []);
       setClassRecords(Array.isArray(classes) ? classes : []);
       setAcademicYears(Array.isArray(years) ? years : []);
@@ -383,19 +357,9 @@ function BoardingOfficerDormitoryPage() {
         return prev;
       }
 
-      return { ...prev, dormitoryId: compatibleDormitories[0].id, roomId: "", bedNumber: "" };
+      return { ...prev, dormitoryId: compatibleDormitories[0].id };
     });
   }, [compatibleDormitories]);
-
-  useEffect(() => {
-    setAssignmentForm((prev) => {
-      if (!prev.roomId || availableRooms.some((room) => room.id === prev.roomId)) {
-        return prev;
-      }
-
-      return { ...prev, roomId: "", bedNumber: "" };
-    });
-  }, [availableRooms]);
 
   useEffect(() => {
     if (academicYears.length === 0) return;
@@ -470,14 +434,11 @@ function BoardingOfficerDormitoryPage() {
         body: JSON.stringify({
           student_id: assignmentForm.studentId,
           dormitory_id: assignmentForm.dormitoryId,
-          room_id: assignmentForm.roomId || undefined,
-          bed_number: assignmentForm.bedNumber.trim() || undefined,
           academic_year_id: assignmentForm.academicYearId,
           assigned_at: assignmentForm.assignedAt,
         }),
       });
       toast.success("Student assigned to dormitory");
-      setAssignmentForm((prev) => ({ ...prev, roomId: "", bedNumber: "" }));
       await loadData();
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to assign student");
@@ -528,7 +489,7 @@ function BoardingOfficerDormitoryPage() {
   };
 
   return (
-    <BoardingOfficerLayout
+    <DodLayout
       title="Dormitory Management"
       subtitle="Create dormitories and assign boarding students by class"
     >
@@ -677,8 +638,6 @@ function BoardingOfficerDormitoryPage() {
                   setAssignmentForm((prev) => ({
                     ...prev,
                     dormitoryId: e.target.value,
-                    roomId: "",
-                    bedNumber: "",
                   }))
                 }
                 className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -703,44 +662,6 @@ function BoardingOfficerDormitoryPage() {
                   No {activeAssignmentStudent.gender ?? ""} dormitory available.
                 </p>
               ) : null}
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground">Room (optional)</label>
-              <select
-                value={assignmentForm.roomId}
-                onChange={(e) =>
-                  setAssignmentForm((prev) => ({ ...prev, roomId: e.target.value }))
-                }
-                className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                disabled={!assignmentForm.dormitoryId || availableRooms.length === 0}
-              >
-                <option value="">
-                  {availableRooms.length === 0 ? "No rooms in this dormitory" : "No specific room"}
-                </option>
-                {availableRooms.map((room) => {
-                  const used = roomOccupancy.get(room.id) ?? 0;
-                  const capacity = room.capacity ?? 0;
-                  const full = capacity > 0 && used >= capacity;
-                  return (
-                    <option key={room.id} value={room.id} disabled={full}>
-                      {room.room_number} ({used}/{capacity} beds){full ? " — full" : ""}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground">Bed number (optional)</label>
-              <input
-                value={assignmentForm.bedNumber}
-                onChange={(e) =>
-                  setAssignmentForm((prev) => ({ ...prev, bedNumber: e.target.value }))
-                }
-                placeholder="e.g. B4"
-                maxLength={10}
-                disabled={!assignmentForm.roomId}
-                className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60"
-              />
             </div>
             <div>
               <label className="text-xs font-semibold text-muted-foreground">Academic year</label>
@@ -970,7 +891,7 @@ function BoardingOfficerDormitoryPage() {
           onConfirm={(dormitoryId) => transferStudent(transferTarget, dormitoryId)}
         />
       ) : null}
-    </BoardingOfficerLayout>
+    </DodLayout>
   );
 }
 

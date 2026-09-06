@@ -446,7 +446,6 @@ export function VisitorsManagement() {
 
       toast.success("Visitor scheduled successfully");
     } else {
-      const expectedOutAt = new Date(now.getTime() + payload.expectedDurationMin * 60_000);
       await apiRequest("/visitor-visits", {
         method: "POST",
         auth: "school",
@@ -455,8 +454,7 @@ export function VisitorsManagement() {
           student_id: payload.studentId || undefined,
           host_id: payload.hostId || undefined,
           purpose: payload.purpose,
-          checked_in_at: now.toISOString(),
-          expected_out_at: expectedOutAt.toISOString(),
+          expected_duration_min: payload.expectedDurationMin,
           notes: payload.notes || undefined,
           badge_printed: true,
           sms_sent_host: true
@@ -476,11 +474,6 @@ export function VisitorsManagement() {
       });
     }
 
-    const now = new Date();
-    const expectedOutAt = row.expectedDurationMin
-      ? new Date(now.getTime() + row.expectedDurationMin * 60_000)
-      : null;
-
     await apiRequest("/visitor-visits", {
       method: "POST",
       auth: "school",
@@ -490,8 +483,7 @@ export function VisitorsManagement() {
         student_id: row.studentId || undefined,
         host_id: row.hostId || undefined,
         purpose: row.purposeValue || undefined,
-        checked_in_at: now.toISOString(),
-        expected_out_at: expectedOutAt ? expectedOutAt.toISOString() : undefined
+        expected_duration_min: row.expectedDurationMin || undefined
       })
     });
 
@@ -1061,11 +1053,6 @@ function RegisterModal({
                   <datalist id="visitor-students">
                     {studentOptions.map(o => <option key={o.id} value={o.label} />)}
                   </datalist>
-                  {matchedStudent && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Saved as: Parent of {matchedStudent.first_name} {matchedStudent.last_name} ({matchedStudent.current_section?.full_name ?? "—"})
-                    </p>
-                  )}
                 </Field>
               ) : (
                 <Field label="Organization / Relationship" required error={errors.organization}>

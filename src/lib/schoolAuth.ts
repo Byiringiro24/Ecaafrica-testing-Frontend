@@ -60,9 +60,9 @@ export const isGateKeeperRole = (role?: string | null) => {
   return role.trim().toLowerCase() === "gate_keeper";
 };
 
-export const isBoardingOfficerRole = (role?: string | null) => {
+export const isDodRole = (role?: string | null) => {
   if (!role) return false;
-  return role.trim().toLowerCase() === "boarding_officer";
+  return role.trim().toLowerCase() === "director_of_discipline";
 };
 
 export const isDirectorOfDisciplineRole = (role?: string | null) => {
@@ -166,9 +166,9 @@ export const financeOfficerRouteGuard = (location: { pathname: string; search?: 
   throw redirect({ to: "/login", search: { redirect: redirectTo } });
 };
 
-export const boardingOfficerRouteGuard = (location: { pathname: string; search?: unknown }) => {
+export const dodRouteGuard = (location: { pathname: string; search?: unknown }) => {
   const auth = getSchoolAuth();
-  if (auth?.accessToken && isBoardingOfficerRole(auth.user?.role)) {
+  if (auth?.accessToken && isDodRole(auth.user?.role)) {
     return;
   }
 

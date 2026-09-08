@@ -14,6 +14,8 @@ import {
   Menu,
   X,
   ShieldCheck,
+  MapPin,
+  BedDouble,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
@@ -28,8 +30,10 @@ const NAV = [
       { to: "/dod/leaves",       label: "Leave Management",    icon: CalendarDays },
       { to: "/dod/gate-exits",   label: "Gate Exits",          icon: ShieldCheck },
       { to: "/dod/attendance",   label: "Boarding Attendance", icon: ClipboardCheck },
-      { to: "/dod/dormitories",  label: "Dormitories",         icon: Home },
-      { to: "/dod/patrons",      label: "Patrons & Matrons",   icon: Users },
+      { to: "/dod/dormitories",  label: "Dormitories",           icon: Home },
+      { to: "/dod/dormitories",  label: "Rooms & Beds",          icon: BedDouble },
+      { to: "/dod/gate-exits",   label: "Students Outside",      icon: MapPin },
+      { to: "/dod/patrons",      label: "Patrons & Matrons",     icon: Users },
     ],
   },
   {

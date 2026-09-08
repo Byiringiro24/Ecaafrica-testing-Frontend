@@ -83,7 +83,7 @@ function PatronLeavesPage() {
 
   const filtered = useMemo(() => {
     if (tab === "Pending") return leaves.filter(l => ["requested", "pending_dod_approval"].includes(l.leave_state));
-    if (tab === "Active") return leaves.filter(l => ["awaiting_physical_exit", "outside_school"].includes(l.leave_state));
+    if (tab === "Active") return leaves.filter(l => ["awaiting_physical_exit", "outside_school", "returned"].includes(l.leave_state));
     return leaves;
   }, [leaves, tab]);
 
@@ -162,6 +162,23 @@ function PatronLeavesPage() {
                         {l.leave_state.replace(/_/g, " ")}
                       </span>
                       {isLate && <span className="ml-1 text-[10px] font-bold text-destructive">LATE</span>}
+                    </td>
+                    {/* Confirm Return button — spec §21: patron must confirm biometric return */}
+                    <td className="px-4 py-3">
+                      {l.leave_state === "returned" && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              await leavesApi.confirmReturn(l.id);
+                              toast.success("Return confirmed — leave closed");
+                              await load();
+                            } catch (e: any) { toast.error(e?.message ?? "Failed"); }
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+                        >
+                          <Check className="h-3.5 w-3.5" /> Confirm Return
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

@@ -210,6 +210,13 @@ export const leavesApi = {
       auth: "school",
     }),
 
+  // Patron/Matron confirms student biometric return (RETURNED -> CLOSED, spec §21)
+  confirmReturn: (id: string) =>
+    apiRequest<LeaveRecord>(`/boarding/leaves/${id}/confirm-return`, {
+      method: "PATCH",
+      auth: "school",
+    }),
+
   getApprovedExits: (date?: string) =>
     apiRequest<ApprovedExit[]>(
       `/boarding/leaves/approved-exits${date ? `?date=${date}` : ""}`,

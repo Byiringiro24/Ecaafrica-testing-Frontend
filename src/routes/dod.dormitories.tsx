@@ -52,7 +52,7 @@ function DodDormitoriesPage() {
       setRooms(Array.isArray(rms) ? rms : []);
       // Filter staff to boarding roles
       const boardingStaff = (Array.isArray(staff) ? staff : []).filter(s =>
-        ["patron", "matron", "boarding_officer"].includes(s.role?.toLowerCase() ?? "")
+        ["patron", "matron"].includes(s.role?.toLowerCase() ?? "")
       );
       setAvailableStaff(boardingStaff);
     } catch (e: any) {
@@ -237,7 +237,7 @@ function DodDormitoriesPage() {
       {showPatronForm && selectedDorm && (
         <Modal title={`Assign Patron/Matron to ${selectedDorm.name}`} onClose={() => setShowPatronForm(false)}>
           <form onSubmit={handleAssignPatron} className="space-y-4">
-            <p className="text-sm text-muted-foreground">Select a staff member with patron/matron/boarding_officer role to assign to this dormitory. They will only see students in assigned dormitories.</p>
+            <p className="text-sm text-muted-foreground">Select a staff member with patron or matron role to assign to this dormitory. They will only see students in assigned dormitories.</p>
             <Field label="Staff Member *">
               <select value={patronUserId} onChange={e => setPatronUserId(e.target.value)} required className="field">
                 <option value="">— select staff —</option>

@@ -78,8 +78,6 @@ function LoginPage() {
         ? "/teacher/dashboard"
         : role === "gate_keeper"
         ? "/gate-keeper/dashboard"
-        : role === "boarding_officer"
-        ? "/boarding-officer/dashboard"
         : role === "director_of_discipline"
         ? "/dod/dashboard"
         : role === "patron" || role === "matron"

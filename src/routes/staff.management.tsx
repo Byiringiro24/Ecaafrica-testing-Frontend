@@ -45,7 +45,6 @@ const DOD_ROLES = [
 const ROLE_COLOR: Record<string, string> = {
   patron:                 "bg-blue-100 text-blue-700",
   matron:                 "bg-pink-100 text-pink-700",
-  boarding_officer:       "bg-indigo-100 text-indigo-700",
   director_of_discipline: "bg-purple-100 text-purple-700",
   director_of_studies:    "bg-violet-100 text-violet-700",
   gate_keeper:            "bg-amber-100 text-amber-700",

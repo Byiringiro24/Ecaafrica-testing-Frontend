@@ -113,7 +113,7 @@ function DeviceAttendancePage() {
           studentName,
           studentNumber: studentIdNumber(student),
           className,
-          eventType: log.event_type === "entry" ? "Entry" : "Exit",
+          eventType: (log.event_type === "entry" ? "Entry" : "Exit") as "Entry" | "Exit",
           scanMethod: log.scan_method ?? "manual",
           time: formatTime(log.scanned_at),
           deviceId: log.device_id ?? "—",
@@ -183,7 +183,7 @@ function DeviceAttendancePage() {
           <>
             <StatCard label="Total Logs" value={rows.length} tone="primary" />
             <StatCard label="Entries" value={entries} tone="success" />
-            <StatCard label="Exits" value={exits} tone="secondary" />
+            <StatCard label="Exits" value={exits} tone="primary" />
             <StatCard label="Flagged" value={flagged} tone={flagged ? "destructive" : "primary"} />
           </>
         )}

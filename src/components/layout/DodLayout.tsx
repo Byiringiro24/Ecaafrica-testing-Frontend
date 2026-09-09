@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   MapPin,
   BedDouble,
+  Cpu,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,7 @@ const NAV = [
       { to: "/dod/dormitories",  label: "Rooms & Beds",          icon: BedDouble },
       { to: "/dod/gate-exits",   label: "Students Outside",      icon: MapPin },
       { to: "/dod/patrons",      label: "Patrons & Matrons",     icon: Users },
+      { to: "/dod/devices",      label: "Device Locations",      icon: Cpu },
     ],
   },
   {

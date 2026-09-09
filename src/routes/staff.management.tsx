@@ -56,7 +56,7 @@ const ROLE_COLOR: Record<string, string> = {
 const emptyForm = { name: "", email: "", phone: "", role: "teacher", password: "", status: "active" };
 
 function StaffManagementPage() {
-  const { user } = useCurrentUser();
+  const user = useCurrentUser();
   const isDod = user?.role === "director_of_discipline";
   const availableRoles = isDod
     ? ALL_ROLES.filter(r => DOD_ROLES.includes(r.value))
@@ -144,7 +144,7 @@ function StaffManagementPage() {
     setSelectedDorms([]);
     try {
       const list = await patronApi.listPatronAssignments(u.id);
-      setCurrentAssign(Array.isArray(list) ? list : []);
+      setCurrentAssign(Array.isArray(list) ? (list as any) : []);
     } catch { setCurrentAssign([]); }
   };
 

@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { studentIdNumber } from "@/lib/studentIdentity";
 import { todayIso } from "@/lib/gateKeeperAttendance";
+import { exportToExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/gate-keeper/attendance/device-attendance")({
   component: DeviceAttendancePage,
@@ -137,6 +138,37 @@ function DeviceAttendancePage() {
   const exits = rows.filter((row) => row.eventType === "Exit").length;
   const flagged = rows.filter((row) => row.flagged).length;
 
+  const handleExport = async () => {
+    if (rows.length === 0) { toast.info("No records to export"); return; }
+    try {
+      await exportToExcel(
+        `gate-attendance-${dateFilter}.xlsx`, "Gate Attendance",
+        [
+          { header: "#", key: "no", width: 6 },
+          { header: "Student Name", key: "name", width: 26 },
+          { header: "Student ID", key: "sid", width: 16 },
+          { header: "Class", key: "cls", width: 20 },
+          { header: "Event", key: "event", width: 10 },
+          { header: "Time", key: "time", width: 12 },
+          { header: "Method", key: "method", width: 14 },
+          { header: "Flagged", key: "flagged", width: 10 },
+        ],
+        rows.map((r, i) => ({
+          no: i + 1,
+          name: r.studentName,
+          sid: r.studentNumber,
+          cls: r.className,
+          event: r.eventType,
+          time: r.time,
+          method: r.scanMethod,
+          flagged: r.flagged ? "Yes" : "No",
+        })),
+        `Gate Attendance — ${dateFilter}`
+      );
+      toast.success("Exported");
+    } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
+  };
+
   return (
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
@@ -191,6 +223,10 @@ function DeviceAttendancePage() {
           <option value="entry">Entries Only</option>
           <option value="exit">Exits Only</option>
         </select>
+        <button onClick={handleExport}
+          className="h-10 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-semibold hover:bg-muted">
+          <Download className="h-4 w-4" /> Export
+        </button>
       </div>
 
       <div className="rounded-xl border border-border bg-card overflow-hidden">

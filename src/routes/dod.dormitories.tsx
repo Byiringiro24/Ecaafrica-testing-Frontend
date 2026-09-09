@@ -3,13 +3,14 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Users, Home } from "lucide-react";
+import { Plus, Pencil, Users, Home, Download } from "lucide-react";
 import { toast } from "sonner";
 import { DodLayout } from "@/components/layout/DodLayout";
 import { directorOfDisciplineRouteGuard } from "@/lib/schoolAuth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { patronApi, type PatronAssignment } from "@/lib/boardingApi";
+import { exportToExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/dod/dormitories")({
   beforeLoad: ({ location }) => directorOfDisciplineRouteGuard(location),
@@ -111,14 +112,49 @@ function DodDormitoriesPage() {
     setShowDormForm(true);
   };
 
+  const handleExport = async () => {
+    if (dormitories.length === 0) { toast.info("No dormitories to export"); return; }
+    try {
+      await exportToExcel(
+        `dormitories.xlsx`, "Dormitories",
+        [
+          { header: "#", key: "no", width: 6 },
+          { header: "Dormitory Name", key: "name", width: 24 },
+          { header: "Gender", key: "gender", width: 10 },
+          { header: "Hostel", key: "hostel", width: 18 },
+          { header: "Block", key: "block", width: 16 },
+          { header: "Rooms", key: "rooms", width: 10 },
+          { header: "Capacity", key: "capacity", width: 10 },
+        ],
+        dormitories.map((d, i) => ({
+          no: i + 1,
+          name: d.name,
+          gender: d.gender,
+          hostel: d.hostel_name ?? "—",
+          block: d.block_name ?? "—",
+          rooms: rooms.filter(r => r.dormitory_id === d.id).length,
+          capacity: d.capacity ?? "—",
+        })),
+        "Dormitory List"
+      );
+      toast.success("Exported dormitories");
+    } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
+  };
+
   return (
     <DodLayout title="Dormitory Management" subtitle="Manage hostels, blocks, rooms, and patron assignments">
       <div className="flex justify-between items-center mb-5">
         <p className="text-sm text-muted-foreground">Structure: School → Hostel → Block → Room → Bed → Student</p>
-        <button onClick={() => { setEditingDorm(null); setDormForm({ name: "", gender: "male", hostel_name: "", block_name: "", building: "", capacity: "60" }); setShowDormForm(true); }}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm font-semibold hover:bg-primary/90">
-          <Plus className="h-4 w-4" /> Add Dormitory
-        </button>
+        <div className="flex gap-2">
+          <button onClick={handleExport}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2 text-sm font-semibold hover:bg-muted">
+            <Download className="h-4 w-4" /> Export
+          </button>
+          <button onClick={() => { setEditingDorm(null); setDormForm({ name: "", gender: "male", hostel_name: "", block_name: "", building: "", capacity: "60" }); setShowDormForm(true); }}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-2 text-sm font-semibold hover:bg-primary/90">
+            <Plus className="h-4 w-4" /> Add Dormitory
+          </button>
+        </div>
       </div>
 
       {loading ? (

@@ -50,7 +50,7 @@ function DosDashboard() {
       try {
         const [classes, students, exams, sessions] = await Promise.all([
           apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }).catch(() => []),
-          apiRequest<StudentRecord[]>("/students?status=active&limit=1&page=1", { auth: "school" }).catch(() => []),
+          apiRequest<{ data: unknown[]; meta?: { total?: number } }>("/students?status=active&limit=1&page=1", { auth: "school", returnMeta: true }).catch(() => ({ data: [], meta: { total: 0 } })),
           apiRequest<ExamRecord[]>("/exams?limit=200", { auth: "school" }).catch(() => []),
           apiRequest<AttSession[]>(`/attendance/sessions?date=${today}&limit=500`, { auth: "school" }).catch(() => []),
         ]);
@@ -61,7 +61,7 @@ function DosDashboard() {
 
         setStats({
           totalClasses: (Array.isArray(classes) ? classes : []).length,
-          totalStudents: (Array.isArray(students) ? students : []).length,
+          totalStudents: (students as any)?.meta?.total ?? (Array.isArray(students) ? (students as any[]).length : 0),
           pendingExams: examList.filter(e => e.status === "draft" || e.status === "scheduled").length,
           submittedAttendanceToday: submitted,
           totalSectionsToday: sessionList.length,

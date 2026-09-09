@@ -9,7 +9,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   RefreshCw, AlertTriangle, CheckCircle, Clock, UserX,
-  Plus, Upload, X, Save, Activity,
+  Plus, Upload, X, Save, Activity, Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PatronLayout } from "@/components/layout/PatronLayout";
@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { patronApi, boardingAttendanceApi, type PatronAssignment, type BoardingSession } from "@/lib/boardingApi";
 import { cn } from "@/lib/utils";
+import { exportToExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/patron/attendance")({
   beforeLoad: ({ location }) => patronRouteGuard(location),
@@ -260,6 +261,34 @@ function PatronAttendancePage() {
   const absentCount  = sessionRecords.length - presentCount;
   const dormName = (id: string) => myDorms.find(d => d.dormitory_id === id)?.dormitory?.name ?? id;
 
+  const handleExport = async () => {
+    if (sessionRecords.length === 0) { toast.info("No records to export"); return; }
+    const sessName = selectedSession?.session_name ?? selectedSession?.id ?? "session";
+    try {
+      await exportToExcel(
+        `boarding-attendance-${sessName}.xlsx`, "Attendance",
+        [
+          { header: "#", key: "no", width: 6 },
+          { header: "Student Name", key: "name", width: 26 },
+          { header: "Student ID", key: "sid", width: 16 },
+          { header: "Status", key: "status", width: 14 },
+          { header: "Method", key: "method", width: 14 },
+          { header: "Time", key: "time", width: 18 },
+        ],
+        sessionRecords.map((r, i) => ({
+          no: i + 1,
+          name: r.student ? `${r.student.first_name} ${r.student.last_name}` : r.student_id,
+          sid: r.student?.student_id_number ?? "—",
+          status: localStatus[r.student_id] ?? r.status,
+          method: r.is_manual ? "Manual" : "Biometric",
+          time: r.scan_time ? new Date(r.scan_time).toLocaleTimeString() : "—",
+        })),
+        `Boarding Attendance — ${sessName}`
+      );
+      toast.success("Exported");
+    } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
+  };
+
   return (
     <PatronLayout title="Boarding Attendance" subtitle="Sessions, device push, and attendance">
 
@@ -280,6 +309,12 @@ function PatronAttendancePage() {
           className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
           <Plus className="h-4 w-4" /> New Session
         </button>
+        {sessionRecords.length > 0 && (
+          <button onClick={handleExport}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted">
+            <Download className="h-4 w-4" /> Export
+          </button>
+        )}
         {myDevices.length > 0 && (
           <button onClick={() => setShowPush(true)}
             className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted">

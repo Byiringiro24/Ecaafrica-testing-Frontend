@@ -1,6 +1,7 @@
 /** Patron — read-only view of assigned dormitories and students */
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { PatronLayout } from "@/components/layout/PatronLayout";
 import { patronRouteGuard } from "@/lib/schoolAuth";
@@ -8,6 +9,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { patronApi, type PatronAssignment } from "@/lib/boardingApi";
+import { exportToExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/patron/dormitories")({
   beforeLoad: ({ location }) => patronRouteGuard(location),
@@ -72,6 +74,36 @@ function PatronDormitoriesPage() {
   const activeDorm = dormAssignments.find(d => d.dormitory_id === selectedDorm);
   const activeStudents = selectedDorm ? studentsInDorm(selectedDorm) : [];
 
+  const handleExport = async () => {
+    if (activeStudents.length === 0) { toast.info("No students to export"); return; }
+    const dormName = activeDorm?.dormitory?.name ?? selectedDorm ?? "dorm";
+    try {
+      await exportToExcel(
+        `dormitory-${dormName.replace(/\s+/g, "-").toLowerCase()}.xlsx`, "Students",
+        [
+          { header: "#", key: "no", width: 6 },
+          { header: "Student Name", key: "name", width: 26 },
+          { header: "Student ID", key: "sid", width: 16 },
+          { header: "Room", key: "room", width: 12 },
+          { header: "Bed", key: "bed", width: 8 },
+          { header: "Gender", key: "gender", width: 10 },
+          { header: "Status", key: "status", width: 16 },
+        ],
+        activeStudents.map(({ student, assignment }, i) => ({
+          no: i + 1,
+          name: student ? `${student.first_name} ${student.last_name}` : "—",
+          sid: student?.student_id_number ?? "—",
+          room: assignment.room?.room_number ?? "—",
+          bed: assignment.bed_number ?? "—",
+          gender: student?.gender ?? "—",
+          status: student?.boarding_status ?? "active",
+        })),
+        `${dormName} — Student List`
+      );
+      toast.success("Exported");
+    } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
+  };
+
   return (
     <PatronLayout title="My Dormitories" subtitle="Students in your assigned dormitories">
       {loading ? (
@@ -97,7 +129,13 @@ function PatronDormitoriesPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-display font-bold">{activeDorm?.dormitory?.name ?? "Students"}</h3>
-              <span className="text-sm text-muted-foreground">{activeStudents.length} students</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">{activeStudents.length} students</span>
+                <button onClick={handleExport}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold hover:bg-muted">
+                  <Download className="h-3.5 w-3.5" /> Export
+                </button>
+              </div>
             </div>
             <div className="rounded-xl border border-border bg-card overflow-hidden">
               <div className="overflow-x-auto">

@@ -1,12 +1,13 @@
 /** DOS — monitor class attendance submission across all sections */
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { CheckCircle, XCircle, Search } from "lucide-react";
+import { CheckCircle, XCircle, Search, Download } from "lucide-react";
 import { toast } from "sonner";
 import { DosLayout } from "@/components/layout/DosLayout";
 import { directorOfStudiesRouteGuard } from "@/lib/schoolAuth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { exportToExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/dos/attendance")({
   beforeLoad: ({ location }) => directorOfStudiesRouteGuard(location),
@@ -43,6 +44,31 @@ function DosAttendancePage() {
   const submitted = filtered.filter(s => s.submitted_at).length;
   const pending   = filtered.filter(s => !s.submitted_at).length;
 
+  const handleExport = async () => {
+    if (filtered.length === 0) { toast.info("No data to export"); return; }
+    try {
+      await exportToExcel(
+        `class-attendance-${date}.xlsx`, "Class Attendance",
+        [
+          { header: "Class / Section", key: "section", width: 26 },
+          { header: "Type", key: "type", width: 14 },
+          { header: "Started", key: "started", width: 18 },
+          { header: "Submitted", key: "submitted", width: 18 },
+          { header: "Status", key: "status", width: 14 },
+        ],
+        filtered.map(s => ({
+          section: s.section?.full_name ?? s.section?.name ?? "—",
+          type: s.session_type,
+          started: s.started_at ? new Date(s.started_at).toLocaleTimeString() : "—",
+          submitted: s.submitted_at ? new Date(s.submitted_at).toLocaleTimeString() : "Pending",
+          status: s.submitted_at ? "Submitted" : "Pending",
+        })),
+        `Class Attendance — ${date}`
+      );
+      toast.success("Exported attendance");
+    } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
+  };
+
   return (
     <DosLayout title="Class Attendance" subtitle="Monitor attendance submission across all classes">
       {/* Date + search */}
@@ -57,6 +83,10 @@ function DosAttendancePage() {
         <div className="flex gap-4 text-sm">
           <span className="text-emerald-600 font-semibold">{submitted} submitted</span>
           <span className="text-destructive font-semibold">{pending} pending</span>
+          <button onClick={handleExport}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-semibold hover:bg-muted ml-2">
+            <Download className="h-4 w-4" /> Export
+          </button>
         </div>
       </div>
 

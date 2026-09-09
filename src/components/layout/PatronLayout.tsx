@@ -9,6 +9,8 @@ import {
   LogOut,
   Menu,
   X,
+  UserCheck,
+  Upload,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
@@ -22,7 +24,7 @@ const NAV = [
       { to: "/patron/dashboard",   label: "Dashboard",             icon: LayoutDashboard },
       { to: "/patron/dormitories", label: "My Dormitories",        icon: Home },
       { to: "/patron/attendance",  label: "Boarding Attendance",   icon: ClipboardCheck },
-      { to: "/patron/leaves",      label: "Leave Requests",        icon: CalendarDays },
+      { to: "/patron/leaves",      label: "Leave & Returns",       icon: CalendarDays },
       { to: "/patron/dining",      label: "Dining Attendance",     icon: Utensils },
     ],
   },

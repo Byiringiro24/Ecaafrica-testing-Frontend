@@ -113,7 +113,7 @@ type StaffRow = {
 const TABS = ["All Staff", "Departments"] as const;
 const DEFAULT_DEPARTMENTS = ["Teaching", "Administration", "Boarding", "Security", "Finance"];
 const STAFF_DEPARTMENTS_KEY = "staff_departments";
-const STAFF_ROLES = ["teacher", "staff", "gate_keeper", "director_of_discipline", "patron", "matron", "finance_officer", "school_admin"] as const;
+const STAFF_ROLES = ["teacher", "staff", "gate_keeper", "director_of_discipline", "patron", "matron", "director_of_studies", "finance_officer", "school_admin"] as const;
 const ROLE_DEPARTMENTS: Record<typeof STAFF_ROLES[number], string> = {
   teacher: "Teaching",
   staff: "Administration",
@@ -121,6 +121,7 @@ const ROLE_DEPARTMENTS: Record<typeof STAFF_ROLES[number], string> = {
   director_of_discipline: "Boarding",
   patron: "Boarding",
   matron: "Boarding",
+  director_of_studies: "Administration",
   finance_officer: "Finance",
   school_admin: "Administration",
 };
@@ -722,6 +723,9 @@ function RegisterStaffModal({
     { label: "Staff", value: "staff" },
     { label: "Gate Keeper", value: "gate_keeper" },
     { label: "Director of Discipline", value: "director_of_discipline" },
+    { label: "Patron", value: "patron" },
+    { label: "Matron", value: "matron" },
+    { label: "Director of Studies", value: "director_of_studies" },
     { label: "Finance Officer", value: "finance_officer" },
     { label: "School Admin", value: "school_admin" },
   ];

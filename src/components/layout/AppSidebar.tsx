@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { schoolConfig } from "@/lib/mockData";
 import logo from "@/assets/logo.png";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
-import { clearSchoolAuth } from "@/lib/schoolAuth";
+import { clearSchoolAuth, isDirectorOfStudiesRole } from "@/lib/schoolAuth";
 
 function handleLogout() {
   clearSchoolAuth();
@@ -58,12 +58,31 @@ const SECTIONS: Section[] = [
   ]},
 ];
 
+const DOS_SECTIONS: Section[] = [
+  { id: "academic-core", label: "Academic", items: [
+    { to: "/dos/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
+    { to: "/dos/classes", label: "Classes & Subjects", icon: BookOpen, module: "classes" },
+    { to: "/classes", label: "Class Management", icon: Users, module: "classes" },
+    { to: "/subject-assignments", label: "Teacher Assignments", icon: BookOpen, module: "classes" },
+    { to: "/timetable", label: "Timetable", icon: CalendarClock, module: "classes" },
+    { to: "/attendance", label: "Academic Attendance", icon: ScanLine, module: "attendance" },
+    { to: "/dos/exams", label: "Exams & Results", icon: GraduationCap, module: "exams" },
+    { to: "/reports", label: "Academic Reports", icon: FileText, module: "reports" },
+  ]},
+  { id: "academic-monitoring", label: "DOS Monitoring", items: [
+    { to: "/dos/attendance", label: "Attendance Overview", icon: ClipboardCheck, module: "attendance" },
+    { to: "/dos/staff", label: "Teaching Staff", icon: Briefcase, module: "staff" },
+  ]},
+];
+
 interface Props { open: boolean; onClose: () => void; }
 
 export function AppSidebar({ open, onClose }: Props) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const currentUser = useCurrentUser();
+  const isDos = isDirectorOfStudiesRole(currentUser?.role);
+  const visibleSections = isDos ? DOS_SECTIONS : SECTIONS;
 
   const toggle = (id: string) => setCollapsed(p => ({ ...p, [id]: !p[id] }));
 
@@ -79,7 +98,7 @@ export function AppSidebar({ open, onClose }: Props) {
         )}
       >
         <div className="flex items-center justify-between px-5 py-5 border-b border-sidebar-border">
-          <Link to="/dashboard" className="flex items-center gap-2.5">
+          <Link to={isDos ? "/dos/dashboard" : "/dashboard"} className="flex items-center gap-2.5">
             <img src={logo} alt="ecareafrica logo" className="h-9 w-9 rounded-lg object-contain" />
             <div className="font-display font-bold text-sidebar-foreground text-base leading-tight">
               ecareafrica
@@ -91,7 +110,7 @@ export function AppSidebar({ open, onClose }: Props) {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
-          {SECTIONS.map((sec) => {
+          {visibleSections.map((sec) => {
             const items = sec.items.filter(it => {
               if (it.role && currentUser?.role !== it.role) return false;
               if (it.module !== "support" && !schoolConfig.enabledModules.includes(it.module)) return false;

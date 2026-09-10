@@ -26,6 +26,7 @@ type ClassRecord = { id: string; name: string };
 type StudentRecord = { id: string };
 type ExamRecord = { id: string; status: string };
 type AttSession = { id: string; session_date: string; submitted_at?: string | null };
+type WorkSummary = { type: string; status: string; count: number };
 
 function DosDashboard() {
   const currentUser = useCurrentUser();
@@ -36,6 +37,9 @@ function DosDashboard() {
     pendingExams: 0,
     submittedAttendanceToday: 0,
     totalSectionsToday: 0,
+    academicRisks: 0,
+    openInterventions: 0,
+    pendingLessonPlans: 0,
   });
 
   const today = new Date().toISOString().slice(0, 10);
@@ -48,16 +52,19 @@ function DosDashboard() {
     const load = async () => {
       setLoading(true);
       try {
-        const [classes, students, exams, sessions] = await Promise.all([
+        const [classes, students, exams, sessions, workSummary] = await Promise.all([
           apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }).catch(() => []),
           apiRequest<StudentRecord[]>("/students?status=active&limit=1&page=1", { auth: "school" }).catch(() => []),
           apiRequest<ExamRecord[]>("/exams?limit=200", { auth: "school" }).catch(() => []),
           apiRequest<AttSession[]>(`/attendance/sessions?date=${today}&limit=500`, { auth: "school" }).catch(() => []),
+          apiRequest<WorkSummary[]>("/dos/work-items/summary", { auth: "school" }).catch(() => []),
         ]);
 
         const examList = Array.isArray(exams) ? exams : [];
         const sessionList = Array.isArray(sessions) ? sessions : [];
         const submitted = sessionList.filter(s => s.submitted_at).length;
+        const summary = Array.isArray(workSummary) ? workSummary : [];
+        const totalOf = (type: string, statuses?: string[]) => summary.filter(s => s.type === type && (!statuses || statuses.includes(s.status))).reduce((total, row) => total + row.count, 0);
 
         setStats({
           totalClasses: (Array.isArray(classes) ? classes : []).length,
@@ -65,6 +72,9 @@ function DosDashboard() {
           pendingExams: examList.filter(e => e.status === "draft" || e.status === "scheduled").length,
           submittedAttendanceToday: submitted,
           totalSectionsToday: sessionList.length,
+          academicRisks: totalOf("risk", ["open", "in_progress"]),
+          openInterventions: totalOf("intervention", ["open", "in_progress"]),
+          pendingLessonPlans: totalOf("lesson_plan", ["open", "in_progress"]),
         });
       } catch (e: any) {
         toast.error(e?.message ?? "Failed to load dashboard");
@@ -91,6 +101,7 @@ function DosDashboard() {
             <StatCard label="Active Students"     value={stats.totalStudents}   icon={<Users className="h-5 w-5" />}         tone="secondary" />
             <StatCard label="Attendance Submitted" value={`${stats.submittedAttendanceToday}/${stats.totalSectionsToday}`} icon={<ClipboardCheck className="h-5 w-5" />} tone={attRate < 70 ? "destructive" : "success"} trend={`${attRate}% coverage today`} />
             <StatCard label="Pending Exams"       value={stats.pendingExams}    icon={<GraduationCap className="h-5 w-5" />} tone="warning" />
+            <StatCard label="Academic Risk"       value={stats.academicRisks}   icon={<AlertTriangle className="h-5 w-5" />} tone={stats.academicRisks ? "destructive" : "success"} />
           </>
         )}
       </div>
@@ -154,6 +165,20 @@ function DosDashboard() {
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      <div className="mt-5 rounded-xl border border-border bg-card p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div><h3 className="font-display text-lg font-bold">DOS Academic Operations</h3><p className="text-xs text-muted-foreground">Open the new academic workflows and maintain their records.</p></div>
+          <span className="text-xs text-muted-foreground">{stats.openInterventions} open interventions · {stats.pendingLessonPlans} pending lesson plans</span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ["/dos/calendar", "Academic Calendar"], ["/dos/curriculum", "Curriculum"], ["/dos/syllabus", "Syllabus Progress"], ["/dos/lesson-plans", "Lesson Plans"],
+            ["/dos/performance", "Academic Performance"], ["/dos/risk", "Academic Risk"], ["/dos/interventions", "Interventions"], ["/dos/referrals", "DOD/DOS Referrals"],
+            ["/dos/meetings", "Academic Meetings"], ["/dos/chat", "Parent Academic Chat"], ["/dos/alerts", "Academic Alerts"], ["/dos/assessments", "Assessments"],
+          ].map(([to, label]) => <Link key={to} to={to} className="rounded-lg border border-border px-3 py-3 text-sm font-semibold hover:bg-muted/40">{label}</Link>)}
         </div>
       </div>
     </DosLayout>

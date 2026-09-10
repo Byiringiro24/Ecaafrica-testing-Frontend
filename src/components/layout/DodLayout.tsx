@@ -3,7 +3,6 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   CalendarDays,
-  Home,
   ClipboardCheck,
   Utensils,
   AlertTriangle,
@@ -14,8 +13,8 @@ import {
   Menu,
   X,
   ShieldCheck,
-  MapPin,
   BedDouble,
+  Cpu,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
@@ -30,10 +29,9 @@ const NAV = [
       { to: "/dod/leaves",       label: "Leave Management",    icon: CalendarDays },
       { to: "/dod/gate-exits",   label: "Gate Exits",          icon: ShieldCheck },
       { to: "/dod/attendance",   label: "Boarding Attendance", icon: ClipboardCheck },
-      { to: "/dod/dormitories",  label: "Dormitories",           icon: Home },
-      { to: "/dod/dormitories",  label: "Rooms & Beds",          icon: BedDouble },
-      { to: "/dod/gate-exits",   label: "Students Outside",      icon: MapPin },
-      { to: "/dod/patrons",      label: "Patrons & Matrons",     icon: Users },
+      { to: "/dod/dormitories",  label: "Dormitories & Rooms", icon: BedDouble },
+      { to: "/dod/patrons",      label: "Patrons & Matrons",   icon: Users },
+      { to: "/dod/devices",      label: "Device Locations",    icon: Cpu },
     ],
   },
   {
@@ -47,6 +45,7 @@ const NAV = [
     items: [
       { to: "/dod/alerts",       label: "Alerts & Exceptions", icon: AlertTriangle },
       { to: "/dod/reports",      label: "Boarding Reports",    icon: BarChart3 },
+      { to: "/staff/management", label: "Staff Management",    icon: Users },
       { to: "/dod/config",       label: "Configuration",       icon: Settings },
     ],
   },

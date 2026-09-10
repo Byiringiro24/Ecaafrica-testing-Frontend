@@ -4,7 +4,7 @@
  * Assign patron/matron to dormitories from the same page.
  * DOD can only manage boarding-related roles.
  */
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { FormEvent, useEffect, useState } from "react";
 import { Plus, Pencil, Trash2, RefreshCw, Users, Save, X, Home } from "lucide-react";
 import { toast } from "sonner";
@@ -12,9 +12,19 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest } from "@/lib/api";
 import { patronApi } from "@/lib/boardingApi";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { getSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/staff/management")({
+  beforeLoad: () => {
+    const auth = getSchoolAuth();
+    const role = auth?.user?.role?.toLowerCase();
+    if (
+      auth?.accessToken &&
+      (role === "school_admin" || role === "director_of_discipline" || role === "director_of_studies")
+    ) return;
+    throw redirect({ to: "/login" });
+  },
   component: StaffManagementPage,
 });
 
@@ -42,10 +52,13 @@ const DOD_ROLES = [
   "director_of_studies", "finance_officer",
 ];
 
+const DOS_ROLES = [
+  "teacher", "staff",
+];
+
 const ROLE_COLOR: Record<string, string> = {
   patron:                 "bg-blue-100 text-blue-700",
   matron:                 "bg-pink-100 text-pink-700",
-  boarding_officer:       "bg-indigo-100 text-indigo-700",
   director_of_discipline: "bg-purple-100 text-purple-700",
   director_of_studies:    "bg-violet-100 text-violet-700",
   gate_keeper:            "bg-amber-100 text-amber-700",
@@ -56,11 +69,14 @@ const ROLE_COLOR: Record<string, string> = {
 const emptyForm = { name: "", email: "", phone: "", role: "teacher", password: "", status: "active" };
 
 function StaffManagementPage() {
-  const { user } = useCurrentUser();
+  const user = useCurrentUser();
   const isDod = user?.role === "director_of_discipline";
+  const isDos = user?.role === "director_of_studies";
   const availableRoles = isDod
     ? ALL_ROLES.filter(r => DOD_ROLES.includes(r.value))
-    : ALL_ROLES;
+    : isDos
+    ? ALL_ROLES.filter(r => DOS_ROLES.includes(r.value))
+    : ALL_ROLES; // school_admin gets all
 
   const [staff,       setStaff]       = useState<StaffUser[]>([]);
   const [dormitories, setDormitories] = useState<Dormitory[]>([]);
@@ -144,7 +160,7 @@ function StaffManagementPage() {
     setSelectedDorms([]);
     try {
       const list = await patronApi.listPatronAssignments(u.id);
-      setCurrentAssign(Array.isArray(list) ? list : []);
+      setCurrentAssign(Array.isArray(list) ? (list as any) : []);
     } catch { setCurrentAssign([]); }
   };
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search, UserPlus, Grid3X3, List, X, Phone, Pencil, Check, Loader2, Camera, Mail, MapPin, Ban } from "lucide-react";
+import { Search, UserPlus, Grid3X3, List, X, Phone, Pencil, Check, Loader2, Camera, Mail, MapPin, Ban, Download } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatCard } from "@/components/ui-kit/StatCard";
@@ -10,6 +10,7 @@ import { apiRequest, API_BASE_URL, SERVER_BASE_URL } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { studentIdNumber } from "@/lib/studentIdentity";
+import { exportToExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/students")({
   component: StudentsPage,
@@ -154,6 +155,38 @@ function StudentsPage() {
     await fetchStudents();
   };
 
+  const handleExport = async () => {
+    if (filtered.length === 0) { toast.info("No students to export"); return; }
+    try {
+      await exportToExcel(
+        `students-${residencyFilter.toLowerCase()}.xlsx`, "Students",
+        [
+          { header: "#", key: "no", width: 6 },
+          { header: "Student Name", key: "name", width: 28 },
+          { header: "Student ID", key: "sid", width: 16 },
+          { header: "Class", key: "cls", width: 20 },
+          { header: "Type", key: "type", width: 12 },
+          { header: "Gender", key: "gender", width: 10 },
+          { header: "Status", key: "status", width: 12 },
+        ],
+        filtered.map((s, i) => {
+          const sectionName = s.current_section?.full_name ?? s.current_section?.name ?? "—";
+          return {
+            no: i + 1,
+            name: `${s.first_name} ${s.last_name}`.trim(),
+            sid: studentIdNumber(s),
+            cls: sectionName,
+            type: s.student_type ?? "—",
+            gender: s.gender ?? "—",
+            status: s.status ?? "active",
+          };
+        }),
+        `Student List — ${residencyFilter}`
+      );
+      toast.success(`Exported ${filtered.length} students`);
+    } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
+  };
+
   return (
     <AppLayout title="Student Management" subtitle={`${total} students enrolled`}>
       {loading ? (
@@ -209,6 +242,10 @@ function StudentsPage() {
             <button onClick={() => setOpen(true)}
               className="h-10 inline-flex items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
               <UserPlus className="h-4 w-4" /> Register New Student
+            </button>
+            <button onClick={handleExport}
+              className="h-10 inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 text-sm font-semibold hover:bg-muted">
+              <Download className="h-4 w-4" /> Export
             </button>
           </div>
 

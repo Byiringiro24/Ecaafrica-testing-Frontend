@@ -9,13 +9,14 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Search, ShieldCheck, LogOut, CheckCircle, Clock, AlertTriangle } from "lucide-react";
+import { Search, ShieldCheck, LogOut, CheckCircle, Clock, AlertTriangle, Download } from "lucide-react";
 import { toast } from "sonner";
 import { GateKeeperLayout } from "@/components/layout/GateKeeperLayout";
 import { gateKeeperRouteGuard } from "@/lib/schoolAuth";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { leavesApi, type ApprovedExit } from "@/lib/boardingApi";
+import { exportToExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/gate-keeper/boarding-leave")({
   beforeLoad: ({ location }) => gateKeeperRouteGuard(location),
@@ -70,6 +71,33 @@ function GateKeeperBoardingLeavePage() {
     awaitingExit: exits.filter(e => e.leave_state === "awaiting_physical_exit").length,
     outside:      exits.filter(e => e.leave_state === "outside_school").length,
     overdue:      exits.filter(e => e.leave_state === "outside_school" && e.end_date < today).length,
+  };
+
+  const handleExport = async () => {
+    if (filtered.length === 0) { toast.info("No records to export"); return; }
+    try {
+      await exportToExcel(
+        `gate-leave-${today}.xlsx`, "Boarding Leave",
+        [
+          { header: "Student Name", key: "name", width: 26 },
+          { header: "Student ID", key: "sid", width: 16 },
+          { header: "Leave Start", key: "start", width: 14 },
+          { header: "Due Back", key: "end", width: 14 },
+          { header: "State", key: "state", width: 20 },
+          { header: "Overdue", key: "overdue", width: 10 },
+        ],
+        filtered.map(e => ({
+          name: e.student.full_name,
+          sid: e.student.student_id_number ?? "—",
+          start: e.start_date,
+          end: e.end_date,
+          state: e.leave_state,
+          overdue: (e.leave_state === "outside_school" && e.end_date < today) ? "Yes" : "No",
+        })),
+        `Gate Leave Report — ${today}`
+      );
+      toast.success("Exported");
+    } catch (err: any) { toast.error(err?.message ?? "Export failed"); }
   };
 
   const handleConfirmExit = async () => {
@@ -136,6 +164,10 @@ function GateKeeperBoardingLeavePage() {
             </button>
           ))}
         </div>
+        <button onClick={handleExport}
+          className="h-10 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-semibold hover:bg-muted">
+          <Download className="h-4 w-4" /> Export
+        </button>
       </div>
 
       {/* Cards grid — for awaiting exit, show large cards with photo */}

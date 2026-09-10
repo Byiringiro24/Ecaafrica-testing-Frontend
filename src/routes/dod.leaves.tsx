@@ -6,7 +6,7 @@
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Check, X, AlertTriangle, Clock, Search } from "lucide-react";
+import { Plus, Check, X, AlertTriangle, Clock, Search, Download } from "lucide-react";
 import { toast } from "sonner";
 import { DodLayout } from "@/components/layout/DodLayout";
 import { directorOfDisciplineRouteGuard } from "@/lib/schoolAuth";
@@ -15,13 +15,14 @@ import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { leavesApi, type LeaveRecord } from "@/lib/boardingApi";
+import { exportToExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/dod/leaves")({
   beforeLoad: ({ location }) => directorOfDisciplineRouteGuard(location),
   component: DodLeavesPage,
 });
 
-type Student = { id: string; first_name: string; last_name: string; student_type?: string | null; current_section?: { name?: string | null } | null; primary_parent?: { first_name?: string | null; last_name?: string | null; phone?: string | null } | null };
+type Student = { id: string; first_name: string; last_name: string; student_id_number?: string | null; student_type?: string | null; current_section?: { name?: string | null } | null; primary_parent?: { first_name?: string | null; last_name?: string | null; phone?: string | null } | null };
 type Parent = { id: string; first_name: string; last_name: string; phone: string };
 
 const TABS = ["Pending Approval", "Awaiting Exit", "Currently Outside", "All Leaves"] as const;
@@ -138,6 +139,40 @@ function DodLeavesPage() {
     }
   };
 
+  const handleExport = async () => {
+    if (filtered.length === 0) { toast.info("No records to export"); return; }
+    try {
+      await exportToExcel(
+        `leave-report-${tab.replace(/\s+/g, "-").toLowerCase()}.xlsx`, "Leave Report",
+        [
+          { header: "Student Name", key: "name", width: 26 },
+          { header: "Student ID", key: "sid", width: 16 },
+          { header: "Class", key: "cls", width: 18 },
+          { header: "Category", key: "cat", width: 16 },
+          { header: "Start Date", key: "start", width: 14 },
+          { header: "End Date", key: "end", width: 14 },
+          { header: "Status", key: "status", width: 16 },
+          { header: "Late Return", key: "late", width: 14 },
+        ],
+        filtered.map(l => {
+          const s = studentMap.get(l.student_id);
+          return {
+            name: s ? `${s.first_name} ${s.last_name}` : l.student_id,
+            sid: s?.student_id_number ?? "—",
+            cls: s?.current_section?.name ?? "—",
+            cat: l.leave_category ?? "—",
+            start: l.start_date,
+            end: l.end_date,
+            status: l.leave_state,
+            late: l.late_return_flagged ? "Yes" : "No",
+          };
+        }),
+        `Leave Report — ${tab}`
+      );
+      toast.success("Exported");
+    } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
+  };
+
   return (
     <DodLayout title="Leave Management" subtitle="Approve, reject and track all boarding student leave requests">
       {/* Stats */}
@@ -185,6 +220,10 @@ function DodLeavesPage() {
           <button onClick={() => setShowNew(true)}
             className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-sm font-semibold hover:bg-primary/90">
             <Plus className="h-4 w-4" /> New Leave
+          </button>
+          <button onClick={handleExport}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-semibold hover:bg-muted">
+            <Download className="h-4 w-4" /> Export
           </button>
         </div>
       </div>

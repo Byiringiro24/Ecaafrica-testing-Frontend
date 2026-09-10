@@ -54,7 +54,7 @@ function DosDashboard() {
       try {
         const [classes, students, exams, sessions, workSummary] = await Promise.all([
           apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }).catch(() => []),
-          apiRequest<StudentRecord[]>("/students?status=active&limit=1&page=1", { auth: "school" }).catch(() => []),
+          apiRequest<{ data: unknown[]; meta?: { total?: number } }>("/students?status=active&limit=1&page=1", { auth: "school", returnMeta: true }).catch(() => ({ data: [], meta: { total: 0 } })),
           apiRequest<ExamRecord[]>("/exams?limit=200", { auth: "school" }).catch(() => []),
           apiRequest<AttSession[]>(`/attendance/sessions?date=${today}&limit=500`, { auth: "school" }).catch(() => []),
           apiRequest<WorkSummary[]>("/dos/work-items/summary", { auth: "school" }).catch(() => []),
@@ -68,7 +68,7 @@ function DosDashboard() {
 
         setStats({
           totalClasses: (Array.isArray(classes) ? classes : []).length,
-          totalStudents: (Array.isArray(students) ? students : []).length,
+          totalStudents: (students as any)?.meta?.total ?? (Array.isArray(students) ? (students as any[]).length : 0),
           pendingExams: examList.filter(e => e.status === "draft" || e.status === "scheduled").length,
           submittedAttendanceToday: submitted,
           totalSectionsToday: sessionList.length,
@@ -98,7 +98,7 @@ function DosDashboard() {
         ) : (
           <>
             <StatCard label="Total Classes"       value={stats.totalClasses}    icon={<BookOpen className="h-5 w-5" />}      tone="primary" />
-            <StatCard label="Active Students"     value={stats.totalStudents}   icon={<Users className="h-5 w-5" />}         tone="secondary" />
+            <StatCard label="Active Students"     value={stats.totalStudents}   icon={<Users className="h-5 w-5" />}         tone="primary" />
             <StatCard label="Attendance Submitted" value={`${stats.submittedAttendanceToday}/${stats.totalSectionsToday}`} icon={<ClipboardCheck className="h-5 w-5" />} tone={attRate < 70 ? "destructive" : "success"} trend={`${attRate}% coverage today`} />
             <StatCard label="Pending Exams"       value={stats.pendingExams}    icon={<GraduationCap className="h-5 w-5" />} tone="warning" />
             <StatCard label="Academic Risk"       value={stats.academicRisks}   icon={<AlertTriangle className="h-5 w-5" />} tone={stats.academicRisks ? "destructive" : "success"} />

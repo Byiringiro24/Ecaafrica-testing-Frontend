@@ -40,7 +40,7 @@ function DodPatronsPage() {
     setLoading(true);
     try {
       const [allStaff, dorms] = await Promise.all([
-        apiRequest<any>("/users?limit=500&role=patron,matron,boarding_officer", { auth: "school" }),
+        apiRequest<any>("/users?limit=500&role=patron,matron", { auth: "school" }),
         apiRequest<any>("/boarding/dormitories?limit=100", { auth: "school" }),
       ]);
       const staffList: StaffUser[] = (allStaff?.data ?? allStaff ?? []).filter(
@@ -101,7 +101,6 @@ function DodPatronsPage() {
   const roleColor = (r: string) => ({
     patron: "bg-blue-100 text-blue-700",
     matron: "bg-pink-100 text-pink-700",
-    boarding_officer: "bg-indigo-100 text-indigo-700",
   }[r] ?? "bg-muted text-muted-foreground");
 
   return (

@@ -3,7 +3,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, ClipboardCheck, BookOpen,
   BarChart3, CalendarDays, Users, GraduationCap,
-  LogOut, Menu, X,
+  LogOut, Menu, X, FileText, Pencil, Award,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
@@ -97,17 +97,26 @@ export function DosLayout({
                   const active =
                     pathname === item.to ||
                     (item.to !== "/dos/dashboard" && pathname.startsWith(item.to));
+                  const cls = cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-foreground"
+                  );
+                  if (item.native) {
+                    return (
+                      <a key={item.to} href={item.to} onClick={() => setOpen(false)} className={cls}>
+                        <Icon className="h-[18px] w-[18px] shrink-0" />
+                        <span className="leading-snug">{item.label}</span>
+                      </a>
+                    );
+                  }
                   return (
                     <Link
                       key={item.to}
                       to={item.to}
                       onClick={() => setOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                        active
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-foreground"
-                      )}
+                      className={cls}
                     >
                       <Icon className="h-[18px] w-[18px] shrink-0" />
                       <span className="leading-snug">{item.label}</span>

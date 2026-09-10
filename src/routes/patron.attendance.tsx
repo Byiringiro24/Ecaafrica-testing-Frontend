@@ -1,15 +1,15 @@
 /**
  * Patron/Matron Boarding Attendance
- * - Create named sessions (Morning Roll Call, Dinner, Lights Out, etc.)
- * - Push classes/students to biometric devices in assigned dormitories
+ * - Creates named sessions (Morning Roll Call, Dinner, Lights Out)
+ * - Push students to biometric devices in assigned dormitories
  * - View per-session attendance with manual correction
- * - Sessions are scoped to this patron's dorms only
+ * - Auto-save: ticking present/absent immediately saves
  */
 import { createFileRoute } from "@tanstack/react-router";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   RefreshCw, AlertTriangle, CheckCircle, Clock, UserX,
-  Plus, Cpu, Upload, X, Save, ChevronDown, ChevronRight,
+  Plus, Upload, X, Save, Activity, Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PatronLayout } from "@/components/layout/PatronLayout";
@@ -19,37 +19,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { patronApi, boardingAttendanceApi, type PatronAssignment, type BoardingSession } from "@/lib/boardingApi";
 import { cn } from "@/lib/utils";
+import { exportToExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/patron/attendance")({
   beforeLoad: ({ location }) => patronRouteGuard(location),
   component: PatronAttendancePage,
 });
-
-// ── Types ────────────────────────────────────────────────────────────────────
-
-type AttendanceRecord = {
-  id: string; student_id: string; status: string; scan_time?: string | null;
-  is_manual?: boolean; manual_reason?: string | null;
-  student?: { id: string; first_name: string; last_name: string; photo_url?: string | null; student_id_number?: string | null } | null;
-};
-
-type Session = BoardingSession & {
-  session_name?: string | null;
-  location_type?: string;
-  created_by?: string | null;
-  records?: AttendanceRecord[];
-};
-
-type MyDevice = {
-  id: string; name: string; device_uid: string; location_label?: string | null;
-  is_connected: boolean; dormitory_id?: string | null;
-  dormitory?: { id: string; name: string } | null;
-  tablet?: { id: string; name: string } | null;
-};
-
-type ClassRecord = { id: string; name: string };
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
   present:            <CheckCircle className="h-4 w-4 text-emerald-600" />,
@@ -76,67 +51,84 @@ const LOCATION_TYPES = [
 
 const today = new Date().toISOString().slice(0, 10);
 
-// ── Main Component ───────────────────────────────────────────────────────────
+type AttendanceRecord = {
+  id: string; student_id: string; status: string; scan_time?: string | null;
+  is_manual?: boolean; manual_reason?: string | null;
+  student?: {
+    id: string; first_name: string; last_name: string;
+    photo_url?: string | null; student_id_number?: string | null;
+  } | null;
+};
+
+type Session = BoardingSession & {
+  session_name?: string | null;
+  location_type?: string;
+  records?: AttendanceRecord[];
+};
+
+type MyDevice = {
+  id: string; name: string; device_uid: string; is_connected: boolean;
+  dormitory_id?: string | null;
+  dormitory?: { id: string; name: string } | null;
+  tablet?: { id: string; name: string } | null;
+};
 
 function PatronAttendancePage() {
-  const { user } = useCurrentUser();
+  const user = useCurrentUser();
+  const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  // Dorms & devices
-  const [myDorms,    setMyDorms]    = useState<PatronAssignment[]>([]);
-  const [myDevices,  setMyDevices]  = useState<MyDevice[]>([]);
-  const [classes,    setClasses]    = useState<ClassRecord[]>([]);
+  const [myDorms,      setMyDorms]      = useState<PatronAssignment[]>([]);
+  const [myDevices,    setMyDevices]    = useState<MyDevice[]>([]);
+  const [classes,      setClasses]      = useState<any[]>([]);
   const [selectedDorm, setSelectedDorm] = useState<string | null>(null);
 
-  // Sessions
-  const [sessions,        setSessions]        = useState<Session[]>([]);
-  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
-  const [sessionRecords,  setSessionRecords]  = useState<AttendanceRecord[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-  const [recordsLoading,  setRecordsLoading]  = useState(false);
+  const [sessions,         setSessions]         = useState<Session[]>([]);
+  const [selectedSession,  setSelectedSession]  = useState<Session | null>(null);
+  const [sessionRecords,   setSessionRecords]   = useState<AttendanceRecord[]>([]);
+  const [sessionsLoading,  setSessionsLoading]  = useState(false);
+  const [recordsLoading,   setRecordsLoading]   = useState(false);
 
-  // Create session modal
-  const [showNewSession, setShowNewSession] = useState(false);
-  const [sessionForm, setSessionForm] = useState({
-    session_name: "", location_type: "dormitory", session_date: today,
-  });
+  // Local attendance state (optimistic — auto-saves on change)
+  const [localStatus, setLocalStatus] = useState<Record<string, string>>({});
+  const [savingIds,   setSavingIds]   = useState<Set<string>>(new Set());
+
+  const [showNewSession,  setShowNewSession]  = useState(false);
+  const [sessionForm,     setSessionForm]     = useState({ session_name: "", location_type: "dormitory", session_date: today });
   const [creatingSession, setCreatingSession] = useState(false);
 
-  // Push students modal
   const [showPush,    setShowPush]    = useState(false);
   const [pushDevice,  setPushDevice]  = useState("");
   const [pushClassId, setPushClassId] = useState("");
   const [pushing,     setPushing]     = useState(false);
 
-  // Manual correction
-  const [correcting,   setCorrecting]   = useState<AttendanceRecord | null>(null);
-  const [correctForm,  setCorrectForm]  = useState({ status: "present", reason: "" });
-  const [saving,       setSaving]       = useState(false);
+  const [correcting,  setCorrecting]  = useState<AttendanceRecord | null>(null);
+  const [correctForm, setCorrectForm] = useState({ status: "present", reason: "" });
+  const [savingCorr,  setSavingCorr]  = useState(false);
 
-  // ── Load initial data ─────────────────────────────────────────────────────
-
-  const loadDormsAndDevices = async () => {
+  // Load initial data
+  useEffect(() => {
     if (!user?.id) return;
-    try {
-      const [dorms, devices, classRes] = await Promise.all([
-        patronApi.listPatronAssignments(user.id).catch(() => [] as PatronAssignment[]),
-        apiRequest<any>("/boarding/patrons/me/devices", { auth: "school" }).catch(() => ({ data: [] })),
-        apiRequest<any>("/classes?limit=200", { auth: "school" }).catch(() => ({ data: [] })),
-      ]);
-      const dormList = Array.isArray(dorms) ? dorms : (dorms as any)?.data ?? [];
-      setMyDorms(dormList);
-      setMyDevices((devices as any)?.data ?? devices ?? []);
-      setClasses((classRes as any)?.data ?? classRes ?? []);
-      if (dormList[0] && !selectedDorm) {
-        setSelectedDorm(dormList[0].dormitory_id);
-      }
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to load dorms");
-    }
-  };
+    const run = async () => {
+      try {
+        const [dorms, devices, classRes] = await Promise.all([
+          patronApi.listPatronAssignments(user.id).catch(() => []),
+          apiRequest<any>("/boarding/patrons/me/devices", { auth: "school" }).catch(() => ({ data: [] })),
+          apiRequest<any>("/classes?limit=200", { auth: "school" }).catch(() => ({ data: [] })),
+        ]);
+        const dormList = Array.isArray(dorms) ? dorms : (dorms as any)?.data ?? [];
+        setMyDorms(dormList);
+        setMyDevices((devices as any)?.data ?? devices ?? []);
+        setClasses((classRes as any)?.data ?? classRes ?? []);
+        if (dormList[0] && !selectedDorm) setSelectedDorm(dormList[0].dormitory_id);
+      } catch { /* ignore */ }
+    };
+    void run();
+  }, [user?.id]);
 
-  useEffect(() => { void loadDormsAndDevices(); }, [user?.id]);
-
-  // ── Load sessions when dorm changes ──────────────────────────────────────
+  // Load sessions when dorm changes
+  useEffect(() => {
+    if (selectedDorm) void loadSessions(selectedDorm);
+  }, [selectedDorm]);
 
   const loadSessions = async (dormId: string) => {
     setSessionsLoading(true);
@@ -147,67 +139,95 @@ function PatronAttendancePage() {
       );
       const list: Session[] = (res as any)?.data ?? res ?? [];
       setSessions(list);
-      // Auto-select today's most recent session if exists
-      const todaySession = list.find(s => s.session_date?.startsWith(today));
-      if (todaySession) {
-        setSelectedSession(todaySession);
-        await loadSessionRecords(todaySession.id);
-      } else {
-        setSelectedSession(null);
-        setSessionRecords([]);
-      }
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to load sessions");
-    } finally { setSessionsLoading(false); }
+      const todaySess = list.find(s => s.session_date?.startsWith(today));
+      if (todaySess) { setSelectedSession(todaySess); await loadSessionRecords(todaySess.id); }
+      else { setSelectedSession(null); setSessionRecords([]); setLocalStatus({}); }
+    } catch { /* ignore */ }
+    finally { setSessionsLoading(false); }
   };
-
-  useEffect(() => {
-    if (selectedDorm) void loadSessions(selectedDorm);
-  }, [selectedDorm]);
 
   const loadSessionRecords = async (sessionId: string) => {
     setRecordsLoading(true);
     try {
       const res = await boardingAttendanceApi.getSessionSummary(sessionId);
-      setSessionRecords((res as any)?.records ?? []);
-      setSelectedSession(prev => prev?.id === sessionId ? { ...prev, ...(res as any) } : prev);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to load attendance");
-    } finally { setRecordsLoading(false); }
+      const recs: AttendanceRecord[] = (res as any)?.records ?? [];
+      setSessionRecords(recs);
+      // Init local status from server state
+      const init: Record<string, string> = {};
+      recs.forEach(r => { init[r.student_id] = r.status; });
+      setLocalStatus(init);
+    } catch { /* ignore */ }
+    finally { setRecordsLoading(false); }
   };
 
-  // ── Create session ────────────────────────────────────────────────────────
+  // Auto-save: debounce individual student status changes 800ms
+  const handleToggleStatus = (record: AttendanceRecord, newStatus: string) => {
+    if (!selectedSession) return;
+    const studentId = record.student_id;
+
+    // Update UI immediately (optimistic)
+    setLocalStatus(prev => ({ ...prev, [studentId]: newStatus }));
+
+    // Debounce save
+    clearTimeout(autoSaveTimers.current[studentId]);
+    autoSaveTimers.current[studentId] = setTimeout(async () => {
+      setSavingIds(prev => new Set(prev).add(studentId));
+      try {
+        await boardingAttendanceApi.correctAttendance(
+          selectedSession.id, studentId, newStatus,
+          newStatus === "missing_attendance" ? "Marked absent via manual attendance" : "Marked present via manual attendance"
+        );
+        // Update session summary counts silently
+      } catch {
+        toast.error("Auto-save failed for one record");
+        // Revert on failure
+        setLocalStatus(prev => ({ ...prev, [studentId]: record.status }));
+      } finally {
+        setSavingIds(prev => { const n = new Set(prev); n.delete(studentId); return n; });
+      }
+    }, 800);
+  };
+
+  const markAll = async (status: string) => {
+    if (!selectedSession || sessionRecords.length === 0) return;
+    // Update all at once optimistically
+    const init: Record<string, string> = {};
+    sessionRecords.forEach(r => { init[r.student_id] = status; });
+    setLocalStatus(init);
+    // Batch save
+    const reason = status === "present" ? "All marked present" : "All marked absent";
+    await Promise.all(
+      sessionRecords.map(r =>
+        boardingAttendanceApi.correctAttendance(selectedSession.id, r.student_id, status, reason).catch(() => null)
+      )
+    );
+    toast.success(`All students marked as ${status}`);
+  };
 
   const handleCreateSession = async (e: FormEvent) => {
     e.preventDefault();
     if (!selectedDorm) { toast.error("Select a dormitory first"); return; }
     setCreatingSession(true);
     try {
-      const body = {
-        dormitory_id:  selectedDorm,
-        session_date:  sessionForm.session_date,
-        session_name:  sessionForm.session_name || null,
-        location_type: sessionForm.location_type,
-      };
-      const res = await boardingAttendanceApi.openSession(selectedDorm, sessionForm.session_date, undefined, body);
-      toast.success(`Session "${sessionForm.session_name || sessionForm.location_type}" opened`);
+      const res = await boardingAttendanceApi.openSession(
+        selectedDorm, sessionForm.session_date, undefined,
+        { session_name: sessionForm.session_name || null, location_type: sessionForm.location_type }
+      );
+      toast.success(`Session opened`);
       setShowNewSession(false);
       setSessionForm({ session_name: "", location_type: "dormitory", session_date: today });
       await loadSessions(selectedDorm);
       setSelectedSession(res as any);
       await loadSessionRecords((res as any).id);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to open session");
-    } finally { setCreatingSession(false); }
+    } catch (e: any) { toast.error(e?.message ?? "Failed"); }
+    finally { setCreatingSession(false); }
   };
-
-  // ── Push students to device ───────────────────────────────────────────────
 
   const handlePush = async (e: FormEvent) => {
     e.preventDefault();
     if (!pushDevice) { toast.error("Select a device"); return; }
     const device = myDevices.find(d => d.id === pushDevice);
-    if (!device?.tablet?.id) { toast.error("Device is not linked to a tablet"); return; }
+    if (!device?.tablet?.id) { toast.error("Device not linked to tablet"); return; }
     setPushing(true);
     try {
       const body: any = { mode: pushClassId ? "class" : "all" };
@@ -217,61 +237,71 @@ function PatronAttendancePage() {
       });
       toast.success(`Students pushed to ${device.name}`);
       setShowPush(false);
-      setPushDevice("");
-      setPushClassId("");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed to push students");
-    } finally { setPushing(false); }
+    } catch (e: any) { toast.error(e?.message ?? "Push failed"); }
+    finally { setPushing(false); }
   };
-
-  // ── Reconcile ─────────────────────────────────────────────────────────────
-
-  const handleReconcile = async () => {
-    if (!selectedSession) return;
-    try {
-      await boardingAttendanceApi.reconcile(selectedSession.id);
-      toast.success("Session reconciled");
-      await loadSessionRecords(selectedSession.id);
-    } catch (e: any) { toast.error(e?.message ?? "Failed"); }
-  };
-
-  // ── Manual correction ─────────────────────────────────────────────────────
 
   const handleCorrect = async () => {
     if (!selectedSession || !correcting || !correctForm.reason.trim()) {
       toast.error("Reason is required"); return;
     }
-    setSaving(true);
+    setSavingCorr(true);
     try {
       await boardingAttendanceApi.correctAttendance(
         selectedSession.id, correcting.student_id, correctForm.status, correctForm.reason
       );
+      setLocalStatus(prev => ({ ...prev, [correcting.student_id]: correctForm.status }));
       toast.success("Attendance corrected");
       setCorrecting(null);
-      await loadSessionRecords(selectedSession.id);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Failed");
-    } finally { setSaving(false); }
+    } catch (e: any) { toast.error(e?.message ?? "Failed"); }
+    finally { setSavingCorr(false); }
   };
 
-  // ── Derived stats ─────────────────────────────────────────────────────────
-
-  const missingCount = sessionRecords.filter(r => r.status === "missing_attendance").length;
+  const presentCount = Object.values(localStatus).filter(v => v === "present").length;
+  const absentCount  = sessionRecords.length - presentCount;
   const dormName = (id: string) => myDorms.find(d => d.dormitory_id === id)?.dormitory?.name ?? id;
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const handleExport = async () => {
+    if (sessionRecords.length === 0) { toast.info("No records to export"); return; }
+    const sessName = selectedSession?.session_name ?? selectedSession?.id ?? "session";
+    try {
+      await exportToExcel(
+        `boarding-attendance-${sessName}.xlsx`, "Attendance",
+        [
+          { header: "#", key: "no", width: 6 },
+          { header: "Student Name", key: "name", width: 26 },
+          { header: "Student ID", key: "sid", width: 16 },
+          { header: "Status", key: "status", width: 14 },
+          { header: "Method", key: "method", width: 14 },
+          { header: "Time", key: "time", width: 18 },
+        ],
+        sessionRecords.map((r, i) => ({
+          no: i + 1,
+          name: r.student ? `${r.student.first_name} ${r.student.last_name}` : r.student_id,
+          sid: r.student?.student_id_number ?? "—",
+          status: localStatus[r.student_id] ?? r.status,
+          method: r.is_manual ? "Manual" : "Biometric",
+          time: r.scan_time ? new Date(r.scan_time).toLocaleTimeString() : "—",
+        })),
+        `Boarding Attendance — ${sessName}`
+      );
+      toast.success("Exported");
+    } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
+  };
 
   return (
-    <PatronLayout title="Boarding Attendance" subtitle="Sessions, device push, and attendance management">
+    <PatronLayout title="Boarding Attendance" subtitle="Sessions, device push, and attendance">
 
-      {/* ── Top toolbar ── */}
+      {/* Top toolbar */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        {/* Dorm selector */}
         {myDorms.length > 0 && (
-          <select value={selectedDorm ?? ""} onChange={e => setSelectedDorm(e.target.value)}
+          <select value={selectedDorm ?? ""}
+            onChange={e => setSelectedDorm(e.target.value)}
             className="rounded-xl border border-border bg-background px-3 py-2.5 text-sm font-semibold">
             {myDorms.map(d => (
-              <option key={d.dormitory_id} value={d.dormitory_id}>{d.dormitory?.name ?? d.dormitory_id}</option>
+              <option key={d.dormitory_id} value={d.dormitory_id}>
+                {d.dormitory?.name ?? d.dormitory_id}
+              </option>
             ))}
           </select>
         )}
@@ -279,6 +309,12 @@ function PatronAttendancePage() {
           className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
           <Plus className="h-4 w-4" /> New Session
         </button>
+        {sessionRecords.length > 0 && (
+          <button onClick={handleExport}
+            className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted">
+            <Download className="h-4 w-4" /> Export
+          </button>
+        )}
         {myDevices.length > 0 && (
           <button onClick={() => setShowPush(true)}
             className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted">
@@ -293,9 +329,9 @@ function PatronAttendancePage() {
         )}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
+      <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
 
-        {/* ── Sessions sidebar ── */}
+        {/* Sessions sidebar */}
         <aside className="space-y-2">
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sessions</p>
@@ -303,170 +339,156 @@ function PatronAttendancePage() {
           </div>
           {sessions.length === 0 && !sessionsLoading ? (
             <div className="rounded-xl border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-              No sessions yet. Click "New Session" to open one.
+              No sessions yet. Click "New Session" to start.
             </div>
-          ) : (
-            sessions.map(s => (
-              <button key={s.id} onClick={() => { setSelectedSession(s); void loadSessionRecords(s.id); }}
-                className={cn(
-                  "w-full text-left rounded-xl border p-3 transition",
-                  selectedSession?.id === s.id
-                    ? "border-primary/40 bg-primary/5"
-                    : "border-border hover:bg-muted/30"
-                )}>
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-sm leading-tight">
-                      {s.session_name ?? (s.location_type ?? "Session")}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {s.session_date} · {s.location_type?.replace(/_/g, " ")}
-                    </p>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <span className={cn(
-                      "rounded-full px-2 py-0.5 text-[10px] font-bold",
-                      s.reconciled_at ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                    )}>
-                      {s.reconciled_at ? "Closed" : "Open"}
-                    </span>
-                  </div>
-                </div>
-                {s.reconciled_at == null && (
-                  <div className="mt-2 grid grid-cols-3 gap-1 text-[10px] text-muted-foreground">
-                    <span className="text-emerald-600 font-bold">{s.total_present} present</span>
-                    <span className="text-amber-600 font-bold">{s.total_late} late</span>
-                    <span className="text-destructive font-bold">{s.total_missing} missing</span>
-                  </div>
-                )}
-              </button>
-            ))
-          )}
+          ) : sessions.map(s => (
+            <button key={s.id}
+              onClick={() => { setSelectedSession(s); void loadSessionRecords(s.id); }}
+              className={cn(
+                "w-full text-left rounded-xl border p-3 transition",
+                selectedSession?.id === s.id ? "border-primary/40 bg-primary/5" : "border-border hover:bg-muted/30"
+              )}>
+              <p className="font-semibold text-sm leading-tight">{(s as any).session_name ?? (s as any).location_type ?? "Session"}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{s.session_date} · {(s as any).location_type?.replace(/_/g," ")}</p>
+              <div className="mt-1.5 grid grid-cols-3 gap-1 text-[10px]">
+                <span className="text-emerald-600 font-bold">{s.total_present} P</span>
+                <span className="text-destructive font-bold">{s.total_missing} A</span>
+                <span className={cn("font-bold", s.reconciled_at ? "text-muted-foreground" : "text-amber-600")}>
+                  {s.reconciled_at ? "Closed" : "Open"}
+                </span>
+              </div>
+            </button>
+          ))}
         </aside>
 
-        {/* ── Main attendance area ── */}
+        {/* Main attendance area */}
         <div className="space-y-4">
           {!selectedSession ? (
             <div className="rounded-xl border border-dashed border-border p-16 text-center">
-              <Cpu className="mx-auto h-10 w-10 text-muted-foreground/30 mb-3" />
-              <p className="text-sm text-muted-foreground">Select a session on the left, or create a new one.</p>
+              <Activity className="mx-auto h-10 w-10 text-muted-foreground/30 mb-3" />
+              <p className="text-sm text-muted-foreground">Select or create a session to take attendance.</p>
             </div>
           ) : (
             <>
               {/* Session header */}
               <div className="rounded-xl border border-border bg-card p-4 flex items-center justify-between gap-4 flex-wrap">
                 <div>
-                  <h2 className="font-semibold text-lg">
-                    {selectedSession.session_name ?? (selectedSession.location_type?.replace(/_/g, " ") ?? "Session")}
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    {selectedSession.session_date} · {selectedDorm ? dormName(selectedDorm) : ""} · {selectedSession.location_type?.replace(/_/g, " ")}
-                  </p>
+                  <h2 className="font-semibold text-lg">{(selectedSession as any).session_name ?? (selectedSession as any).location_type ?? "Session"}</h2>
+                  <p className="text-xs text-muted-foreground">{selectedSession.session_date} · {selectedDorm ? dormName(selectedDorm) : ""}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {!selectedSession.reconciled_at && (
-                    <button onClick={handleReconcile}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted">
-                      <CheckCircle className="h-3.5 w-3.5" /> Reconcile
-                    </button>
-                  )}
-                  <span className={cn(
-                    "rounded-full px-3 py-1 text-xs font-bold",
-                    selectedSession.reconciled_at ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                  )}>
+                  <span className={cn("rounded-full px-3 py-1 text-xs font-bold",
+                    selectedSession.reconciled_at ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>
                     {selectedSession.reconciled_at ? "Closed" : "Open"}
                   </span>
                 </div>
               </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                <StatMini label="Expected" value={selectedSession.total_expected} />
-                <StatMini label="Present"  value={selectedSession.total_present}  color="emerald" />
-                <StatMini label="Late"     value={selectedSession.total_late}     color="amber" />
-                <StatMini label="On Leave" value={selectedSession.total_on_leave} color="blue" />
-                <StatMini label="Missing"  value={selectedSession.total_missing}  color="red" />
+              {/* Stats + Quick actions */}
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex gap-3">
+                  <div className="rounded-xl border border-border bg-card px-4 py-2 text-center min-w-16">
+                    <p className="text-xl font-bold text-emerald-600">{presentCount}</p>
+                    <p className="text-xs text-muted-foreground">Present</p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card px-4 py-2 text-center min-w-16">
+                    <p className="text-xl font-bold text-destructive">{absentCount}</p>
+                    <p className="text-xs text-muted-foreground">Absent</p>
+                  </div>
+                  <div className="rounded-xl border border-border bg-card px-4 py-2 text-center min-w-16">
+                    <p className="text-xl font-bold">{sessionRecords.length}</p>
+                    <p className="text-xs text-muted-foreground">Total</p>
+                  </div>
+                </div>
+                {!selectedSession.reconciled_at && sessionRecords.length > 0 && (
+                  <div className="flex gap-2 ml-auto">
+                    <button onClick={() => void markAll("present")}
+                      className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
+                      All Present
+                    </button>
+                    <button onClick={() => void markAll("missing_attendance")}
+                      className="rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100">
+                      All Absent
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* Missing alert */}
-              {missingCount > 0 && (
-                <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-destructive text-sm font-semibold flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  {missingCount} student{missingCount !== 1 ? "s" : ""} missing — DOD will be notified on reconcile.
+              {/* Student grid — tap to toggle present/absent */}
+              {recordsLoading ? (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {[1,2,3,4,5,6].map(i => <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />)}
+                </div>
+              ) : sessionRecords.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
+                  No attendance records yet. Students will appear as they scan biometric devices.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {sessionRecords.map(r => {
+                    const status = localStatus[r.student_id] ?? r.status;
+                    const isPresent = status === "present" || status === "on_approved_leave";
+                    const isAbsent  = status === "missing_attendance";
+                    const isSaving  = savingIds.has(r.student_id);
+
+                    return (
+                      <button key={r.id}
+                        onClick={() => !selectedSession.reconciled_at && handleToggleStatus(r, isPresent ? "missing_attendance" : "present")}
+                        disabled={!!selectedSession.reconciled_at}
+                        className={cn(
+                          "flex items-center gap-3 rounded-xl border p-3 text-left transition relative",
+                          isPresent ? "border-emerald-300 bg-emerald-50" : isAbsent ? "border-red-300 bg-red-50" : "border-border bg-background",
+                          !selectedSession.reconciled_at && "active:scale-95 cursor-pointer"
+                        )}>
+                        {/* Photo or initials */}
+                        {r.student?.photo_url ? (
+                          <img src={r.student.photo_url} alt="" className="h-10 w-10 rounded-full object-cover border-2 border-white shrink-0 shadow-sm" />
+                        ) : (
+                          <div className={cn(
+                            "h-10 w-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0",
+                            isPresent ? "bg-emerald-200 text-emerald-800" : isAbsent ? "bg-red-200 text-red-800" : "bg-muted text-muted-foreground"
+                          )}>
+                            {((r.student?.first_name?.[0] ?? "") + (r.student?.last_name?.[0] ?? "")).toUpperCase() || "?"}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm truncate">
+                            {r.student ? `${r.student.first_name} ${r.student.last_name}` : "Unknown"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{r.student?.student_id_number ?? "—"}</p>
+                        </div>
+                        {/* Status badge */}
+                        <div className="shrink-0">
+                          {isSaving ? (
+                            <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+                          ) : isPresent ? (
+                            <CheckCircle className="h-5 w-5 text-emerald-600" />
+                          ) : isAbsent ? (
+                            <UserX className="h-5 w-5 text-red-600" />
+                          ) : (
+                            <Clock className="h-5 w-5 text-amber-500" />
+                          )}
+                        </div>
+                        {/* Right-click for manual correction */}
+                        {!selectedSession.reconciled_at && (
+                          <button
+                            onClick={e => { e.stopPropagation(); setCorrecting(r); setCorrectForm({ status: r.status, reason: "" }); }}
+                            className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 hover:opacity-100 p-1 rounded text-muted-foreground hover:text-primary text-[10px]"
+                            title="Manual correction">
+                            <Save className="h-3 w-3" />
+                          </button>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
-
-              {/* Attendance records */}
-              <div className="rounded-xl border border-border bg-card overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
-                      <tr>
-                        {["Photo", "Student", "ID", "Status", "Scan Time", "Type", "Action"].map(h => (
-                          <th key={h} className="text-left px-4 py-3 font-semibold">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {recordsLoading ? (
-                        <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                          <RefreshCw className="inline h-4 w-4 animate-spin mr-2" />Loading...
-                        </td></tr>
-                      ) : sessionRecords.length === 0 ? (
-                        <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                          No records yet. Students will appear as they scan biometric devices.
-                        </td></tr>
-                      ) : sessionRecords.map(r => (
-                        <tr key={r.id} className={cn("hover:bg-muted/20", r.status === "missing_attendance" && "bg-red-50")}>
-                          <td className="px-4 py-3">
-                            {r.student?.photo_url ? (
-                              <img src={r.student.photo_url} alt="" className="h-8 w-8 rounded-full object-cover border border-border" />
-                            ) : (
-                              <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold">
-                                {(r.student?.first_name?.[0] ?? "") + (r.student?.last_name?.[0] ?? "")}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 font-medium">
-                            {r.student ? `${r.student.first_name} ${r.student.last_name}` : "—"}
-                          </td>
-                          <td className="px-4 py-3 text-xs font-mono text-muted-foreground">
-                            {r.student?.student_id_number ?? "—"}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1.5">
-                              {STATUS_ICON[r.status]}
-                              <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold", STATUS_COLOR[r.status] ?? "bg-muted text-muted-foreground")}>
-                                {r.status.replace(/_/g, " ")}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-xs">
-                            {r.scan_time ? new Date(r.scan_time).toLocaleTimeString() : "—"}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={cn("text-xs font-semibold", r.is_manual ? "text-purple-600" : "text-muted-foreground")}>
-                              {r.is_manual ? "Manual" : "Biometric"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <button onClick={() => { setCorrecting(r); setCorrectForm({ status: r.status, reason: "" }); }}
-                              className="text-xs font-semibold text-primary hover:underline">
-                              Correct
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
             </>
           )}
         </div>
       </div>
 
-      {/* ── New Session modal ── */}
+      {/* New Session modal */}
       {showNewSession && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-xl bg-card shadow-xl overflow-hidden">
@@ -481,7 +503,6 @@ function PatronAttendancePage() {
                   onChange={e => setSessionForm(f => ({...f, session_name: e.target.value}))}
                   placeholder="e.g. Morning Roll Call, Dinner, Lights Out"
                   className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm" />
-                <p className="mt-1 text-xs text-muted-foreground">Give it a descriptive name so you can tell sessions apart</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -499,39 +520,30 @@ function PatronAttendancePage() {
                     className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm" />
                 </div>
               </div>
-              <div className="rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                Dormitory: <strong>{selectedDorm ? dormName(selectedDorm) : "none"}</strong>
-              </div>
               <div className="flex gap-3">
                 <button type="submit" disabled={creatingSession}
-                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-                  <Plus className="h-4 w-4" />
-                  {creatingSession ? "Opening..." : "Open Session"}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+                  <Plus className="h-4 w-4" /> {creatingSession ? "Opening..." : "Open Session"}
                 </button>
                 <button type="button" onClick={() => setShowNewSession(false)}
-                  className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold hover:bg-muted">
-                  Cancel
-                </button>
+                  className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* ── Push Students modal ── */}
+      {/* Push Students modal */}
       {showPush && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-xl bg-card shadow-xl overflow-hidden">
             <div className="flex items-center justify-between border-b border-border px-6 py-4">
-              <div>
-                <h2 className="font-display font-bold text-lg">Push Students to Device</h2>
-                <p className="text-sm text-muted-foreground">Upload student list so biometric device recognises them</p>
-              </div>
+              <h2 className="font-display font-bold text-lg">Push Students to Device</h2>
               <button onClick={() => setShowPush(false)} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground"><X className="h-4 w-4" /></button>
             </div>
             <form onSubmit={handlePush} className="p-6 space-y-4">
               <div>
-                <label className="mb-1.5 block text-sm font-semibold">Device *</label>
+                <label className="mb-1.5 block text-sm font-semibold">Device</label>
                 <select value={pushDevice} onChange={e => setPushDevice(e.target.value)} required
                   className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
                   <option value="">-- select device --</option>
@@ -541,45 +553,33 @@ function PatronAttendancePage() {
                     </option>
                   ))}
                 </select>
-                {pushDevice && !myDevices.find(d => d.id === pushDevice)?.tablet?.id && (
-                  <p className="mt-1 text-xs text-amber-600">This device is not linked to a tablet — contact admin</p>
-                )}
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-semibold">Class (optional)</label>
+                <label className="mb-1.5 block text-sm font-semibold">Class (optional — leave blank for all dorm students)</label>
                 <select value={pushClassId} onChange={e => setPushClassId(e.target.value)}
                   className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
                   <option value="">All boarding students in assigned dorms</option>
-                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {classes.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
-              </div>
-              <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-                Students will be enrolled on the biometric device. This is required before they can scan for attendance.
               </div>
               <div className="flex gap-3">
                 <button type="submit" disabled={pushing || !pushDevice}
-                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-                  <Upload className="h-4 w-4" />
-                  {pushing ? "Pushing..." : "Push to Device"}
+                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+                  <Upload className="h-4 w-4" /> {pushing ? "Pushing..." : "Push to Device"}
                 </button>
                 <button type="button" onClick={() => setShowPush(false)}
-                  className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold hover:bg-muted">
-                  Cancel
-                </button>
+                  className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* ── Manual correction modal ── */}
+      {/* Manual correction modal */}
       {correcting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl">
-            <h2 className="font-display font-bold text-lg mb-1">Manual Attendance Correction</h2>
-            <p className="text-xs text-muted-foreground mb-4">
-              Biometric failure or operational exception only. Every change is audited.
-            </p>
+            <h2 className="font-display font-bold text-lg mb-4">Manual Correction</h2>
             <div className="space-y-3">
               <div>
                 <label className="block text-sm font-semibold mb-1">New Status</label>
@@ -592,40 +592,23 @@ function PatronAttendancePage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-1">Reason *</label>
+                <label className="block text-sm font-semibold mb-1">Reason (required)</label>
                 <textarea value={correctForm.reason} onChange={e => setCorrectForm(p => ({...p, reason: e.target.value}))}
                   rows={3} placeholder="Biometric failure, approved exception..."
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm resize-none" />
               </div>
               <div className="flex gap-3">
-                <button onClick={handleCorrect} disabled={saving || !correctForm.reason.trim()}
+                <button onClick={handleCorrect} disabled={savingCorr || !correctForm.reason.trim()}
                   className="flex-1 rounded-lg bg-primary text-primary-foreground py-2.5 font-semibold text-sm hover:bg-primary/90 disabled:opacity-50">
-                  {saving ? "Saving..." : "Save Correction"}
+                  {savingCorr ? "Saving..." : "Save Correction"}
                 </button>
                 <button onClick={() => setCorrecting(null)}
-                  className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold hover:bg-muted">
-                  Cancel
-                </button>
+                  className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
               </div>
             </div>
           </div>
         </div>
       )}
     </PatronLayout>
-  );
-}
-
-function StatMini({ label, value, color }: { label: string; value: number; color?: string }) {
-  const colors: Record<string, string> = {
-    emerald: "text-emerald-600", amber: "text-amber-600",
-    blue: "text-blue-600",      red: "text-destructive",
-  };
-  return (
-    <div className="rounded-xl border border-border bg-card p-3 text-center">
-      <div className={cn("text-xl font-bold font-display", color ? colors[color] : "")}>
-        {value}
-      </div>
-      <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
-    </div>
   );
 }

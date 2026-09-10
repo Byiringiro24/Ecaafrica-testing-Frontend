@@ -263,10 +263,10 @@ export const boardingAttendanceApi = {
       auth: "school",
     }),
 
-  openSession: (dormitory_id: string, session_date: string, window_id?: string) =>
+  openSession: (dormitory_id: string, session_date: string, window_id?: string, extra?: Record<string, unknown>) =>
     apiRequest<BoardingSession>("/boarding/attendance/sessions", {
       method: "POST",
-      body: JSON.stringify({ dormitory_id, session_date, window_id }),
+      body: JSON.stringify({ dormitory_id, session_date, window_id, ...extra }),
       auth: "school",
     }),
 
@@ -380,10 +380,29 @@ export const deviceLocationApi = {
       { auth: "school" }
     ),
 
-  assign: (deviceId: string, data: { location_scope?: string; dormitory_id?: string | null; location_label?: string | null }) =>
+  assign: (deviceId: string, data: {
+    location_scope?: string;
+    dormitory_id?: string | null;
+    location_label?: string | null;
+    auto_push?: boolean;
+    group?: number;
+  }) =>
     apiRequest<any>(`/devices/${deviceId}/assign-location`, {
       method: "PATCH",
       body: JSON.stringify(data),
       auth: "school",
     }),
+
+  getAssignedStudents: (deviceId: string) =>
+    apiRequest<any>(`/devices/${deviceId}/assigned-students`, { auth: "school" }),
+
+  pushGroup: (deviceId: string, group: number) =>
+    apiRequest<any>(`/devices/${deviceId}/push-group`, {
+      method: "POST",
+      body: JSON.stringify({ group }),
+      auth: "school",
+    }),
+
+  listWithLocation: (params?: { dormitory_id?: string; location_scope?: string }) =>
+    apiRequest<any>(`/devices/locations${params ? `?${new URLSearchParams(params as any)}` : ""}`, { auth: "school" }),
 };

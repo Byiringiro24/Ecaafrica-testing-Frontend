@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { fetchDeviceLogs, fetchAttendanceStats } from "@/lib/device-logs-api";
 import type { AttendanceStats, DeviceLog, PaginationMeta } from "@/lib/device-logs-types";
 import { localDateInputValue } from "@/lib/dateInput";
+import { exportToExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/attendance/device-attendance")({
   component: DeviceAttendancePage,
@@ -275,7 +276,35 @@ function DeviceAttendancePage() {
         <div className="mt-4 flex justify-end">
           <button
             type="button"
-            onClick={() => toast.info("Export feature coming soon")}
+            onClick={async () => {
+              try {
+                await exportToExcel(
+                  `device-attendance-${dateFilter}.xlsx`, "Device Attendance",
+                  [
+                    { header: "#", key: "no", width: 6 },
+                    { header: "Student Name", key: "name", width: 26 },
+                    { header: "Student ID", key: "sid", width: 16 },
+                    { header: "Class", key: "cls", width: 18 },
+                    { header: "Status", key: "status", width: 12 },
+                    { header: "Time In", key: "time", width: 14 },
+                    { header: "Method", key: "method", width: 14 },
+                    { header: "Device", key: "device", width: 18 },
+                  ],
+                  logs.map((l: DeviceLog, i) => ({
+                    no: i + 1,
+                    name: l.studentName ?? "—",
+                    sid: l.studentId ?? "—",
+                    cls: l.className ?? "—",
+                    status: l.status ?? "—",
+                    time: l.timestamp ? new Date(l.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—",
+                    method: l.method ?? "—",
+                    device: l.deviceId ?? "—",
+                  })),
+                  `Device Attendance — ${dateFilter}`
+                );
+                toast.success("Exported");
+              } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
+            }}
             className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted/40"
           >
             <Download className="h-4 w-4" />

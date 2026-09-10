@@ -1,7 +1,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
-import { getSchoolAuth, isSchoolAdminRole, roleHome } from "@/lib/schoolAuth";
+import { getSchoolAuth, isDirectorOfStudiesRole, isSchoolAdminRole, roleHome } from "@/lib/schoolAuth";
 
 interface Props {
   title: string;
@@ -21,7 +21,7 @@ export function AppLayout({ title, subtitle, children }: Props) {
       return;
     }
 
-    if (!isSchoolAdminRole(auth.user?.role)) {
+    if (!isSchoolAdminRole(auth.user?.role) && !isDirectorOfStudiesRole(auth.user?.role)) {
       window.location.replace(roleHome(auth.user?.role));
       setIsAuthed(false);
       return;

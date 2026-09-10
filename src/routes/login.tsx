@@ -89,7 +89,10 @@ function LoginPage() {
         : role === "staff"
         ? "/staff/dashboard"
         : "/dashboard";
-      navigate({ to: isPlatform ? (redirect || fallbackRoute) : (redirect || fallbackRoute) });
+
+      const destination = isPlatform ? (redirect || fallbackRoute) : (redirect || fallbackRoute);
+      // Use window.location for reliable navigation (avoids TanStack Router type issues)
+      window.location.href = destination;
     } catch (err) {
       const message =
         typeof err === "object" && err !== null && "message" in err

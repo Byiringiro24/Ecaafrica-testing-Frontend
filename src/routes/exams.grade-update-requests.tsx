@@ -4,12 +4,12 @@ import { Check, ChevronLeft, ChevronRight, Clock3, History, Loader2, MessageSqua
 import { toast } from "sonner";
 import { getTeacherExams, requestExamModification, type TeacherExam } from "@/lib/exams-api";
 import { listExamModificationRequests, reviewExamModificationRequest, type ExamModificationRequest } from "@/lib/exams-admin-api";
-import { getSchoolAuth, isSchoolAdminRole, isTeacherRole } from "@/lib/schoolAuth";
+import { getSchoolAuth, isSchoolAdminRole, isTeacherRole, isDirectorOfStudiesRole } from "@/lib/schoolAuth";
 
 export const Route = createFileRoute("/exams/grade-update-requests")({
   beforeLoad: ({ location }) => {
     const auth = getSchoolAuth();
-    if (auth?.accessToken && (isSchoolAdminRole(auth.user?.role) || isTeacherRole(auth.user?.role))) return;
+    if (auth?.accessToken && (isSchoolAdminRole(auth.user?.role) || isTeacherRole(auth.user?.role) || isDirectorOfStudiesRole(auth.user?.role))) return;
     throw redirect({ to: "/login", search: { redirect: location.pathname } });
   },
   component: GradeUpdateRequestsPage,

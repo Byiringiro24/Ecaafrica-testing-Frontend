@@ -3,7 +3,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, ClipboardCheck, BookOpen,
   BarChart3, CalendarDays, Users, GraduationCap,
-  LogOut, Menu, X,
+  LogOut, Menu, X, FileText, Pencil, Award,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
@@ -14,13 +14,28 @@ const NAV = [
   {
     section: "Academic",
     items: [
-      { to: "/dos/dashboard",   label: "Dashboard",            icon: LayoutDashboard },
-      { to: "/dos/attendance",  label: "Class Attendance",     icon: ClipboardCheck },
-      { to: "/dos/timetable",   label: "Timetable Overview",   icon: CalendarDays },
-      { to: "/dos/exams",       label: "Exams & Results",      icon: GraduationCap },
-      { to: "/dos/classes",     label: "Classes & Subjects",   icon: BookOpen },
-      { to: "/dos/staff",       label: "Teaching Staff",       icon: Users },
-      { to: "/dos/reports",     label: "Academic Reports",     icon: BarChart3 },
+      { to: "/dos/dashboard",              label: "Dashboard",             icon: LayoutDashboard },
+      { to: "/dos/attendance",             label: "Class Attendance",      icon: ClipboardCheck },
+      { to: "/dos/timetable",              label: "Timetable",             icon: CalendarDays },
+      { to: "/dos/classes",                label: "Classes & Subjects",    icon: BookOpen },
+      { to: "/subject-assignments",        label: "Subject Assignments",   icon: Pencil },
+      { to: "/dos/staff",                  label: "Teaching Staff",        icon: Users },
+    ],
+  },
+  {
+    section: "Exams",
+    items: [
+      { to: "/dos/exams",                  label: "Exam Overview",         icon: GraduationCap },
+      { to: "/exams/schedule",             label: "Exam Schedule",         icon: CalendarDays },
+      { to: "/exams/review",               label: "Review Results",        icon: Pencil },
+      { to: "/exams/report-cards",         label: "Report Cards",          icon: Award },
+      { to: "/exams/grade-update-requests",label: "Grade Change Requests", icon: FileText },
+    ],
+  },
+  {
+    section: "Reports",
+    items: [
+      { to: "/dos/reports",                label: "Academic Reports",      icon: BarChart3 },
     ],
   },
 ];

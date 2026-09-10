@@ -1,6 +1,7 @@
 /** DOS — Classes and subjects overview */
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { DosLayout } from "@/components/layout/DosLayout";
 import { directorOfStudiesRouteGuard } from "@/lib/schoolAuth";
@@ -22,8 +23,12 @@ function DosClassesPage() {
   const [classes, setClasses] = useState<ClassRecord[]>([]);
   const [subjects, setSubjects] = useState<SubjectRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [classForm, setClassForm] = useState({ name: "", level: "" });
+  const [subjectForm, setSubjectForm] = useState({ name: "", code: "" });
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true);
     Promise.all([
       apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }).catch(() => []),
@@ -32,18 +37,47 @@ function DosClassesPage() {
       setClasses(Array.isArray(c) ? c : []);
       setSubjects(Array.isArray(s) ? s : []);
     }).catch(e => toast.error(e?.message ?? "Failed to load")).finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const handleCreateClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!classForm.name.trim()) { toast.error("Class name required"); return; }
+    setSaving(true);
+    try {
+      await apiRequest("/classes", { method: "POST", auth: "school", body: JSON.stringify({ name: classForm.name.trim(), level: classForm.level ? Number(classForm.level) : undefined }) });
+      toast.success("Class created"); setShowCreate(false); setClassForm({ name: "", level: "" }); load();
+    } catch (e: any) { toast.error(e?.message ?? "Failed"); } finally { setSaving(false); }
+  };
+
+  const handleCreateSubject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subjectForm.name.trim()) { toast.error("Subject name required"); return; }
+    setSaving(true);
+    try {
+      await apiRequest("/subjects", { method: "POST", auth: "school", body: JSON.stringify({ name: subjectForm.name.trim(), code: subjectForm.code.trim() || null }) });
+      toast.success("Subject created"); setShowCreate(false); setSubjectForm({ name: "", code: "" }); load();
+    } catch (e: any) { toast.error(e?.message ?? "Failed"); } finally { setSaving(false); }
+  };
 
   return (
-    <DosLayout title="Classes & Subjects" subtitle="Overview of academic structure">
-      <div className="flex gap-1 border-b border-border mb-5">
-        {TABS.map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-            {t}
-          </button>
-        ))}
+    <DosLayout title="Classes & Subjects" subtitle="Manage academic structure">
+      <div className="flex justify-between items-center mb-1">
+        <div className="flex gap-1 border-b border-border">
+          {TABS.map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setShowCreate(true)}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90">
+          <Plus className="h-4 w-4" /> {tab === "Classes" ? "Add Class" : "Add Subject"}
+        </button>
       </div>
+      <div className="mt-5">
 
       {loading ? <Skeleton className="h-64" /> : (
         <>
@@ -90,6 +124,54 @@ function DosClassesPage() {
             </div>
           )}
         </>
+      )}
+    </div>
+
+      {/* Create Class / Subject Modal */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-display font-bold">{tab === "Classes" ? "Add Class" : "Add Subject"}</h3>
+              <button onClick={() => setShowCreate(false)}><X className="h-4 w-4" /></button>
+            </div>
+            {tab === "Classes" ? (
+              <form onSubmit={handleCreateClass} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1">Class Name *</label>
+                  <input value={classForm.name} onChange={e => setClassForm(f => ({ ...f, name: e.target.value }))} required
+                    className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm" placeholder="e.g. Senior 1" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1">Level</label>
+                  <input value={classForm.level} onChange={e => setClassForm(f => ({ ...f, level: e.target.value }))} type="number" min="1"
+                    className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm" placeholder="e.g. 1" />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setShowCreate(false)} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
+                  <button type="submit" disabled={saving} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 disabled:opacity-60">{saving ? "Saving…" : "Create"}</button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleCreateSubject} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1">Subject Name *</label>
+                  <input value={subjectForm.name} onChange={e => setSubjectForm(f => ({ ...f, name: e.target.value }))} required
+                    className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm" placeholder="e.g. Mathematics" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1">Code</label>
+                  <input value={subjectForm.code} onChange={e => setSubjectForm(f => ({ ...f, code: e.target.value }))}
+                    className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm" placeholder="e.g. MATH" />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button type="button" onClick={() => setShowCreate(false)} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
+                  <button type="submit" disabled={saving} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 disabled:opacity-60">{saving ? "Saving…" : "Create"}</button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
       )}
     </DosLayout>
   );

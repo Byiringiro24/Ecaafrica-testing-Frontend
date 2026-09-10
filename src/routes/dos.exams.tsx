@@ -1,6 +1,7 @@
 /** DOS — Exams & Results overview */
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { CalendarDays, FileText, Award } from "lucide-react";
 import { toast } from "sonner";
 import { DosLayout } from "@/components/layout/DosLayout";
 import { directorOfStudiesRouteGuard } from "@/lib/schoolAuth";
@@ -38,6 +39,25 @@ function DosExamsPage() {
 
   return (
     <DosLayout title="Exams & Results" subtitle="Monitor exam schedule and results publication">
+      {/* Quick actions */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <Link to="/exams/schedule"
+          className="rounded-xl border border-border bg-card p-4 flex items-center gap-3 hover:bg-muted/30 transition">
+          <div className="grid h-9 w-9 place-items-center rounded-lg bg-blue-100 text-blue-700 shrink-0"><CalendarDays className="h-5 w-5" /></div>
+          <div><div className="font-semibold text-sm">Exam Schedule</div><div className="text-xs text-muted-foreground">Create & manage exam sessions</div></div>
+        </Link>
+        <Link to="/exams/review"
+          className="rounded-xl border border-border bg-card p-4 flex items-center gap-3 hover:bg-muted/30 transition">
+          <div className="grid h-9 w-9 place-items-center rounded-lg bg-amber-100 text-amber-700 shrink-0"><FileText className="h-5 w-5" /></div>
+          <div><div className="font-semibold text-sm">Review Results</div><div className="text-xs text-muted-foreground">Review and approve marks</div></div>
+        </Link>
+        <Link to="/exams/report-cards"
+          className="rounded-xl border border-border bg-card p-4 flex items-center gap-3 hover:bg-muted/30 transition">
+          <div className="grid h-9 w-9 place-items-center rounded-lg bg-purple-100 text-purple-700 shrink-0"><Award className="h-5 w-5" /></div>
+          <div><div className="font-semibold text-sm">Report Cards</div><div className="text-xs text-muted-foreground">Generate and publish report cards</div></div>
+        </Link>
+      </div>
+
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         {loading ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />) : (

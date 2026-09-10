@@ -15,7 +15,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { getSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
 
-export const Route = createFileRoute("/user-management" as any)({
+export const Route = createFileRoute("/staff/management")({
   beforeLoad: () => {
     const auth = getSchoolAuth();
     const role = auth?.user?.role?.toLowerCase();

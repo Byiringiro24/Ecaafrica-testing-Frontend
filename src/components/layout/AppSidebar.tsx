@@ -44,7 +44,7 @@ const SECTIONS: Section[] = [
   ]},
   { id: "hr", label: "HR", items: [
     { to: "/staff", label: "Staff", icon: Briefcase, module: "staff" },
-    { to: "/user-management", label: "User Management", icon: Users, module: "staff" },
+    { to: "/staff/management", label: "User Management", icon: Users, module: "staff" },
   ]},
   { id: "comm", label: "Communication", items: [
     { to: "/parents", label: "Parents", icon: Heart, module: "parents" },

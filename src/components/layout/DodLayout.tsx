@@ -45,7 +45,7 @@ const NAV = [
     items: [
       { to: "/dod/alerts",       label: "Alerts & Exceptions", icon: AlertTriangle },
       { to: "/dod/reports",      label: "Boarding Reports",    icon: BarChart3 },
-      { to: "/user-management", label: "Staff Management",    icon: Users },
+      { to: "/staff/management", label: "Staff Management",    icon: Users },
       { to: "/dod/config",       label: "Configuration",       icon: Settings },
     ],
   },

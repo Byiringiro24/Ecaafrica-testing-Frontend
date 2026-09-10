@@ -1,7 +1,7 @@
-/** DOS — Full timetable management (same functionality as school admin timetable) */
+﻿/** DOS — Full timetable management (same functionality as school admin timetable) */
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useMemo } from "react";
-import { Plus, X, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Plus, X, Trash2, Loader2, Settings, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { DosLayout } from "@/components/layout/DosLayout";
 import { directorOfStudiesRouteGuard } from "@/lib/schoolAuth";
@@ -44,6 +44,7 @@ function DosTimetablePage() {
   const [terms, setTerms]       = useState<Term[]>([]);
   const [slots, setSlots]       = useState<Slot[]>([]);
   const [loading, setLoading]   = useState(true);
+  const [viewMode, setViewMode] = useState<"Timetable Grid" | "Manage Periods">("Timetable Grid");
 
   const [sectionId, setSectionId] = useState("");
   const [termId, setTermId]       = useState("");
@@ -62,7 +63,7 @@ function DosTimetablePage() {
       setLoading(true);
       try {
         const [pRes, secRes, subRes, tRes, termRes] = await Promise.all([
-          apiRequest<Period[]>("/timetable/periods?limit=100", AUTH).catch(() => []),
+          apiRequest<Period[]>("/timetable-periods?limit=100", AUTH).catch(() => []),
           apiRequest<Section[]>("/sections?limit=200", AUTH).catch(() => []),
           apiRequest<Subject[]>("/subjects?limit=200", AUTH).catch(() => []),
           apiRequest<Teacher[]>("/users?role=teacher&limit=200", AUTH).catch(() => []),
@@ -95,7 +96,7 @@ function DosTimetablePage() {
     if (!sectionId) return;
     const params = new URLSearchParams({ section_id: sectionId, limit: "500" });
     if (termId) params.set("term_id", termId);
-    apiRequest<Slot[]>(`/timetable/slots?${params}`, AUTH)
+    apiRequest<Slot[]>(`/timetable-slots?${params}`, AUTH)
       .then(d => setSlots(Array.isArray(d) ? d : []))
       .catch(e => toast.error(e?.message ?? "Failed to load slots"));
   }, [sectionId, termId]);
@@ -116,7 +117,7 @@ function DosTimetablePage() {
     }
     setSaving(true);
     try {
-      await apiRequest("/timetable/slots", {
+      await apiRequest("/timetable-slots", {
         method: "POST", ...AUTH,
         body: JSON.stringify({
           section_id: sectionId, period_id: addPeriodId,
@@ -130,7 +131,7 @@ function DosTimetablePage() {
       // Refresh slots
       const params = new URLSearchParams({ section_id: sectionId, limit: "500" });
       if (termId) params.set("term_id", termId);
-      const updated = await apiRequest<Slot[]>(`/timetable/slots?${params}`, AUTH).catch(() => []);
+      const updated = await apiRequest<Slot[]>(`/timetable-slots?${params}`, AUTH).catch(() => []);
       setSlots(Array.isArray(updated) ? updated : []);
     } catch (e: any) { toast.error(e?.message ?? "Failed to add slot"); }
     finally { setSaving(false); }
@@ -138,7 +139,7 @@ function DosTimetablePage() {
 
   const handleDeleteSlot = async (slot: Slot) => {
     try {
-      await apiRequest(`/timetable/slots/${slot.id}`, { method: "DELETE", ...AUTH });
+      await apiRequest(`/timetable-slots/${slot.id}`, { method: "DELETE", ...AUTH });
       setSlots(prev => prev.filter(s => s.id !== slot.id));
       toast.success("Slot removed");
     } catch (e: any) { toast.error(e?.message ?? "Failed to delete slot"); }
@@ -146,6 +147,24 @@ function DosTimetablePage() {
 
   return (
     <DosLayout title="Timetable" subtitle="Plan and manage class timetables">
+      {/* View tabs */}
+      <div className="flex gap-1 border-b border-border mb-5">
+        {(["Timetable Grid", "Manage Periods"] as const).map(t => (
+          <button key={t} onClick={() => setViewMode(t as any)}
+            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px flex items-center gap-2 ${(viewMode as string) === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+            {t === "Timetable Grid" ? <Clock className="h-4 w-4" /> : <Settings className="h-4 w-4" />}
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {(viewMode as string) === "Manage Periods" ? (
+        <PeriodsManager periods={periods} onRefresh={async () => {
+          const p = await apiRequest<Period[]>("/timetable-periods?limit=100", AUTH).catch(() => []);
+          setPeriods((Array.isArray(p) ? p : []).sort((a, b) => a.sort_order - b.sort_order));
+        }} />
+      ) : (
+      <>
       {/* Toolbar */}
       <div className="flex flex-wrap gap-3 items-center mb-5">
         <select value={sectionId} onChange={e => setSectionId(e.target.value)}
@@ -277,6 +296,146 @@ function DosTimetablePage() {
           </div>
         </div>
       )}
+      </>
+      )}
     </DosLayout>
+  );
+}
+
+// ── Periods Manager sub-component ──────────────────────────────────────────
+function PeriodsManager({ periods, onRefresh }: { periods: Period[]; onRefresh: () => Promise<void> }) {
+  const AUTH = { auth: "school" as const };
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [form, setForm] = useState({ name: "", start_time: "07:00", end_time: "07:45", is_break: false, sort_order: "" });
+  const [show, setShow] = useState(false);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) { toast.error("Name required"); return; }
+    setSaving(true);
+    try {
+      await apiRequest("/timetable-periods", {
+        method: "POST", ...AUTH,
+        body: JSON.stringify({
+          name: form.name.trim(),
+          start_time: form.start_time,
+          end_time: form.end_time,
+          is_break: form.is_break,
+          sort_order: form.sort_order ? Number(form.sort_order) : periods.length + 1,
+        }),
+      });
+      toast.success("Period created");
+      setShow(false);
+      setForm({ name: "", start_time: "07:00", end_time: "07:45", is_break: false, sort_order: "" });
+      await onRefresh();
+    } catch (e: any) { toast.error(e?.message ?? "Failed"); }
+    finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id);
+    try {
+      await apiRequest(`/timetable-periods/${id}`, { method: "DELETE", ...AUTH });
+      toast.success("Period deleted");
+      await onRefresh();
+    } catch (e: any) { toast.error(e?.message ?? "Failed"); }
+    finally { setDeleting(null); }
+  };
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <p className="text-sm text-muted-foreground">{periods.length} period{periods.length !== 1 ? "s" : ""} configured</p>
+        <button onClick={() => setShow(true)}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90">
+          <Plus className="h-4 w-4" /> Add Period
+        </button>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
+            <tr>
+              {["Order", "Name", "Start", "End", "Type", ""].map(h => (
+                <th key={h} className="text-left px-4 py-3">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {periods.length === 0 ? (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                No periods yet. Add periods to enable the timetable grid.
+              </td></tr>
+            ) : periods.map(p => (
+              <tr key={p.id} className="border-t border-border hover:bg-muted/20">
+                <td className="px-4 py-3 text-xs text-muted-foreground">{p.sort_order}</td>
+                <td className="px-4 py-3 font-medium">{p.name}</td>
+                <td className="px-4 py-3 text-xs">{p.start_time ? fmt(p.start_time) : "—"}</td>
+                <td className="px-4 py-3 text-xs">{p.end_time ? fmt(p.end_time) : "—"}</td>
+                <td className="px-4 py-3">
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${p.is_break ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
+                    {p.is_break ? "Break" : "Class"}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <button onClick={() => void handleDelete(p.id)} disabled={deleting === p.id}
+                    className="p-1.5 rounded-md border border-border hover:bg-rose-50 hover:text-rose-600 text-muted-foreground disabled:opacity-50">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-display font-bold">Add Period</h3>
+              <button onClick={() => setShow(false)}><X className="h-4 w-4" /></button>
+            </div>
+            <form onSubmit={handleCreate} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1">Name *</label>
+                <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required
+                  className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm" placeholder="e.g. Period 1 / Lunch Break" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold mb-1">Start Time</label>
+                  <input type="time" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold mb-1">End Time</label>
+                  <input type="time" value={form.end_time} onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))}
+                    className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1">Sort Order</label>
+                <input type="number" min="1" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: e.target.value }))}
+                  className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm" placeholder="e.g. 1" />
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="isBreak" checked={form.is_break} onChange={e => setForm(f => ({ ...f, is_break: e.target.checked }))} className="accent-primary" />
+                <label htmlFor="isBreak" className="text-sm font-medium cursor-pointer">This is a break / recess</label>
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <button type="button" onClick={() => setShow(false)} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
+                <button type="submit" disabled={saving}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 disabled:opacity-60">
+                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {saving ? "Adding…" : "Add Period"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

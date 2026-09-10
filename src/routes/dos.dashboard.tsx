@@ -88,7 +88,7 @@ function DosDashboard() {
         ) : (
           <>
             <StatCard label="Total Classes"       value={stats.totalClasses}    icon={<BookOpen className="h-5 w-5" />}      tone="primary" />
-            <StatCard label="Active Students"     value={stats.totalStudents}   icon={<Users className="h-5 w-5" />}         tone="secondary" />
+            <StatCard label="Active Students"     value={stats.totalStudents}   icon={<Users className="h-5 w-5" />}         tone="primary" />
             <StatCard label="Attendance Submitted" value={`${stats.submittedAttendanceToday}/${stats.totalSectionsToday}`} icon={<ClipboardCheck className="h-5 w-5" />} tone={attRate < 70 ? "destructive" : "success"} trend={`${attRate}% coverage today`} />
             <StatCard label="Pending Exams"       value={stats.pendingExams}    icon={<GraduationCap className="h-5 w-5" />} tone="warning" />
           </>

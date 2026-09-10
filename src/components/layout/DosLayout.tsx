@@ -14,28 +14,28 @@ const NAV = [
   {
     section: "Academic",
     items: [
-      { to: "/dos/dashboard",              label: "Dashboard",             icon: LayoutDashboard },
-      { to: "/dos/attendance",             label: "Class Attendance",      icon: ClipboardCheck },
-      { to: "/dos/timetable",              label: "Timetable",             icon: CalendarDays },
-      { to: "/dos/classes",                label: "Classes & Subjects",    icon: BookOpen },
-      { to: "/subject-assignments",        label: "Subject Assignments",   icon: Pencil },
-      { to: "/dos/staff",                  label: "Teaching Staff",        icon: Users },
+      { to: "/dos/dashboard",              label: "Dashboard",             icon: LayoutDashboard,  native: false },
+      { to: "/dos/attendance",             label: "Class Attendance",      icon: ClipboardCheck,   native: false },
+      { to: "/dos/timetable",              label: "Timetable",             icon: CalendarDays,     native: false },
+      { to: "/dos/classes",                label: "Classes & Subjects",    icon: BookOpen,         native: false },
+      { to: "/subject-assignments",        label: "Subject Assignments",   icon: Pencil,           native: true  },
+      { to: "/dos/staff",                  label: "Teaching Staff",        icon: Users,            native: false },
     ],
   },
   {
     section: "Exams",
     items: [
-      { to: "/dos/exams",                  label: "Exam Overview",         icon: GraduationCap },
-      { to: "/exams/schedule",             label: "Exam Schedule",         icon: CalendarDays },
-      { to: "/exams/review",               label: "Review Results",        icon: Pencil },
-      { to: "/exams/report-cards",         label: "Report Cards",          icon: Award },
-      { to: "/exams/grade-update-requests",label: "Grade Change Requests", icon: FileText },
+      { to: "/dos/exams",                  label: "Exam Overview",         icon: GraduationCap,    native: false },
+      { to: "/exams/schedule",             label: "Exam Schedule",         icon: CalendarDays,     native: true  },
+      { to: "/exams/review",               label: "Review Results",        icon: Pencil,           native: true  },
+      { to: "/exams/report-cards",         label: "Report Cards",          icon: Award,            native: true  },
+      { to: "/exams/grade-update-requests",label: "Grade Change Requests", icon: FileText,         native: true  },
     ],
   },
   {
     section: "Reports",
     items: [
-      { to: "/dos/reports",                label: "Academic Reports",      icon: BarChart3 },
+      { to: "/dos/reports",                label: "Academic Reports",      icon: BarChart3,        native: false },
     ],
   },
 ];
@@ -92,17 +92,26 @@ export function DosLayout({
                   const active =
                     pathname === item.to ||
                     (item.to !== "/dos/dashboard" && pathname.startsWith(item.to));
+                  const cls = cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-foreground"
+                  );
+                  if (item.native) {
+                    return (
+                      <a key={item.to} href={item.to} onClick={() => setOpen(false)} className={cls}>
+                        <Icon className="h-[18px] w-[18px] shrink-0" />
+                        <span className="leading-snug">{item.label}</span>
+                      </a>
+                    );
+                  }
                   return (
                     <Link
                       key={item.to}
                       to={item.to}
                       onClick={() => setOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                        active
-                          ? "bg-primary text-primary-foreground shadow-sm"
-                          : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-foreground"
-                      )}
+                      className={cls}
                     >
                       <Icon className="h-[18px] w-[18px] shrink-0" />
                       <span className="leading-snug">{item.label}</span>

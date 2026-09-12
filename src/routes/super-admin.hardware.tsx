@@ -1238,7 +1238,10 @@ function VpnSetupTab() {
 
       {/* ── Flow guide ── */}
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-        <p className="font-semibold mb-2">How to connect a new tablet — no SSH needed</p>
+        <p className="font-semibold mb-2">How to connect a new tablet — no SSH from the browser</p>
+        <p className="mb-2 text-xs text-blue-700">
+          This is a real server-side WireGuard flow. The browser never runs SSH or system commands. The frontend calls authenticated backend endpoints on the server, and the backend executes the WireGuard setup on the host.
+        </p>
         <ol className="list-decimal ml-4 space-y-1 text-xs text-blue-700">
           <li><strong>Tablet wizard Step 2 (Keys):</strong> Generate keys on tablet → <em>copy the tablet public key</em></li>
           <li><strong>Here below (Step 2):</strong> Paste tablet public key → click <em>Add Peer to VPN</em></li>

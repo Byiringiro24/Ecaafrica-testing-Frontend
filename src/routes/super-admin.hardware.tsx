@@ -1123,6 +1123,14 @@ function FixPeerPanel({ serverStatus, onFixed }: { serverStatus: VpnServerStatus
 }
 
 
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+}
+
 function VpnSetupTab() {
   // ── State ──
   const [serverStatus, setServerStatus] = useState<VpnServerStatus | null>(null);
@@ -1147,7 +1155,12 @@ function VpnSetupTab() {
   const [savingPeer,     setSavingPeer]     = useState(false);
   const [deletingPeer,   setDeletingPeer]   = useState<string | null>(null);
 
-  useEffect(() => { void loadServerStatus(); }, []);
+  useEffect(() => {
+    void loadServerStatus();
+    // Auto-refresh every 10 seconds so handshake status updates in real time
+    const interval = setInterval(() => void loadServerStatus(), 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   const loadServerStatus = async () => {
     setServerLoading(true);
@@ -1311,14 +1324,33 @@ function VpnSetupTab() {
               <div className="border-t border-border pt-4 space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {serverStatus.peers.length} Registered Peer{serverStatus.peers.length !== 1 ? "s" : ""}
+                  <span className="ml-2 font-normal normal-case text-muted-foreground/70">— auto-refreshing every 10s</span>
                 </p>
                 {serverStatus.peers.map((p, i) => {
                   const peerIp = p.allowedIps.split("/")[0];
                   const isEditing = editingPeer === p.publicKey;
                   const isDeleting = deletingPeer === p.publicKey;
-                  const isConnected = p.latestHandshake !== "never";
+                  // Handshake age calculation
+                  let handshakeAge = "Never connected";
+                  let isConnected = false;
+                  let isRecent = false;
+                  if (p.latestHandshake && p.latestHandshake !== "never") {
+                    const hs = new Date(p.latestHandshake);
+                    const ageMs = Date.now() - hs.getTime();
+                    const ageSec = Math.floor(ageMs / 1000);
+                    isConnected = true;
+                    isRecent = ageSec < 180; // connected = handshake within 3 minutes
+                    if (ageSec < 60) handshakeAge = `${ageSec}s ago`;
+                    else if (ageSec < 3600) handshakeAge = `${Math.floor(ageSec / 60)}m ago`;
+                    else handshakeAge = `${Math.floor(ageSec / 3600)}h ago`;
+                  }
                   return (
-                    <div key={i} className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs space-y-1.5">
+                    <div key={i} className={cn(
+                      "rounded-lg border px-3 py-2 text-xs space-y-1.5",
+                      isRecent ? "border-emerald-300/60 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-700/40"
+                      : isConnected ? "border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-700/40"
+                      : "border-border bg-muted/30"
+                    )}>
                       {isEditing ? (
                         /* ── Edit IP inline ── */
                         <div className="space-y-2">
@@ -1346,14 +1378,18 @@ function VpnSetupTab() {
                         /* ── Normal row ── */
                         <>
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-mono font-semibold">{p.allowedIps}</span>
-                            <div className="flex items-center gap-1.5 shrink-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-semibold">{peerIp}</span>
                               <span className={cn(
-                                "rounded-full px-2 py-0.5 font-semibold",
-                                isConnected ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground"
+                                "rounded-full px-2 py-0.5 font-bold",
+                                isRecent ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+                                : isConnected ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+                                : "bg-muted text-muted-foreground"
                               )}>
-                                {isConnected ? "Connected" : "No handshake yet"}
+                                {isRecent ? `● Connected` : isConnected ? `⚠ Idle` : "○ No handshake"}
                               </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
                               <button
                                 onClick={() => { setEditingPeer(p.publicKey); setEditPeerIp(peerIp); }}
                                 title="Change VPN IP"
@@ -1369,9 +1405,23 @@ function VpnSetupTab() {
                               </button>
                             </div>
                           </div>
-                          <div className="text-muted-foreground font-mono truncate">{p.publicKey.slice(0, 28)}…</div>
-                          {p.endpoint && <div className="text-muted-foreground">Endpoint: {p.endpoint}</div>}
-                          <div className="text-muted-foreground">Last handshake: {p.latestHandshake}</div>
+                          <div className="grid grid-cols-2 gap-2 mt-1">
+                            <div className="text-muted-foreground">
+                              <span className="font-semibold text-foreground">Last handshake:</span> {handshakeAge}
+                            </div>
+                            {p.endpoint && (
+                              <div className="text-muted-foreground truncate">
+                                <span className="font-semibold text-foreground">Endpoint:</span> {p.endpoint}
+                              </div>
+                            )}
+                            {(p.transferRx || p.transferTx) && (
+                              <div className="text-muted-foreground col-span-2">
+                                <span className="font-semibold text-foreground">Transfer:</span>{" "}
+                                ↓ {formatBytes(Number(p.transferRx ?? 0))} ↑ {formatBytes(Number(p.transferTx ?? 0))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-muted-foreground font-mono truncate">{p.publicKey.slice(0, 32)}…</div>
                         </>
                       )}
                     </div>

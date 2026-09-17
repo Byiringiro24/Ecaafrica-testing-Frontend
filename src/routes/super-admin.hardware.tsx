@@ -191,6 +191,29 @@ function TabletsTab({ tablets, schools, onRefresh, pendingName = "", pendingIp =
     catch (e: any) { toast.error(e?.message || "Failed"); }
   };
 
+  // Dev password modal
+  const [devPwTablet,    setDevPwTablet]    = useState<PlatformTablet | null>(null);
+  const [devPwInput,     setDevPwInput]     = useState("");
+  const [devPwConfirm,   setDevPwConfirm]   = useState("");
+  const [devPwSaving,    setDevPwSaving]    = useState(false);
+
+  const handleSetDevPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!devPwTablet) return;
+    if (devPwInput.length < 4) { toast.error("Password must be at least 4 characters"); return; }
+    if (devPwInput !== devPwConfirm) { toast.error("Passwords do not match"); return; }
+    setDevPwSaving(true);
+    try {
+      await apiRequest(`/platform/hardware/tablets/${devPwTablet.id}/dev-password`, {
+        method: "PATCH", auth: "platform",
+        body: JSON.stringify({ password: devPwInput }),
+      });
+      toast.success(`Dev password updated for ${devPwTablet.name} — tablet will apply it within 60 seconds`);
+      setDevPwTablet(null); setDevPwInput(""); setDevPwConfirm("");
+    } catch (e: any) { toast.error(e?.message || "Failed to set password"); }
+    finally { setDevPwSaving(false); }
+  };
+
   const startEdit = (t: PlatformTablet) => {
     setEditingId(t.id);
     setEditForm({
@@ -240,6 +263,7 @@ function TabletsTab({ tablets, schools, onRefresh, pendingName = "", pendingIp =
   };
 
   return (
+    <>
     <div className="grid gap-5 xl:grid-cols-[1fr_1.2fr]">
       <section className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-center gap-2 mb-4">
@@ -354,6 +378,11 @@ function TabletsTab({ tablets, schools, onRefresh, pendingName = "", pendingIp =
                           title="Live ping" className="p-1.5 rounded-md border border-border hover:bg-muted text-muted-foreground disabled:opacity-40">
                           <RefreshCw className={cn("h-3.5 w-3.5", pinging === t.id && "animate-spin")} />
                         </button>
+                        <button onClick={() => { setDevPwTablet(t); setDevPwInput(""); setDevPwConfirm(""); }}
+                          title="Set developer password remotely"
+                          className="p-1.5 rounded-md border border-border hover:bg-violet-50 hover:text-violet-700 text-muted-foreground">
+                          <Key className="h-3.5 w-3.5" />
+                        </button>
                         <button onClick={() => startEdit(t)} title="Edit tablet"
                           className="p-1.5 rounded-md hover:bg-amber-50 hover:text-amber-600 text-muted-foreground border border-border">
                           <Pencil className="h-3.5 w-3.5" />
@@ -371,6 +400,72 @@ function TabletsTab({ tablets, schools, onRefresh, pendingName = "", pendingIp =
         )}
       </section>
     </div>
+
+    {/* ── Dev Password Modal ── */}
+    {devPwTablet && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+        <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+          <div className="mb-5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-violet-500/20 text-violet-400">
+                <Key className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-white">Set Dev Password</h2>
+                <p className="text-xs text-slate-400">{devPwTablet.name}</p>
+              </div>
+            </div>
+            <button onClick={() => setDevPwTablet(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <p className="mb-4 text-xs text-slate-400 leading-relaxed">
+            The tablet will automatically apply this password within <strong className="text-slate-200">60 seconds</strong>.
+            Used for the Developer Settings and WireGuard wizard on the tablet.
+          </p>
+          <form onSubmit={handleSetDevPassword} className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-400">New Password *</label>
+              <input
+                autoFocus
+                type="password"
+                value={devPwInput}
+                onChange={e => setDevPwInput(e.target.value)}
+                required
+                minLength={4}
+                placeholder="Min 4 characters"
+                className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-violet-500"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-400">Confirm Password *</label>
+              <input
+                type="password"
+                value={devPwConfirm}
+                onChange={e => setDevPwConfirm(e.target.value)}
+                required
+                placeholder="Repeat the password"
+                className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-violet-500"
+              />
+              {devPwInput && devPwConfirm && devPwInput !== devPwConfirm && (
+                <p className="mt-1 text-xs text-rose-400">Passwords do not match</p>
+              )}
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button type="submit" disabled={devPwSaving || devPwInput !== devPwConfirm || devPwInput.length < 4}
+                className="flex-1 rounded-xl bg-violet-600 py-2.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50 transition">
+                {devPwSaving ? "Applying…" : "Set Password"}
+              </button>
+              <button type="button" onClick={() => setDevPwTablet(null)}
+                className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-slate-800 transition">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 

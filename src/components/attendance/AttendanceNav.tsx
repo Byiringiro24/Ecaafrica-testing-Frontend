@@ -5,7 +5,8 @@ const TABS = [
   { to: "/attendance/manual", label: "Manual Attendance" },
   { to: "/attendance/boarding-manual", label: "Boarding Attendance" },
   { to: "/attendance/device-attendance", label: "Device Attendance" },
-  { to: "/attendance/messages", label: "Attendance Messages" },
+  { to: "/attendance/messages", label: "SMS Settings" },
+  { to: "/attendance/bulk-sms", label: "Bulk SMS" },
 ] as const;
 
 export function AttendanceNav() {

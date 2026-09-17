@@ -22,12 +22,12 @@ const NAV = [
   {
     section: "My Dormitories",
     items: [
-      { to: "/patron/dashboard",   label: "Dashboard",             icon: LayoutDashboard },
-      { to: "/patron/dormitories", label: "My Dormitories",        icon: Home },
-      { to: "/patron/assignments",  label: "Assign Students",       icon: UserCheck },
-      { to: "/patron/attendance",  label: "Boarding Attendance",   icon: ClipboardCheck },
-      { to: "/patron/leaves",      label: "Leave & Returns",       icon: CalendarDays },
-      { to: "/patron/dining",      label: "Dining Attendance",     icon: Utensils },
+      { to: "/patron/dashboard",   matronTo: "/matron/dashboard",   label: "Dashboard",             icon: LayoutDashboard },
+      { to: "/patron/dormitories", matronTo: "/patron/dormitories", label: "My Dormitories",        icon: Home },
+      { to: "/patron/assignments",  matronTo: "/patron/assignments",  label: "Assign Students",       icon: UserCheck },
+      { to: "/patron/attendance",  matronTo: "/matron/attendance",  label: "Boarding Attendance",   icon: ClipboardCheck },
+      { to: "/patron/leaves",      matronTo: "/patron/leaves",      label: "Leave & Returns",       icon: CalendarDays },
+      { to: "/patron/dining",      matronTo: "/patron/dining",      label: "Dining Attendance",     icon: Utensils },
     ],
   },
 ];
@@ -83,13 +83,15 @@ export function PatronLayout({
               <div className="space-y-0.5 mt-1">
                 {sec.items.map((item) => {
                   const Icon = item.icon;
+                  const isMatron = currentUser?.role === "matron";
+                  const resolvedTo = (isMatron && (item as any).matronTo) ? (item as any).matronTo : item.to;
                   const active =
-                    pathname === item.to ||
-                    (item.to !== "/patron/dashboard" && pathname.startsWith(item.to));
+                    pathname === resolvedTo ||
+                    (resolvedTo !== "/patron/dashboard" && resolvedTo !== "/matron/dashboard" && pathname.startsWith(resolvedTo));
                   return (
                     <Link
-                      key={item.to}
-                      to={item.to}
+                      key={resolvedTo}
+                      to={resolvedTo as any}
                       onClick={() => setOpen(false)}
                       className={cn(
                         "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",

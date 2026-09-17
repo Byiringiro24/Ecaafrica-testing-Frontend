@@ -73,7 +73,7 @@ type MyDevice = {
   tablet?: { id: string; name: string } | null;
 };
 
-function PatronAttendancePage() {
+export function PatronAttendancePage() {
   const user = useCurrentUser();
   const autoSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -226,16 +226,23 @@ function PatronAttendancePage() {
   const handlePush = async (e: FormEvent) => {
     e.preventDefault();
     if (!pushDevice) { toast.error("Select a device"); return; }
-    const device = myDevices.find(d => d.id === pushDevice);
-    if (!device?.tablet?.id) { toast.error("Device not linked to tablet"); return; }
     setPushing(true);
     try {
-      const body: any = { mode: pushClassId ? "class" : "all" };
-      if (pushClassId) body.class_id = pushClassId;
-      await apiRequest(`/tablets/${device.tablet.id}/device/push-students`, {
+      // Use /devices/:id/push-students — this applies the correct numeric userId
+      // transformation and supports mode:all / mode:class properly
+      const body: any = pushClassId
+        ? { mode: "class", class_id: pushClassId }
+        : { mode: "all" };
+      const result = await apiRequest<any>(`/devices/${pushDevice}/push-students`, {
         method: "POST", auth: "school", body: JSON.stringify(body),
       });
-      toast.success(`Students pushed to ${device.name}`);
+      const pushed = result?.pushed_count ?? result?.data?.pushed_count ?? 0;
+      const failed = result?.failed_count ?? result?.data?.failed_count ?? 0;
+      if (failed > 0) {
+        toast.warning(`Pushed ${pushed} students. ${failed} failed — device may be offline.`);
+      } else {
+        toast.success(`${pushed} student${pushed !== 1 ? "s" : ""} pushed to device`);
+      }
       setShowPush(false);
     } catch (e: any) { toast.error(e?.message ?? "Push failed"); }
     finally { setPushing(false); }
@@ -549,18 +556,22 @@ function PatronAttendancePage() {
                   <option value="">-- select device --</option>
                   {myDevices.map(d => (
                     <option key={d.id} value={d.id}>
-                      {d.name} {d.dormitory?.name ? `(${d.dormitory.name})` : ""} {d.is_connected ? "" : "[offline]"}
+                      {d.name}{d.dormitory?.name ? ` · ${d.dormitory.name}` : ""}{d.is_connected ? " ✓" : " [offline]"}
                     </option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-semibold">Class (optional — leave blank for all dorm students)</label>
+                <label className="mb-1.5 block text-sm font-semibold">Who to push</label>
                 <select value={pushClassId} onChange={e => setPushClassId(e.target.value)}
                   className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
-                  <option value="">All boarding students in assigned dorms</option>
-                  {classes.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  <option value="">All active students (recommended for hostel device)</option>
+                  {classes.map((c: any) => <option key={c.id} value={c.id}>Class: {c.name}</option>)}
                 </select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  "All active students" pushes every student assigned to the device's dormitory.
+                  Choose a class to push only that class.
+                </p>
               </div>
               <div className="flex gap-3">
                 <button type="submit" disabled={pushing || !pushDevice}

@@ -77,13 +77,14 @@ function PatronAssignmentsPage() {
   const compatibleDormitories = dormitories.filter(
     (assignment) => assignment.dormitory?.gender === expectedGender,
   );
-  const filteredStudents = students.filter((student) => {
+  const genderFilteredStudents = students.filter((student) => student.gender === expectedGender);
+  const filteredStudents = genderFilteredStudents.filter((student) => {
     const term = search.trim().toLowerCase();
     if (!term) return true;
     return `${student.first_name} ${student.last_name} ${student.student_id_number ?? ""}`
       .toLowerCase().includes(term);
   });
-  const assignableStudents = students.filter((student) => !assignmentByStudent.has(student.id));
+  const assignableStudents = genderFilteredStudents.filter((student) => !assignmentByStudent.has(student.id));
 
   const assignStudent = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -124,7 +125,7 @@ function PatronAssignmentsPage() {
         <section className="rounded-xl border border-border bg-card overflow-hidden">
           <div className="border-b border-border p-4">
             <div className="flex items-center justify-between gap-3 mb-3">
-              <div><h2 className="font-display font-bold text-lg">Boarding Students</h2><p className="text-xs text-muted-foreground">{students.length} active boarding students</p></div>
+              <div><h2 className="font-display font-bold text-lg">{expectedGender === "male" ? "Boys" : "Girls"} Boarding Students</h2><p className="text-xs text-muted-foreground">{genderFilteredStudents.length} active {expectedGender === "male" ? "male" : "female"} boarding students</p></div>
               <UserPlus className="h-5 w-5 text-primary" />
             </div>
             <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search student or ID" className="h-10 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm" /></div>

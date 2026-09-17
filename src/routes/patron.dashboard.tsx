@@ -21,7 +21,7 @@ export const Route = createFileRoute("/patron/dashboard")({
 
 type Assignment = { student_id: string; dormitory_id: string };
 
-function PatronDashboard() {
+export function PatronDashboard() {
   const currentUser = useCurrentUser();
   const [loading, setLoading] = useState(true);
   const [dormAssignments, setDormAssignments] = useState<PatronAssignment[]>([]);
@@ -201,6 +201,7 @@ function PatronDashboard() {
                   { to: "/patron/attendance",  label: "Boarding Attendance", icon: UserCheck,    primary: true },
                   { to: "/patron/leaves",      label: "Leave Requests",      icon: CalendarDays, primary: false },
                   { to: "/patron/dormitories", label: "My Dormitories",      icon: Users,        primary: false },
+                  { to: "/patron/assignments", label: "Assign Students",     icon: UserCheck,    primary: false },
                   { to: "/patron/dining",      label: "Dining Attendance",   icon: Utensils,     primary: false },
                 ].map(({ to, label, icon: Icon, primary }) => (
                   <Link key={to} to={to}

@@ -23,6 +23,7 @@ export type CurrentUser = {
   school_principal_email?: string | null;
   school_phone?: string | null;
   school_email?: string | null;
+  school_status?: string | null;
 };
 
 export function getInitials(name: string): string {

@@ -1,4 +1,5 @@
-import { ReactNode, useState, useEffect, useRef } from "react";
+﻿import { ReactNode, useState, useEffect, useRef } from "react";
+import { SuspendedBanner } from "@/components/layout/SuspendedBanner";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
@@ -250,7 +251,7 @@ export function FinanceLayout({
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6">{children}</main>
+        <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6"><SuspendedBanner />{children}</main>
       </div>
     </div>
   );
@@ -297,3 +298,4 @@ export function StatusPill({
     </span>
   );
 }
+

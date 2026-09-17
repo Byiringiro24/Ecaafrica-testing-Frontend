@@ -1,4 +1,5 @@
-import { ReactNode, useState } from "react";
+﻿import { ReactNode, useState } from "react";
+import { SuspendedBanner } from "@/components/layout/SuspendedBanner";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, ClipboardCheck, BookOpen,
@@ -172,8 +173,9 @@ export function DosLayout({
             </div>
           </div>
         </header>
-        <main className="flex-1 px-4 md:px-8 py-6">{children}</main>
+        <main className="flex-1 px-4 md:px-8 py-6"><SuspendedBanner />{children}</main>
       </div>
     </div>
   );
 }
+

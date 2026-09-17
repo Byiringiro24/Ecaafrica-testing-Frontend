@@ -495,6 +495,16 @@ function ServerCommandCenter() {
         body: JSON.stringify(deviceForm),
       });
       toast.success("Device connected through tablet");
+      // Auto-sync device time immediately on successful connect
+      try {
+        await apiRequest(`/tablets/${selectedTablet.id}/device/sync-time`, {
+          method: "POST",
+          auth: "school",
+        });
+        toast.success("Device time synced automatically");
+      } catch {
+        // Non-fatal — device connected but time sync failed, user can retry manually
+      }
       await refreshAll();
     } catch (error: any) {
       toast.error(error?.message ?? "Device connection failed");

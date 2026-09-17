@@ -70,7 +70,7 @@ function DeviceStudentsPage() {
         const [deviceData, classData, studentsData] = await Promise.all([
           apiRequest<any[]>("/devices?limit=500&sort=created_at&order=desc", { auth: "school" }),
           apiRequest<ClassRecord[]>("/classes?limit=500", { auth: "school" }),
-          apiRequest<any[]>("/students?limit=5000", { auth: "school" }),
+          apiRequest<any[]>("/students?limit=5000&status=active", { auth: "school" }),
         ]);
 
         const mappedDevices = (Array.isArray(deviceData) ? deviceData : []).map((device) => ({
@@ -134,6 +134,8 @@ function DeviceStudentsPage() {
     };
 
     void loadSelectedDeviceStatus();
+    // Also reload students so device_sync_status reflects the newly selected device
+    void loadStudents();
     setSelectedIds(new Set());
   }, [deviceId]);
 
@@ -224,7 +226,7 @@ function DeviceStudentsPage() {
       toast.error("Select a device first");
       return;
     }
-    if (actionType !== "push-class" && studentIds.length === 0) {
+    if (actionType !== "push-class" && actionType !== "push-all" && studentIds.length === 0) {
       toast.error("Select at least one student");
       return;
     }
@@ -232,15 +234,24 @@ function DeviceStudentsPage() {
     setBusyAction({ type: actionType, id: actionId });
     try {
       const body =
-        actionType === "push-class"
-          ? JSON.stringify({ mode: "class", class_id: classFilter })
-          : JSON.stringify({ mode: "selected", student_ids: studentIds });
+        actionType === "push-all"
+          ? JSON.stringify({ mode: "all" })
+          : actionType === "push-class"
+            ? JSON.stringify({ mode: "class", class_id: classFilter })
+            : JSON.stringify({ mode: "selected", student_ids: studentIds });
       const result = await apiRequest<any>(`/devices/${deviceId}/push-students`, {
         method: "POST",
         auth: "school",
         body,
       });
-      toast.success(`${result?.pushed_count ?? studentIds.length} student(s) pushed to ${device?.name ?? selectedDeviceLabel}`);
+      const pushed = result?.pushed_count ?? result?.data?.pushed_count ?? 0;
+      const failed = result?.failed_count ?? result?.data?.failed_count ?? 0;
+      const selected = result?.selected_count ?? result?.data?.selected_count ?? studentIds.length;
+      if (failed > 0) {
+        toast.warning(`Pushed ${pushed}/${selected} student(s) to ${device?.name ?? selectedDeviceLabel}. ${failed} failed.`);
+      } else {
+        toast.success(`Pushed ${pushed}/${selected} student(s) to ${device?.name ?? selectedDeviceLabel}`);
+      }
       setSelectedIds(new Set());
       await Promise.all([loadStudents(), loadSelectedDeviceStatus()]);
     } catch (error: any) {
@@ -263,7 +274,8 @@ function DeviceStudentsPage() {
   };
 
   const pushAllAssigned = async () => {
-    await pushStudents(Array.from(assignedIds), "push-all");
+    // Send mode:all — backend fetches all active students for this school
+    await pushStudents([], "push-all");
   };
 
   const pushSingleStudent = async (studentId: string) => {

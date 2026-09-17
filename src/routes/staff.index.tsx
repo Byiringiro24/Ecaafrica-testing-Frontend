@@ -122,7 +122,6 @@ const ROLE_DEPARTMENTS: Record<typeof STAFF_ROLES[number], string> = {
   director_of_studies: "Academics",
   patron: "Boarding",
   matron: "Boarding",
-  director_of_studies: "Administration",
   finance_officer: "Finance",
   school_admin: "Administration",
 };

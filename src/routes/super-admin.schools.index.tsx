@@ -386,6 +386,7 @@ function SchoolsIndexPage() {
                         "Students",
                         "Staff",
                         "Status",
+                        "Registered",
                         "",
                       ].map((h) => (
                         <th key={h} className="text-left px-4 py-3">{h}</th>
@@ -414,6 +415,11 @@ function SchoolsIndexPage() {
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadgeClass(s.status ?? "")}`}>
                             {s.status ?? "—"}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                          {s.created_at
+                            ? new Date(s.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+                            : "—"}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <Link
@@ -590,7 +596,7 @@ function SchoolsSkeleton() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
               <tr>
-                {Array.from({ length: 8 }).map((_, i) => (
+                {Array.from({ length: 9 }).map((_, i) => (
                   <th key={i} className="text-left px-4 py-3">
                     <Skeleton className="h-3 w-16" />
                   </th>
@@ -607,6 +613,7 @@ function SchoolsSkeleton() {
                   <td className="px-4 py-3"><Skeleton className="h-4 w-12" /></td>
                   <td className="px-4 py-3"><Skeleton className="h-4 w-12" /></td>
                   <td className="px-4 py-3"><Skeleton className="h-4 w-16 rounded-full" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
                   <td className="px-4 py-3"><Skeleton className="h-4 w-10" /></td>
                 </tr>
               ))}

@@ -6,5 +6,5 @@ export const Route = createFileRoute("/attendance/boarding-manual")({
 });
 
 function BoardingManualAttendancePage() {
-  return <BoardingAttendanceManager />;
+  return <BoardingAttendanceManager canEdit={true} />;
 }

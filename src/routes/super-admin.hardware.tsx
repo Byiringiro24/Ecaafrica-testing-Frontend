@@ -196,21 +196,37 @@ function TabletsTab({ tablets, schools, onRefresh, pendingName = "", pendingIp =
   const [devPwInput,     setDevPwInput]     = useState("");
   const [devPwConfirm,   setDevPwConfirm]   = useState("");
   const [devPwSaving,    setDevPwSaving]    = useState(false);
+  const [devPwMode,      setDevPwMode]      = useState<"set" | "remove">("set");
+  const [devPwScope,     setDevPwScope]     = useState<"single" | "all">("single");
+  const [devPwAllConfirm, setDevPwAllConfirm] = useState(false);
 
   const handleSetDevPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!devPwTablet) return;
-    if (devPwInput.length < 4) { toast.error("Password must be at least 4 characters"); return; }
-    if (devPwInput !== devPwConfirm) { toast.error("Passwords do not match"); return; }
+    const isRemove = devPwMode === "remove";
+    if (!isRemove && devPwInput.length < 4) { toast.error("Password must be at least 4 characters"); return; }
+    if (!isRemove && devPwInput !== devPwConfirm) { toast.error("Passwords do not match"); return; }
+    if (devPwScope === "all" && !devPwAllConfirm) { toast.error("Tick the confirmation checkbox first"); return; }
     setDevPwSaving(true);
     try {
-      await apiRequest(`/platform/hardware/tablets/${devPwTablet.id}/dev-password`, {
-        method: "PATCH", auth: "platform",
-        body: JSON.stringify({ password: devPwInput }),
-      });
-      toast.success(`Dev password updated for ${devPwTablet.name} — tablet will apply it within 60 seconds`);
-      setDevPwTablet(null); setDevPwInput(""); setDevPwConfirm("");
-    } catch (e: any) { toast.error(e?.message || "Failed to set password"); }
+      const body = JSON.stringify({ password: isRemove ? null : devPwInput });
+      if (devPwScope === "all") {
+        await apiRequest(`/platform/hardware/tablets/dev-password/all`, {
+          method: "PATCH", auth: "platform", body,
+        });
+        toast.success(isRemove
+          ? "Developer password removed from all tablets — they will reset within 60 seconds"
+          : "Developer password updated on all tablets — they will apply it within 60 seconds");
+      } else {
+        if (!devPwTablet) return;
+        await apiRequest(`/platform/hardware/tablets/${devPwTablet.id}/dev-password`, {
+          method: "PATCH", auth: "platform", body,
+        });
+        toast.success(isRemove
+          ? `Developer password removed from ${devPwTablet.name}`
+          : `Developer password updated for ${devPwTablet.name} — will apply within 60 seconds`);
+      }
+      setDevPwTablet(null); setDevPwInput(""); setDevPwConfirm(""); setDevPwMode("set"); setDevPwScope("single"); setDevPwAllConfirm(false);
+    } catch (e: any) { toast.error(e?.message || "Failed to update password"); }
     finally { setDevPwSaving(false); }
   };
 
@@ -404,63 +420,128 @@ function TabletsTab({ tablets, schools, onRefresh, pendingName = "", pendingIp =
     {/* ── Dev Password Modal ── */}
     {devPwTablet && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-        <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-          <div className="mb-5 flex items-center justify-between">
+        <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl space-y-5">
+
+          {/* Header */}
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="grid h-10 w-10 place-items-center rounded-xl bg-violet-500/20 text-violet-400">
                 <Key className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">Set Dev Password</h2>
-                <p className="text-xs text-slate-400">{devPwTablet.name}</p>
+                <h2 className="text-lg font-bold text-white">Developer Password</h2>
+                <p className="text-xs text-slate-400">
+                  {devPwScope === "all" ? `All tablets (${tablets.length})` : devPwTablet.name}
+                </p>
               </div>
             </div>
-            <button onClick={() => setDevPwTablet(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white">
+            <button onClick={() => { setDevPwTablet(null); setDevPwMode("set"); setDevPwScope("single"); setDevPwAllConfirm(false); }}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white">
               <X className="h-4 w-4" />
             </button>
           </div>
-          <p className="mb-4 text-xs text-slate-400 leading-relaxed">
-            The tablet will automatically apply this password within <strong className="text-slate-200">60 seconds</strong>.
-            Used for the Developer Settings and WireGuard wizard on the tablet.
+
+          {/* Action toggle: Set / Remove */}
+          <div className="grid grid-cols-2 gap-2">
+            {(["set", "remove"] as const).map(m => (
+              <button key={m} type="button"
+                onClick={() => { setDevPwMode(m); setDevPwInput(""); setDevPwConfirm(""); }}
+                className={`rounded-xl py-2.5 text-sm font-semibold transition border ${
+                  devPwMode === m
+                    ? m === "set"
+                      ? "bg-violet-600 border-violet-600 text-white"
+                      : "bg-rose-600 border-rose-600 text-white"
+                    : "border-slate-700 bg-slate-800 text-slate-400 hover:text-white"
+                }`}>
+                {m === "set" ? "Set / Change Password" : "Remove Password"}
+              </button>
+            ))}
+          </div>
+
+          {/* Scope toggle: single / all */}
+          <div className="grid grid-cols-2 gap-2">
+            {(["single", "all"] as const).map(s => (
+              <button key={s} type="button"
+                onClick={() => { setDevPwScope(s); setDevPwAllConfirm(false); }}
+                className={`rounded-xl py-2 text-sm font-semibold transition border ${
+                  devPwScope === s
+                    ? "bg-slate-600 border-slate-500 text-white"
+                    : "border-slate-700 bg-slate-800/50 text-slate-500 hover:text-slate-300"
+                }`}>
+                {s === "single" ? `This tablet only` : `All ${tablets.length} tablets`}
+              </button>
+            ))}
+          </div>
+
+          {/* Explanation */}
+          <p className="text-xs text-slate-400 leading-relaxed">
+            {devPwMode === "remove"
+              ? devPwScope === "all"
+                ? "This will remove the developer password from all tablets. They will revert to the default password (admin1234) within 60 seconds."
+                : `This will remove the developer password from ${devPwTablet.name}. It will revert to the default within 60 seconds.`
+              : devPwScope === "all"
+                ? `All ${tablets.length} tablets will receive this new password within 60 seconds.`
+                : `${devPwTablet.name} will apply this password within 60 seconds. Used for the WireGuard wizard and Developer Settings.`}
           </p>
-          <form onSubmit={handleSetDevPassword} className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-400">New Password *</label>
-              <input
-                autoFocus
-                type="password"
-                value={devPwInput}
-                onChange={e => setDevPwInput(e.target.value)}
-                required
-                minLength={4}
-                placeholder="Min 4 characters"
-                className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-violet-500"
-              />
+
+          {/* Password inputs — only shown when mode=set */}
+          {devPwMode === "set" && (
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-400">New Password *</label>
+                <input autoFocus type="password" value={devPwInput}
+                  onChange={e => setDevPwInput(e.target.value)}
+                  minLength={4} placeholder="Min 4 characters"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-violet-500" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-400">Confirm Password *</label>
+                <input type="password" value={devPwConfirm}
+                  onChange={e => setDevPwConfirm(e.target.value)}
+                  placeholder="Repeat the password"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-violet-500" />
+                {devPwInput && devPwConfirm && devPwInput !== devPwConfirm && (
+                  <p className="mt-1 text-xs text-rose-400">Passwords do not match</p>
+                )}
+              </div>
             </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-400">Confirm Password *</label>
-              <input
-                type="password"
-                value={devPwConfirm}
-                onChange={e => setDevPwConfirm(e.target.value)}
-                required
-                placeholder="Repeat the password"
-                className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-violet-500"
-              />
-              {devPwInput && devPwConfirm && devPwInput !== devPwConfirm && (
-                <p className="mt-1 text-xs text-rose-400">Passwords do not match</p>
-              )}
-            </div>
-            <div className="flex gap-3 pt-1">
-              <button type="submit" disabled={devPwSaving || devPwInput !== devPwConfirm || devPwInput.length < 4}
-                className="flex-1 rounded-xl bg-violet-600 py-2.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50 transition">
-                {devPwSaving ? "Applying…" : "Set Password"}
-              </button>
-              <button type="button" onClick={() => setDevPwTablet(null)}
-                className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-slate-800 transition">
-                Cancel
-              </button>
-            </div>
+          )}
+
+          {/* Double-confirm for all-tablets scope */}
+          {devPwScope === "all" && (
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={devPwAllConfirm}
+                onChange={e => setDevPwAllConfirm(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-600 bg-slate-800 accent-violet-500" />
+              <span className="text-xs text-slate-400 leading-relaxed">
+                I understand this will {devPwMode === "remove" ? "remove the password from" : "change the password on"}{" "}
+                <strong className="text-slate-200">all {tablets.length} tablets</strong> simultaneously.
+              </span>
+            </label>
+          )}
+
+          {/* Action buttons */}
+          <form onSubmit={handleSetDevPassword} className="flex gap-3">
+            <button type="submit"
+              disabled={devPwSaving
+                || (devPwMode === "set" && (devPwInput.length < 4 || devPwInput !== devPwConfirm))
+                || (devPwScope === "all" && !devPwAllConfirm)}
+              className={`flex-1 rounded-xl py-2.5 text-sm font-semibold transition disabled:opacity-50 ${
+                devPwMode === "remove"
+                  ? "bg-rose-600 text-white hover:bg-rose-500"
+                  : "bg-violet-600 text-white hover:bg-violet-500"
+              }`}>
+              {devPwSaving
+                ? "Applying…"
+                : devPwMode === "remove"
+                  ? devPwScope === "all" ? "Remove from All Tablets" : "Remove Password"
+                  : devPwScope === "all" ? "Set on All Tablets" : "Set Password"}
+            </button>
+            <button type="button"
+              onClick={() => { setDevPwTablet(null); setDevPwMode("set"); setDevPwScope("single"); setDevPwAllConfirm(false); }}
+              className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-slate-800 transition">
+              Cancel
+            </button>
           </form>
         </div>
       </div>

@@ -193,6 +193,10 @@ function StaffManagementPage() {
   });
 
   const isBoardingRole = (role: string) => ["patron", "matron"].includes(role);
+  const assignUser = assignUserId ? staff.find(u => u.id === assignUserId) : undefined;
+  const compatibleDormitories = assignUser
+    ? dormitories.filter(d => d.gender === (assignUser.role === "patron" ? "male" : "female"))
+    : dormitories;
 
   return (
     <AppLayout title="Staff Management" subtitle="Create and manage school staff users">
@@ -370,7 +374,7 @@ function StaffManagementPage() {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Add Dormitories</p>
                 <div className="space-y-1.5 max-h-56 overflow-y-auto">
-                  {dormitories
+                  {compatibleDormitories
                     .filter(d => !currentAssign.some(a => a.dormitory_id === d.id))
                     .map(d => (
                       <label key={d.id} className="flex items-center gap-3 cursor-pointer rounded-lg border border-border p-3 hover:bg-muted/30">
@@ -382,7 +386,7 @@ function StaffManagementPage() {
                         </div>
                       </label>
                     ))}
-                  {dormitories.filter(d => !currentAssign.some(a => a.dormitory_id === d.id)).length === 0 && (
+                  {compatibleDormitories.filter(d => !currentAssign.some(a => a.dormitory_id === d.id)).length === 0 && (
                     <p className="text-sm text-muted-foreground py-3 text-center">All dormitories already assigned</p>
                   )}
                 </div>

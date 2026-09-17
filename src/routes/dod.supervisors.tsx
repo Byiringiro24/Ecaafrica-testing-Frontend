@@ -80,6 +80,10 @@ function DodSupervisorsPage() {
         : [...current.dormitoryIds, id],
     }));
 
+  const compatibleDormitories = dormitories.filter(
+    (dormitory) => dormitory.gender === (form.role === "patron" ? "male" : "female"),
+  );
+
   const openCreate = () => {
     setEditing(null);
     setForm(blankForm);
@@ -204,7 +208,17 @@ function DodSupervisorsPage() {
                 <select
                   value={form.role}
                   onChange={(e) =>
-                    setForm({ ...form, role: e.target.value as "patron" | "matron" })
+                    setForm((current) => {
+                      const role = e.target.value as "patron" | "matron";
+                      const gender = role === "patron" ? "male" : "female";
+                      return {
+                        ...current,
+                        role,
+                        dormitoryIds: current.dormitoryIds.filter(
+                          (id) => dormitories.find((dorm) => dorm.id === id)?.gender === gender,
+                        ),
+                      };
+                    })
                   }
                   className="mt-1 w-full rounded-md border bg-background px-3 py-2"
                 >
@@ -245,7 +259,7 @@ function DodSupervisorsPage() {
           <fieldset className="mt-4">
             <legend className="text-sm font-medium">Assigned dormitories</legend>
             <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {dormitories.map((dorm) => (
+              {compatibleDormitories.map((dorm) => (
                 <label
                   key={dorm.id}
                   className="flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm hover:bg-muted"
@@ -263,6 +277,9 @@ function DodSupervisorsPage() {
                   </span>
                 </label>
               ))}
+              {compatibleDormitories.length === 0 && (
+                <p className="text-sm text-muted-foreground">No compatible dormitories found.</p>
+              )}
             </div>
           </fieldset>
           <div className="mt-5 flex justify-end">

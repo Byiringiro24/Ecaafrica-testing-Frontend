@@ -103,6 +103,11 @@ function DodPatronsPage() {
     matron: "bg-pink-100 text-pink-700",
   }[r] ?? "bg-muted text-muted-foreground");
 
+  const selectedStaff = showAssign ? staff.find(s => s.id === showAssign) : undefined;
+  const eligibleDormitories = selectedStaff
+    ? dormitories.filter(d => d.gender === (selectedStaff.role === "patron" ? "male" : "female"))
+    : dormitories;
+
   return (
     <DodLayout title="Patrons & Matrons" subtitle="Manage boarding staff and dormitory assignments">
       {/* Toolbar */}
@@ -245,7 +250,7 @@ function DodPatronsPage() {
               Select dormitories to add. Existing assignments are kept.
             </p>
             <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
-              {dormitories.map(d => {
+              {eligibleDormitories.map(d => {
                 const alreadyAssigned = (assignments[showAssign] ?? []).some(a => a.dormitory_id === d.id);
                 return (
                   <label key={d.id} className={`flex items-center gap-3 cursor-pointer rounded-lg border p-3 ${alreadyAssigned ? "border-emerald-300 bg-emerald-50 opacity-60" : "border-border hover:bg-muted/30"}`}>
@@ -260,6 +265,9 @@ function DodPatronsPage() {
                   </label>
                 );
               })}
+              {eligibleDormitories.length === 0 && (
+                <p className="py-3 text-sm text-muted-foreground">No compatible dormitories found.</p>
+              )}
             </div>
             <div className="flex gap-3">
               <button onClick={handleAssign} disabled={saving || selectedDorms.length === 0}

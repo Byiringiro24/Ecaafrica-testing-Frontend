@@ -8,6 +8,8 @@ export interface DemoRequest {
   status: DemoRequestStatus;
   schoolName: string;
   country: string;
+  countryCode: string;
+  phoneCountryCode: string;
   contactName: string;
   jobTitle: string;
   phone: string;
@@ -53,42 +55,24 @@ function saveLocalRequests(requests: DemoRequest[]) {
 export async function submitDemoRequest(
   request: Omit<DemoRequest, "id" | "createdAt" | "status">,
 ) {
-  const demoRequest: DemoRequest = {
-    id: `DR-${Date.now()}`,
-    createdAt: new Date().toISOString(),
-    status: "Pending",
-    ...request,
-  };
-
-  try {
-    await apiRequest("/demo-requests", {
+  const saved = await apiRequest<DemoRequest>("/demo-requests", {
       method: "POST",
-      body: JSON.stringify(demoRequest),
+      body: JSON.stringify(request),
       auth: "none",
     });
-  } catch {
-    // Ignore backend errors and fallback to local persistence.
-  }
-
-  const existing = getLocalRequests();
-  saveLocalRequests([demoRequest, ...existing]);
-  return demoRequest;
+  return saved;
 }
 
-export function getDemoRequests() {
-  return getLocalRequests();
+export async function getDemoRequests() {
+  return apiRequest<DemoRequest[]>("/demo-requests");
 }
 
-export function updateDemoRequestStatus(id: string, status: DemoRequestStatus) {
-  const requests = getLocalRequests().map((request) =>
-    request.id === id ? { ...request, status } : request,
-  );
-  saveLocalRequests(requests);
-  return requests;
+export async function updateDemoRequestStatus(id: string, status: DemoRequestStatus) {
+  await apiRequest(`/demo-requests/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+  return getDemoRequests();
 }
 
-export function deleteDemoRequest(id: string) {
-  const requests = getLocalRequests().filter((request) => request.id !== id);
-  saveLocalRequests(requests);
-  return requests;
+export async function deleteDemoRequest(id: string) {
+  await apiRequest(`/demo-requests/${id}`, { method: "DELETE" });
+  return getDemoRequests();
 }

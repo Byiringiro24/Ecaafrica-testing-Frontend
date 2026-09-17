@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Printer, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { ReportCard } from "@/components/reports/ReportCard";
+import { studentIdNumber } from "@/lib/studentIdentity";
 import { getFilterOptions, type SectionOption } from "@/lib/exams-admin-api";
 import {
   getSectionReportCards,
@@ -23,6 +24,7 @@ export const Route = createFileRoute("/exams/report-cards")({
 
 type StudentOption = {
   id: string;
+  student_school_id?: string | null;
   first_name: string;
   last_name: string;
   student_id_number?: string | null;
@@ -219,7 +221,7 @@ function ReportCardsPage() {
               {students.map((student) => (
                 <option key={student.id} value={student.id}>
                   {student.first_name} {student.last_name}
-                  {student.student_id_number ? ` (${student.student_id_number})` : ""}
+                  {` · Student ID Number: ${studentIdNumber(student)}`}
                 </option>
               ))}
             </select>

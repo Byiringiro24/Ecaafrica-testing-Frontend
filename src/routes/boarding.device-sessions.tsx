@@ -39,6 +39,31 @@ type SessionFormState = {
   notification_template_id: string;
 };
 
+type SmsMapping = {
+  id: string;
+  source_type: string;
+  event_type: string;
+  scope_key: string;
+  template_id: string | null;
+  send_sms: boolean;
+  template?: Pick<NotificationTemplate, "name" | "trigger_type" | "body_en"> | null;
+};
+
+const SMS_MAPPING_OPTIONS = [
+  { source_type: "gate_device", event_type: "school_entry", label: "Gate device · School entry", description: "Biometric or gate scans when a learner enters." },
+  { source_type: "gate_device", event_type: "school_exit", label: "Gate device · School exit", description: "Biometric or gate scans when a learner leaves." },
+  { source_type: "classroom_manual", event_type: "class_entry", label: "Classroom manual · Present", description: "Teacher attendance marked as present." },
+  { source_type: "classroom_manual", event_type: "class_late", label: "Classroom manual · Late", description: "Teacher attendance marked as late." },
+  { source_type: "classroom_manual", event_type: "class_absent", label: "Classroom manual · Absent", description: "Teacher attendance marked as absent." },
+  { source_type: "classroom_manual", event_type: "class_excused", label: "Classroom manual · Excused", description: "Teacher attendance marked as excused." },
+  { source_type: "dormitory_manual", event_type: "dormitory_morning_present", label: "Dormitory manual · Morning present", description: "Morning dormitory roll call present." },
+  { source_type: "dormitory_manual", event_type: "dormitory_morning_absent", label: "Dormitory manual · Morning absent", description: "Morning dormitory roll call absent." },
+  { source_type: "dormitory_manual", event_type: "dormitory_morning_on_leave", label: "Dormitory manual · Morning on leave", description: "Morning dormitory roll call on leave." },
+  { source_type: "dormitory_manual", event_type: "dormitory_evening_present", label: "Dormitory manual · Evening present", description: "Evening dormitory roll call present." },
+  { source_type: "dormitory_manual", event_type: "dormitory_evening_absent", label: "Dormitory manual · Evening absent", description: "Evening dormitory roll call absent." },
+  { source_type: "dormitory_manual", event_type: "dormitory_evening_on_leave", label: "Dormitory manual · Evening on leave", description: "Evening dormitory roll call on leave." }
+] as const;
+
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message
     : typeof error === "object" && error !== null && "message" in error
@@ -79,6 +104,8 @@ function DeviceSessionsPage() {
   const [selectedDeviceId, setSelectedDeviceId] = useState("");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [smsTemplates, setSmsTemplates] = useState<NotificationTemplate[]>([]);
+  const [smsMappings, setSmsMappings] = useState<SmsMapping[]>([]);
+  const [mappingSavingKey, setMappingSavingKey] = useState<string | null>(null);
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState<SessionFormState>(createEmptySession());

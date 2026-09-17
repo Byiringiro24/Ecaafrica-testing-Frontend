@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus, AlertTriangle, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -10,11 +10,13 @@ import {
   type UploadedDoc,
 } from "@/components/finance/ui";
 import { API_BASE_URL } from "@/lib/api";
+import { COUNTRIES, findCountryByName, countryFlagSrc, normalizePhoneDigits, type Country } from "@/lib/countries";
+import { useSchoolCountryName } from "@/hooks/useSchoolCountry";
 import {
   formatRWF, toNum,
   listInventory, createInventoryItem, setInventoryStatus, uploadInventoryInvoice,
-  listSuppliers, createSupplier,
-  type InventoryItem, type Supplier, type POStatus,
+  listSuppliers, createSupplier, listInventoryCategories, createInventoryCategory,
+  payInventorySupplier, type InventoryItem, type Supplier, type POStatus, type PaymentMethod,
 } from "@/lib/financeApi";
 
 export const Route = createFileRoute("/finance/inventory")({ component: InventoryPage });
@@ -40,8 +42,8 @@ const CATEGORIES = ["Stationery", "Laboratory", "ICT Equipment", "Catering", "Cl
 const docUrl = (url: string) =>
   url.startsWith("http") ? url : `${API_BASE_URL.replace(/\/api\/v1$/, "")}${url}`;
 
-const STOCK_HEADERS = ["Item", "Category", "Supplier", "Qty", "Unit Cost", "Value", "Invoice", "Status", "Action"];
-const SUPPLIER_HEADERS = ["Supplier", "Category", "Contact", "Phone", "Outstanding Balance"];
+const STOCK_HEADERS = ["Item", "Category", "Supplier", "Qty", "Unit Cost", "Value", "Invoice", "Payment", "Status", "Action"];
+const SUPPLIER_HEADERS = ["Supplier", "Country", "TIN", "Category", "Contact", "Phone", "Outstanding Balance"];
 
 function InventoryPage() {
   const [tab, setTab] = useState<typeof TABS[number]>("Stock & Valuation");
@@ -53,6 +55,7 @@ function InventoryPage() {
   const [addingSupplier, setAddingSupplier] = useState(false);
   const [confirming, setConfirming] = useState<{ item: InventoryItem; status: POStatus } | null>(null);
   const [receipt, setReceipt] = useState<InventoryItem | null>(null);
+  const [paying, setPaying] = useState<InventoryItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -139,6 +142,9 @@ function InventoryPage() {
                         <td className="px-4 py-3 font-mono text-xs">{formatRWF(it.unit_cost)}</td>
                         <td className="px-4 py-3 font-mono text-xs font-semibold">{formatRWF(it.total_value)}</td>
                         <td className="px-4 py-3"><DocButton doc={it.invoice_url ? { name: `${it.code}-invoice`, url: docUrl(it.invoice_url) } : null} /></td>
+                        <td className="px-4 py-3 text-xs">
+                          {it.is_paid ? <span className="text-success font-semibold">Paid · {it.payment_method?.replace("_", " ")}</span> : <span>{formatRWF(it.balance_due)}</span>}
+                        </td>
                         <td className="px-4 py-3"><StatusPill label={STATUS_LABEL[it.status]} tone={STATUS_TONE[it.status]} /></td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap items-center gap-2">
@@ -148,6 +154,7 @@ function InventoryPage() {
                                 {STATUS_LABEL[next]}
                               </button>
                             ))}
+                            {it.supplier_id && !it.is_paid && <button onClick={() => setPaying(it)} className="text-xs font-semibold text-primary hover:underline">Pay Supplier</button>}
                             {!(NEXT_STATUS[it.status] ?? []).length && <span className="text-xs text-muted-foreground">--</span>}
                           </div>
                         </td>
@@ -181,6 +188,10 @@ function InventoryPage() {
                   suppliers.map((s) => (
                     <tr key={s.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
                       <td className="px-4 py-3 font-medium">{s.name}<div className="text-[11px] text-muted-foreground">{s.code}</div></td>
+                      <td className="px-4 py-3 text-xs">
+                        {s.country_code ? <SupplierCountry countryCode={s.country_code} /> : "--"}
+                      </td>
+                      <td className="px-4 py-3 text-xs font-mono">{s.tin_number ?? "--"}</td>
                       <td className="px-4 py-3">{s.category ? <StatusPill label={s.category} tone="muted" /> : "--"}</td>
                       <td className="px-4 py-3">{s.contact_person ?? "--"}</td>
                       <td className="px-4 py-3 text-xs">{s.phone ?? "--"}</td>
@@ -218,8 +229,35 @@ function InventoryPage() {
       {receipt && (
         <OrderReceiptModal item={receipt} onClose={() => setReceipt(null)} />
       )}
+      {paying && <PaySupplierModal item={paying} onClose={() => setPaying(null)} onPaid={async () => { setPaying(null); await load(); }} />}
     </FinanceLayout>
   );
+}
+
+function SupplierCountry({ countryCode }: { countryCode: string }) {
+  const resolved = findCountryByName(countryCode) ?? COUNTRIES.find((country) => country.isoAlpha2 === countryCode.toUpperCase());
+  return <span className="inline-flex items-center gap-1.5">{resolved && <img src={countryFlagSrc(resolved.flag)} alt="" className="h-3.5 w-5 rounded-sm object-cover" />}<span className="font-mono">{countryCode}</span>{resolved && <span className="text-muted-foreground">{resolved.phoneCode}</span>}</span>;
+}
+
+function PaySupplierModal({ item, onClose, onPaid }: { item: InventoryItem; onClose: () => void; onPaid: () => Promise<void> }) {
+  const [amount, setAmount] = useState(item.balance_due);
+  const [method, setMethod] = useState<PaymentMethod>("cash");
+  const [submitting, setSubmitting] = useState(false);
+  const methods: PaymentMethod[] = ["cash", "mtn_momo", "airtel_money", "bank_transfer", "cheque", "other"];
+  const labels: Record<PaymentMethod, string> = { cash: "Cash", mtn_momo: "MTN Mobile Money", airtel_money: "Airtel Money", bank_transfer: "Bank Transfer", cheque: "Cheque", other: "Other" };
+  const submit = async () => {
+    const value = Number(amount.replace(/[^\d.]/g, ""));
+    if (value <= 0 || value > Number(item.balance_due)) { toast.error("Enter a valid payment amount"); return; }
+    setSubmitting(true);
+    try { await payInventorySupplier(item.id, value, method); toast.success(`Supplier paid for ${item.item_name}`); await onPaid(); }
+    catch (err: any) { toast.error(err?.message ?? "Failed to record supplier payment"); }
+    finally { setSubmitting(false); }
+  };
+  return <Modal title="Pay Supplier" subtitle={`${item.supplier_name} · ${item.item_name}`} onClose={onClose}
+    footer={<><GhostButton onClick={onClose}>Cancel</GhostButton><PrimaryButton onClick={submit}>{submitting ? "Recording..." : "Record Payment"}</PrimaryButton></>}>
+    <TextField label="Amount (RWF)" value={amount} onChange={setAmount} required hint={`Outstanding for this item: ${formatRWF(item.balance_due)}`} />
+    <SelectField label="Payment Method" value={method} onChange={(v) => setMethod(v as PaymentMethod)} options={methods} optionLabels={labels} required />
+  </Modal>;
 }
 
 function PurchaseRequestModal({
@@ -244,19 +282,38 @@ function PurchaseRequestModal({
   const [reorderLevel, setReorderLevel] = useState("10");
   const [invoice, setInvoice] = useState<UploadedDoc | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [categorySaving, setCategorySaving] = useState(false);
 
-  const confirmNewCategory = () => {
+  useEffect(() => {
+    listInventoryCategories().then(setCategories).catch(() => {
+      // Keep the built-in categories available if the category endpoint is unavailable.
+    });
+  }, []);
+
+  const confirmNewCategory = async () => {
     const name = newCategory.trim();
     if (!name) { toast.error("Enter a category name"); return; }
     const existing = categories.find((c) => c.toLowerCase() === name.toLowerCase());
     if (existing) {
       setCategory(existing);
-    } else {
-      setCategories((prev) => [...prev, name]);
-      setCategory(name);
+      setNewCategory("");
+      setAddingCategory(false);
+      return;
     }
-    setNewCategory("");
-    setAddingCategory(false);
+
+    setCategorySaving(true);
+    try {
+      const created = await createInventoryCategory(name);
+      setCategories((prev) => [...prev, created.name]);
+      setCategory(created.name);
+      setNewCategory("");
+      setAddingCategory(false);
+      toast.success(`Category "${created.name}" saved`);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to save category");
+    } finally {
+      setCategorySaving(false);
+    }
   };
 
   const filteredSuppliers = supplierSearch.trim()
@@ -309,12 +366,12 @@ function PurchaseRequestModal({
                 <input
                   value={newCategory}
                   onChange={(e) => setNewCategory(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirmNewCategory(); } }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void confirmNewCategory(); } }}
                   placeholder="e.g. Sports Equipment"
                   autoFocus
                   className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
                 />
-                <button type="button" onClick={confirmNewCategory} className="rounded-lg bg-primary text-primary-foreground px-3 text-sm font-semibold hover:bg-primary/90">Add</button>
+                <button type="button" onClick={() => void confirmNewCategory()} disabled={categorySaving} className="rounded-lg bg-primary text-primary-foreground px-3 text-sm font-semibold hover:bg-primary/90 disabled:opacity-50">{categorySaving ? "Saving..." : "Add"}</button>
                 <button type="button" onClick={() => { setAddingCategory(false); setNewCategory(""); }} className="rounded-lg border border-border px-3 text-sm font-semibold hover:bg-muted">Cancel</button>
               </div>
             </div>
@@ -456,7 +513,14 @@ function AddSupplierModal({
   onClose: () => void;
   onCreated: () => Promise<void>;
 }) {
+  const schoolCountryName = useSchoolCountryName();
+  const schoolCountry = useMemo<Country | undefined>(() => {
+    const country = schoolCountryName?.trim() ?? "";
+    return findCountryByName(country) ?? COUNTRIES.find((item) => item.isoAlpha2 === country.toUpperCase()) ?? findCountryByName("Rwanda");
+  }, [schoolCountryName]);
   const [name, setName] = useState("");
+  const [countryCode, setCountryCode] = useState("");
+  const [tinNumber, setTinNumber] = useState("");
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [contact, setContact] = useState("");
   const [phone, setPhone] = useState("");
@@ -464,15 +528,21 @@ function AddSupplierModal({
   const [balance, setBalance] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (schoolCountry) setCountryCode(schoolCountry.isoAlpha2);
+  }, [schoolCountry]);
+
   const submit = async () => {
     if (!name.trim()) { toast.error("Enter supplier name"); return; }
     setSubmitting(true);
     try {
       const created = await createSupplier({
         name: name.trim(),
+        country_code: countryCode.trim().toUpperCase() || undefined,
+        tin_number: tinNumber.trim() || undefined,
         category,
         contact_person: contact.trim() || undefined,
-        phone: phone.trim() || undefined,
+        phone: phone.trim() ? `${schoolCountry?.phoneCode ?? ""} ${normalizePhoneDigits(phone, 15)}`.trim() : undefined,
         email: email.trim() || undefined,
         balance: Number(balance.replace(/[^\d.]/g, "")) || 0,
       });
@@ -490,9 +560,20 @@ function AddSupplierModal({
       footer={<><GhostButton onClick={onClose}>Cancel</GhostButton><PrimaryButton onClick={submit}>{submitting ? "Adding..." : "Add Supplier"}</PrimaryButton></>}>
       <TextField label="Supplier Name" value={name} onChange={setName} placeholder="Company name" required />
       <div className="grid grid-cols-2 gap-3">
+        <TextField label="TIN Number" value={tinNumber} onChange={setTinNumber} placeholder="Supplier tax ID" />
         <SelectField label="Category" value={category} onChange={setCategory} options={CATEGORIES} />
         <TextField label="Contact Person" value={contact} onChange={setContact} placeholder="Full name" />
-        <TextField label="Phone" value={phone} onChange={setPhone} placeholder="+250 7.. ... ..." />
+        <div>
+          <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Phone</label>
+          <div className="flex h-10 overflow-hidden rounded-lg border border-border bg-background">
+            <div className="flex items-center gap-1.5 border-r border-border bg-muted/40 px-2.5 text-sm font-semibold">
+              {schoolCountry && <img src={countryFlagSrc(schoolCountry.flag)} alt="" className="h-3.5 w-5 rounded-sm object-cover" />}
+              {schoolCountry?.phoneCode ?? "+"}
+            </div>
+            <input value={phone} onChange={(event) => setPhone(normalizePhoneDigits(event.target.value, 15))} placeholder="7XXXXXXXX" className="min-w-0 flex-1 bg-background px-3 text-sm outline-none" />
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">Saved with the school’s country code.</p>
+        </div>
         <TextField label="Email" value={email} onChange={setEmail} placeholder="supplier@example.com" />
         <TextField label="Opening Balance (RWF)" value={balance} onChange={setBalance} placeholder="0" />
       </div>

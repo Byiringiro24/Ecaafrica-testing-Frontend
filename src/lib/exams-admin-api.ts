@@ -5,6 +5,7 @@ import {
   publishExamResults,
   unpublishExamResults,
   studentDisplayName,
+  updateExam,
 } from "./exams-api";
 
 export type { ExamResult };
@@ -13,6 +14,7 @@ export {
   getExamResults,
   publishExamResults,
   unpublishExamResults,
+  updateExam,
 };
 
 export interface AdminExam extends Exam {
@@ -79,10 +81,11 @@ export function isPendingReview(exam: AdminExam): boolean {
 }
 
 export function isPublished(exam: AdminExam): boolean {
-  return exam.status === "completed";
+  return exam.published_at !== null && exam.published_at !== undefined;
 }
 
-export function examTypeLabel(type: string): string {
+export function examTypeLabel(type: string, configuredName?: string | null): string {
+  if (configuredName) return configuredName;
   const labels: Record<string, string> = {
     cat: "CAT",
     main_exam: "Main Exam",
@@ -124,5 +127,32 @@ export function gradeBadgeClass(grade: string | null | undefined): string {
       return "bg-muted text-muted-foreground";
   }
 }
+
+export interface ExamModificationRequest {
+  id: string;
+  exam_id: string;
+  teacher_id: string;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+  reviewed_at?: string | null;
+  exam?: {
+    id: string;
+    name: string;
+    status: string;
+    exam_date?: string | null;
+    subject?: { id: string; name: string } | null;
+    section?: { id: string; full_name: string } | null;
+  } | null;
+  teacher?: { id: string; name: string; email?: string | null } | null;
+}
+
+export const listExamModificationRequests = (status?: ExamModificationRequest["status"]) => {
+  const query = status ? `?status=${status}` : "";
+  return apiRequest<ExamModificationRequest[]>(`/exam-modification-requests${query}`, { method: "GET", auth: "school" });
+};
+
+export const reviewExamModificationRequest = (id: string, status: "approved" | "rejected") =>
+  apiRequest<ExamModificationRequest>(`/exam-modification-requests/${id}`, { method: "PATCH", auth: "school", body: JSON.stringify({ status }) });
 
 export type ExamResultsData = ExamResultsResponse;

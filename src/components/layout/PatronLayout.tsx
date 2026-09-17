@@ -1,15 +1,17 @@
-import { ReactNode, useState } from "react";
+﻿import { ReactNode, useState } from "react";
+import { SuspendedBanner } from "@/components/layout/SuspendedBanner";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
-  ClipboardCheck,
   CalendarDays,
   Home,
-  BarChart3,
-  PieChart,
+  ClipboardCheck,
+  Utensils,
   LogOut,
   Menu,
   X,
+  UserCheck,
+  Upload,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
@@ -18,19 +20,18 @@ import logo from "@/assets/logo.png";
 
 const NAV = [
   {
-    section: "Main",
+    section: "My Dormitories",
     items: [
-      { to: "/boarding-officer/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/boarding-officer/attendance", label: "Boarding Attendance", icon: ClipboardCheck },
-      { to: "/boarding-officer/leaves", label: "Manage Leave Requests", icon: CalendarDays },
-      { to: "/boarding-officer/dormitory", label: "Dormitory Status", icon: Home },
-      { to: "/boarding-officer/dormitory-analytics", label: "Dormitory Analytics", icon: PieChart },
-      { to: "/boarding-officer/reports", label: "Boarding Reports", icon: BarChart3 },
+      { to: "/patron/dashboard",   label: "Dashboard",             icon: LayoutDashboard },
+      { to: "/patron/dormitories", label: "My Dormitories",        icon: Home },
+      { to: "/patron/attendance",  label: "Boarding Attendance",   icon: ClipboardCheck },
+      { to: "/patron/leaves",      label: "Leave & Returns",       icon: CalendarDays },
+      { to: "/patron/dining",      label: "Dining Attendance",     icon: Utensils },
     ],
   },
 ];
 
-export function BoardingOfficerLayout({
+export function PatronLayout({
   title,
   subtitle,
   children,
@@ -42,9 +43,9 @@ export function BoardingOfficerLayout({
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const currentUser = useCurrentUser();
-  const displayName = currentUser?.name ?? "Boarding Officer";
-  const displayRole = currentUser?.role ? formatRole(currentUser.role) : "Boarding Officer";
-  const initials = currentUser?.name ? getInitials(currentUser.name) : "BO";
+  const displayName = currentUser?.name ?? "Patron";
+  const displayRole = currentUser?.role ? formatRole(currentUser.role) : "Patron";
+  const initials = currentUser?.name ? getInitials(currentUser.name) : "PA";
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -58,12 +59,12 @@ export function BoardingOfficerLayout({
         )}
       >
         <div className="flex items-center justify-between px-5 py-5 border-b border-sidebar-border">
-          <Link to="/boarding-officer/dashboard" className="flex items-center gap-2.5">
-            <img src={logo} alt="ecareafrica logo" className="h-9 w-9 rounded-lg object-contain" />
+          <Link to="/patron/dashboard" className="flex items-center gap-2.5">
+            <img src={logo} alt="ecareafrica" className="h-9 w-9 rounded-lg object-contain" />
             <div className="font-display font-bold text-sidebar-foreground text-base leading-tight">
               ecareafrica
               <div className="text-[10px] font-normal text-sidebar-foreground/70">
-                Boarding Officer Panel
+                {displayRole} Panel
               </div>
             </div>
           </Link>
@@ -83,7 +84,7 @@ export function BoardingOfficerLayout({
                   const Icon = item.icon;
                   const active =
                     pathname === item.to ||
-                    (item.to !== "/boarding-officer/dashboard" && pathname.startsWith(item.to));
+                    (item.to !== "/patron/dashboard" && pathname.startsWith(item.to));
                   return (
                     <Link
                       key={item.to}
@@ -119,10 +120,7 @@ export function BoardingOfficerLayout({
               <div className="text-[11px] text-sidebar-foreground/60">{displayRole}</div>
             </div>
             <button
-              onClick={() => {
-                clearSchoolAuth();
-                window.location.replace("/login");
-              }}
+              onClick={() => { clearSchoolAuth(); window.location.replace("/login"); }}
               className="rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-foreground"
               aria-label="Logout"
             >
@@ -140,9 +138,7 @@ export function BoardingOfficerLayout({
             </button>
             <div className="min-w-0 flex-1">
               <h1 className="font-display text-xl md:text-2xl font-bold truncate">{title}</h1>
-              {subtitle && (
-                <p className="text-xs md:text-sm text-muted-foreground mt-0.5">{subtitle}</p>
-              )}
+              {subtitle && <p className="text-xs md:text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
             </div>
             <div className="hidden sm:flex items-center gap-3 rounded-lg px-2 py-1.5">
               <div className="text-right leading-tight">
@@ -155,8 +151,9 @@ export function BoardingOfficerLayout({
             </div>
           </div>
         </header>
-        <main className="flex-1 px-4 md:px-8 py-6">{children}</main>
+        <main className="flex-1 px-4 md:px-8 py-6"><SuspendedBanner />{children}</main>
       </div>
     </div>
   );
 }
+

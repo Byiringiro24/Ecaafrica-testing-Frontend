@@ -1,9 +1,10 @@
-import { FormEvent, useEffect, useState } from "react";
+﻿import { FormEvent, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   School, TabletSmartphone, Cpu, ArrowRight,
   Plus, Trash2, RefreshCw, CheckCircle2, ArrowRightLeft,
   Pencil, X, Save, Link2, Zap, AlertTriangle, Info,
+  Wifi, Key, Copy, ClipboardPaste, WifiOff, ShieldCheck, Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
@@ -23,7 +24,7 @@ type PlatformDevice = Device & {
   tablet?: { id: string; name: string } | null;
 };
 
-const TABS = ["Schools", "Tablets", "Devices", "Assign"] as const;
+const TABS = ["Schools", "Tablets", "Devices", "Assign", "Device Locations", "VPN Setup"] as const;
 type Tab = (typeof TABS)[number];
 
 const statusColor = (s?: string | null) =>
@@ -46,6 +47,9 @@ function HardwarePage() {
   const [tablets, setTablets] = useState<PlatformTablet[]>([]);
   const [devices, setDevices] = useState<PlatformDevice[]>([]);
   const [loading, setLoading] = useState(false);
+  // Shared state: VPN Setup label → auto-fills Tablet Name when switching to Tablets tab
+  const [pendingTabletName, setPendingTabletName] = useState("");
+  const [pendingTabletIp,   setPendingTabletIp]   = useState("");
 
   const loadAll = async () => {
     setLoading(true);
@@ -81,9 +85,11 @@ function HardwarePage() {
       </div>
       <PageTabs tabs={[...TABS]} active={tab} onChange={(t) => setTab(t as Tab)} />
       {tab === "Schools" && <SchoolsTab schools={schools} />}
-      {tab === "Tablets" && <TabletsTab tablets={tablets} schools={schools} onRefresh={loadAll} />}
+      {tab === "Tablets" && <TabletsTab tablets={tablets} schools={schools} onRefresh={loadAll} pendingName={pendingTabletName} pendingIp={pendingTabletIp} onConsumed={() => { setPendingTabletName(""); setPendingTabletIp(""); }} />}
       {tab === "Devices" && <DevicesTab devices={devices} tablets={tablets} schools={schools} onRefresh={loadAll} />}
       {tab === "Assign"  && <AssignTab  tablets={tablets} devices={devices} schools={schools} onRefresh={loadAll} />}
+      {tab === "Device Locations" && <DeviceLocationsTab devices={devices} schools={schools} onRefresh={loadAll} />}
+      {tab === "VPN Setup" && <VpnSetupTab tablets={tablets} onPeerAdded={(label, ip) => { setPendingTabletName(label); setPendingTabletIp(ip); setTab("Tablets"); }} />}
     </SuperAdminLayout>
   );
 }
@@ -120,8 +126,9 @@ function SchoolsTab({ schools }: { schools: SchoolRecord[] }) {
   );
 }
 
-function TabletsTab({ tablets, schools, onRefresh }: {
+function TabletsTab({ tablets, schools, onRefresh, pendingName = "", pendingIp = "", onConsumed }: {
   tablets: PlatformTablet[]; schools: SchoolRecord[]; onRefresh: () => void;
+  pendingName?: string; pendingIp?: string; onConsumed?: () => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [pinging, setPinging] = useState<string | null>(null);
@@ -131,6 +138,35 @@ function TabletsTab({ tablets, schools, onRefresh }: {
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", ip: "", port: "5000", location: "", notes: "", school_id: "" });
+
+  // Auto-fill from VPN Setup label when navigating from that tab
+  useEffect(() => {
+    if (pendingName) {
+      setForm(f => ({ ...f, name: pendingName, ip: pendingIp || f.ip }));
+      onConsumed?.();
+    }
+  }, [pendingName, pendingIp]);
+
+  // Auto-ping all tablets on mount and every 30s
+  const pingAll = async (tabletList: PlatformTablet[]) => {
+    for (const t of tabletList) {
+      setLiveStatus(prev => ({ ...prev, [t.id]: "checking" }));
+      apiRequest<any>(`/platform/hardware/tablets/${t.id}/ping`, { auth: "platform" })
+        .then(res => {
+          const online = res?.healthy === true || res?.success === true;
+          setLiveStatus(prev => ({ ...prev, [t.id]: online ? "online" : "offline" }));
+        })
+        .catch(() => setLiveStatus(prev => ({ ...prev, [t.id]: "offline" })));
+    }
+  };
+
+  useEffect(() => {
+    if (tablets.length > 0) void pingAll(tablets);
+    const interval = setInterval(() => {
+      if (tablets.length > 0) void pingAll(tablets);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [tablets]);
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -153,6 +189,29 @@ function TabletsTab({ tablets, schools, onRefresh }: {
     if (!confirm(`Delete tablet "${t.name}"?`)) return;
     try { await platformHardwareApi.deleteTablet(t.id); toast.success("Deleted"); onRefresh(); }
     catch (e: any) { toast.error(e?.message || "Failed"); }
+  };
+
+  // Dev password modal
+  const [devPwTablet,    setDevPwTablet]    = useState<PlatformTablet | null>(null);
+  const [devPwInput,     setDevPwInput]     = useState("");
+  const [devPwConfirm,   setDevPwConfirm]   = useState("");
+  const [devPwSaving,    setDevPwSaving]    = useState(false);
+
+  const handleSetDevPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!devPwTablet) return;
+    if (devPwInput.length < 4) { toast.error("Password must be at least 4 characters"); return; }
+    if (devPwInput !== devPwConfirm) { toast.error("Passwords do not match"); return; }
+    setDevPwSaving(true);
+    try {
+      await apiRequest(`/platform/hardware/tablets/${devPwTablet.id}/dev-password`, {
+        method: "PATCH", auth: "platform",
+        body: JSON.stringify({ password: devPwInput }),
+      });
+      toast.success(`Dev password updated for ${devPwTablet.name} — tablet will apply it within 60 seconds`);
+      setDevPwTablet(null); setDevPwInput(""); setDevPwConfirm("");
+    } catch (e: any) { toast.error(e?.message || "Failed to set password"); }
+    finally { setDevPwSaving(false); }
   };
 
   const startEdit = (t: PlatformTablet) => {
@@ -204,6 +263,7 @@ function TabletsTab({ tablets, schools, onRefresh }: {
   };
 
   return (
+    <>
     <div className="grid gap-5 xl:grid-cols-[1fr_1.2fr]">
       <section className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-center gap-2 mb-4">
@@ -318,6 +378,11 @@ function TabletsTab({ tablets, schools, onRefresh }: {
                           title="Live ping" className="p-1.5 rounded-md border border-border hover:bg-muted text-muted-foreground disabled:opacity-40">
                           <RefreshCw className={cn("h-3.5 w-3.5", pinging === t.id && "animate-spin")} />
                         </button>
+                        <button onClick={() => { setDevPwTablet(t); setDevPwInput(""); setDevPwConfirm(""); }}
+                          title="Set developer password remotely"
+                          className="p-1.5 rounded-md border border-border hover:bg-violet-50 hover:text-violet-700 text-muted-foreground">
+                          <Key className="h-3.5 w-3.5" />
+                        </button>
                         <button onClick={() => startEdit(t)} title="Edit tablet"
                           className="p-1.5 rounded-md hover:bg-amber-50 hover:text-amber-600 text-muted-foreground border border-border">
                           <Pencil className="h-3.5 w-3.5" />
@@ -335,6 +400,72 @@ function TabletsTab({ tablets, schools, onRefresh }: {
         )}
       </section>
     </div>
+
+    {/* ── Dev Password Modal ── */}
+    {devPwTablet && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+        <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+          <div className="mb-5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-violet-500/20 text-violet-400">
+                <Key className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-white">Set Dev Password</h2>
+                <p className="text-xs text-slate-400">{devPwTablet.name}</p>
+              </div>
+            </div>
+            <button onClick={() => setDevPwTablet(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <p className="mb-4 text-xs text-slate-400 leading-relaxed">
+            The tablet will automatically apply this password within <strong className="text-slate-200">60 seconds</strong>.
+            Used for the Developer Settings and WireGuard wizard on the tablet.
+          </p>
+          <form onSubmit={handleSetDevPassword} className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-400">New Password *</label>
+              <input
+                autoFocus
+                type="password"
+                value={devPwInput}
+                onChange={e => setDevPwInput(e.target.value)}
+                required
+                minLength={4}
+                placeholder="Min 4 characters"
+                className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-violet-500"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-slate-400">Confirm Password *</label>
+              <input
+                type="password"
+                value={devPwConfirm}
+                onChange={e => setDevPwConfirm(e.target.value)}
+                required
+                placeholder="Repeat the password"
+                className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-violet-500"
+              />
+              {devPwInput && devPwConfirm && devPwInput !== devPwConfirm && (
+                <p className="mt-1 text-xs text-rose-400">Passwords do not match</p>
+              )}
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button type="submit" disabled={devPwSaving || devPwInput !== devPwConfirm || devPwInput.length < 4}
+                className="flex-1 rounded-xl bg-violet-600 py-2.5 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50 transition">
+                {devPwSaving ? "Applying…" : "Set Password"}
+              </button>
+              <button type="button" onClick={() => setDevPwTablet(null)}
+                className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-slate-800 transition">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -344,6 +475,44 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
 }) {
   const [saving, setSaving] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [pingingDevice, setPingingDevice] = useState<string | null>(null);
+  const [deviceLiveStatus, setDeviceLiveStatus] = useState<Record<string, boolean | null>>({});
+
+  // Ping a device by pinging its linked tablet's health endpoint
+  const handlePingDevice = async (d: PlatformDevice) => {
+    const tabletId = d.tablet_id ?? d.tablet?.id;
+    if (!tabletId) { toast.error("Device is not linked to a tablet — cannot ping"); return; }
+    setPingingDevice(d.id);
+    try {
+      const res = await apiRequest<any>(`/platform/hardware/tablets/${tabletId}/ping`, { auth: "platform" });
+      const online = res?.healthy === true || res?.success === true;
+      setDeviceLiveStatus(prev => ({ ...prev, [d.id]: online }));
+      toast[online ? "success" : "warning"](
+        online
+          ? `${d.name} bridge is reachable — device can sync`
+          : `${d.name} bridge not reachable — check WireGuard and FKBridge`
+      );
+      // Refresh to pick up updated is_connected from DB
+      onRefresh();
+    } catch {
+      setDeviceLiveStatus(prev => ({ ...prev, [d.id]: false }));
+      toast.warning(`${d.name} bridge not reachable`);
+    } finally { setPingingDevice(null); }
+  };
+
+  // Auto-ping all linked devices on mount
+  useEffect(() => {
+    for (const d of devices) {
+      const tabletId = d.tablet_id ?? (d.tablet as any)?.id;
+      if (!tabletId) continue;
+      apiRequest<any>(`/platform/hardware/tablets/${tabletId}/ping`, { auth: "platform" })
+        .then(res => {
+          const online = res?.healthy === true || res?.success === true;
+          setDeviceLiveStatus(prev => ({ ...prev, [d.id]: online }));
+        })
+        .catch(() => setDeviceLiveStatus(prev => ({ ...prev, [d.id]: false })));
+    }
+  }, [devices]);
   const [form, setForm] = useState({
     school_id: "", name: "", device_uid: "",
     mode: "gate" as "gate" | "boarding" | "classroom",
@@ -619,11 +788,32 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold",
-                          d.is_connected ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
-                          {d.is_connected ? "Online" : "Offline"}
-                        </span>
-                        {linkedTablet && !d.is_connected && (
+                        {/* Live status — uses ping result if available, falls back to DB is_connected */}
+                        {(() => {
+                          const live = deviceLiveStatus[d.id];
+                          const isOnline = live !== undefined ? live : d.is_connected;
+                          const isPinging = pingingDevice === d.id;
+                          return (
+                            <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                              isPinging ? "bg-blue-100 text-blue-700"
+                              : isOnline ? "bg-emerald-100 text-emerald-700"
+                              : "bg-muted text-muted-foreground")}>
+                              {isPinging ? "pinging…" : isOnline ? "Online" : "Offline"}
+                              {live !== undefined && <span className="ml-1 opacity-60 text-[10px]">(live)</span>}
+                            </span>
+                          );
+                        })()}
+                        {/* Ping button */}
+                        {linkedTablet && (
+                          <button
+                            onClick={() => void handlePingDevice(d)}
+                            disabled={pingingDevice === d.id}
+                            title="Ping bridge to check real status"
+                            className="p-1.5 rounded-md border border-border hover:bg-muted text-muted-foreground disabled:opacity-40">
+                            <RefreshCw className={cn("h-3.5 w-3.5", pingingDevice === d.id && "animate-spin")} />
+                          </button>
+                        )}
+                        {linkedTablet && !(deviceLiveStatus[d.id] ?? d.is_connected) && (
                           <button
                             onClick={() => void handleConnectDevice(d)}
                             disabled={connecting === d.id}
@@ -633,7 +823,7 @@ function DevicesTab({ devices, tablets, schools, onRefresh }: {
                             {connecting === d.id ? "Connecting…" : "Connect"}
                           </button>
                         )}
-                        {d.is_connected && (
+                        {(deviceLiveStatus[d.id] ?? d.is_connected) && (
                           <span className="inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
                             <CheckCircle2 className="h-3 w-3" /> Auto-pull active
                           </span>
@@ -996,6 +1186,851 @@ function AssignTab({ tablets, devices, schools, onRefresh }: {
           </table>
         </div>
       </section>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VPN Setup Tab
+// Two-panel layout:
+//   LEFT  = Server side  (runs on EcareAfrica server via backend API)
+//   RIGHT = Tablet side  (calls the tablet bridge API at http://TABLET_IP:5000)
+//
+// Flow:
+//   1. Server panel: click "Get Server Info" → shows server public key + next VPN IP
+//   2. Tablet panel: enter tablet bridge URL, click "Generate Keys on Tablet" → shows tablet public key
+//   3. Copy tablet public key → paste into server panel → click "Add Peer to VPN" → server adds peer
+//   4. Copy server public key + VPN IP → paste into tablet panel → click "Install & Activate VPN"
+//   5. Both sides show green "Active" status
+// ─────────────────────────────────────────────────────────────────────────────
+
+type VpnServerStatus = {
+  serverPublicKey: string;
+  interfaceUp: boolean;
+  serverVpnIp: string;
+  nextAvailableIp: string;
+  peerCount: number;
+  serverEndpoint: string;
+  vpnSubnet: string;
+  peers: Array<{ publicKey: string; allowedIps: string; endpoint: string; latestHandshake: string; transferRx?: string; transferTx?: string }>;
+};
+
+function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { toast.error("Copy failed — select and copy manually"); }
+  };
+  return (
+    <button onClick={handleCopy} type="button"
+      className={cn("inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold transition-colors",
+        copied ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-border bg-background text-muted-foreground hover:bg-muted")}>
+      {copied ? <CheckCircle2 className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      {copied ? "Copied!" : label}
+    </button>
+  );
+}
+
+function KeyBox({ label, value, placeholder }: { label: string; value: string; placeholder?: string }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold">{label}</span>
+        {value && <CopyButton value={value} />}
+      </div>
+      <div className={cn("rounded-lg border bg-muted/50 px-3 py-2 font-mono text-xs break-all",
+        value ? "text-foreground border-border" : "text-muted-foreground border-dashed border-border")}>
+        {value || placeholder || "—"}
+      </div>
+    </div>
+  );
+}
+function FixPeerPanel({ serverStatus, onFixed }: { serverStatus: VpnServerStatus | null; onFixed: () => void }) {
+  const [correctKey, setCorrectKey] = useState("");
+  const [vpnIp, setVpnIp]           = useState("");
+  const [fixing, setFixing]          = useState(false);
+
+  const handleFix = async () => {
+    if (!correctKey.trim()) { toast.error("Paste the correct active key"); return; }
+    if (!vpnIp.trim())      { toast.error("Enter the VPN IP this tablet should use"); return; }
+    setFixing(true);
+    try {
+      // Find which peer currently has this VPN IP so we can remove the wrong key
+      const oldPeer = serverStatus?.peers.find(p => p.allowedIps.startsWith(vpnIp.trim()));
+      await apiRequest("/platform/hardware/vpn/fix-peer", {
+        method: "POST", auth: "platform",
+        body: JSON.stringify({
+          oldPublicKey: oldPeer?.publicKey,
+          newPublicKey: correctKey.trim(),
+          vpnIp: vpnIp.trim(),
+        }),
+      });
+      toast.success(`Fixed — ${vpnIp} now registered with the correct key`);
+      setCorrectKey(""); setVpnIp("");
+      onFixed();
+    } catch (e: any) {
+      toast.error(e?.message || "Fix failed");
+    } finally { setFixing(false); }
+  };
+
+  return (
+    <div className="space-y-3">
+      <label className="block">
+        <span className="mb-1 block text-xs font-semibold">Correct Active Key <span className="text-muted-foreground font-normal">(from tablet wizard Step 5 diagnosis)</span></span>
+        <div className="flex gap-2">
+          <input value={correctKey} onChange={e => setCorrectKey(e.target.value)}
+            placeholder="Paste the key shown as active on the tablet…"
+            className="flex-1 rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs" />
+          {correctKey && <button onClick={() => setCorrectKey("")} className="p-2 rounded-md border border-border hover:bg-muted text-muted-foreground"><X className="h-3.5 w-3.5" /></button>}
+        </div>
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs font-semibold">VPN IP this tablet should have</span>
+        <input value={vpnIp} onChange={e => setVpnIp(e.target.value)}
+          placeholder="10.0.0.3"
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs" />
+        {serverStatus?.peers && vpnIp && (() => {
+          const existing = serverStatus.peers.find(p => p.allowedIps.startsWith(vpnIp.trim()));
+          return existing ? (
+            <p className="mt-1 text-xs text-amber-600">
+              Currently registered: <span className="font-mono">{existing.publicKey.slice(0, 20)}…</span> — will be replaced
+            </p>
+          ) : null;
+        })()}
+      </label>
+      <button onClick={handleFix} disabled={fixing || !correctKey.trim() || !vpnIp.trim()}
+        className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50">
+        {fixing ? <><RefreshCw className="h-4 w-4 animate-spin" /> Fixing…</> : <><Key className="h-4 w-4" /> Fix Peer Registration</>}
+      </button>
+    </div>
+  );
+}
+
+
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+}
+
+function VpnSetupTab({ tablets = [], onPeerAdded }: { tablets?: PlatformTablet[]; onPeerAdded?: (label: string, ip: string) => void }) {
+  // ── State ──
+  const [serverStatus, setServerStatus] = useState<VpnServerStatus | null>(null);
+  const [serverLoading, setServerLoading] = useState(false);
+
+  // Step 2: paste tablet public key + assign VPN IP → add peer
+  const [tabletPublicKey, setTabletPublicKey] = useState("");
+  const [assignedVpnIp,   setAssignedVpnIp]   = useState("");
+  const [peerComment,     setPeerComment]      = useState("");
+  const [addingPeer,      setAddingPeer]       = useState(false);
+  const [peerAdded,       setPeerAdded]        = useState(false);
+  const [addedVpnIp,      setAddedVpnIp]       = useState("");
+
+  // Ping — server pings a VPN IP (ICMP, same as running ping in server terminal)
+  const [pingTarget,  setPingTarget]  = useState("");
+  const [pinging2,    setPinging2]    = useState(false);
+  const [pingResult,  setPingResult]  = useState<{ success: boolean; output: string; rttMs?: number } | null>(null);
+
+  // Peer management — edit / delete
+  const [editingPeer,    setEditingPeer]    = useState<string | null>(null); // publicKey being edited
+  const [editPeerIp,     setEditPeerIp]     = useState("");
+  const [savingPeer,     setSavingPeer]     = useState(false);
+  const [deletingPeer,   setDeletingPeer]   = useState<string | null>(null);
+
+  useEffect(() => {
+    void loadServerStatus();
+    // Auto-refresh every 10 seconds so handshake status updates in real time
+    const interval = setInterval(() => void loadServerStatus(), 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadServerStatus = async () => {
+    setServerLoading(true);
+    try {
+      const res = await apiRequest<{ data: VpnServerStatus }>("/platform/hardware/vpn/status", { auth: "platform" });
+      const data = (res as any)?.data ?? res;
+      setServerStatus(data);
+      if (!assignedVpnIp) setAssignedVpnIp(data.nextAvailableIp || "");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to load server VPN status.");
+    } finally { setServerLoading(false); }
+  };
+
+  const handleAddPeer = async () => {
+    if (!tabletPublicKey.trim()) { toast.error("Paste the tablet public key first"); return; }
+    if (!assignedVpnIp.trim())   { toast.error("Enter the VPN IP to assign"); return; }
+    setAddingPeer(true);
+    try {
+      await apiRequest("/platform/hardware/vpn/peers", {
+        method: "POST",
+        auth: "platform",
+        body: JSON.stringify({
+          publicKey: tabletPublicKey.trim(),
+          vpnIp: assignedVpnIp.trim(),
+          comment: peerComment || `Tablet ${assignedVpnIp.trim()}`,
+        }),
+      });
+      setAddedVpnIp(assignedVpnIp.trim());
+      setPeerAdded(true);
+      toast.success(`Peer added — tablet VPN IP is ${assignedVpnIp}`);
+      void loadServerStatus();
+      // Auto-navigate to Tablets tab with label pre-filled
+      if (peerComment.trim()) {
+        onPeerAdded?.(peerComment.trim(), assignedVpnIp.trim());
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to add peer");
+    } finally { setAddingPeer(false); }
+  };
+
+  const handlePingVpn = async () => {
+    const t = pingTarget.trim();
+    if (!t) { toast.error("Enter an IP address to ping"); return; }
+    setPinging2(true); setPingResult(null);
+    try {
+      const res = await apiRequest<{ data: { success: boolean; output: string; rttMs?: number } }>(
+        "/platform/hardware/vpn/ping",
+        { method: "POST", auth: "platform", body: JSON.stringify({ target: t, count: 4 }) }
+      );
+      const data = (res as any)?.data ?? res;
+      setPingResult(data);
+      if (data.success) toast.success(`Ping ${t} — ${data.rttMs != null ? `avg ${data.rttMs}ms` : "reachable"}`);
+      else toast.error(`Ping ${t} — no response`);
+    } catch (e: any) {
+      setPingResult({ success: false, output: e?.message || "Request failed" });
+      toast.error(e?.message || "Ping request failed");
+    } finally { setPinging2(false); }
+  };
+
+  const handleDeletePeer = async (publicKey: string, vpnIp: string) => {
+    if (!confirm(`Remove peer ${vpnIp} from WireGuard?\n\nThe tablet will lose VPN access immediately.`)) return;
+    setDeletingPeer(publicKey);
+    try {
+      await apiRequest(`/platform/hardware/vpn/peers/${encodeURIComponent(publicKey)}`, {
+        method: "DELETE", auth: "platform",
+      });
+      toast.success(`Peer ${vpnIp} removed from VPN`);
+      void loadServerStatus();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to remove peer");
+    } finally { setDeletingPeer(null); }
+  };
+
+  const handleUpdatePeer = async (publicKey: string) => {
+    if (!editPeerIp.trim()) { toast.error("Enter a valid VPN IP"); return; }
+    setSavingPeer(true);
+    try {
+      await apiRequest(`/platform/hardware/vpn/peers/${encodeURIComponent(publicKey)}`, {
+        method: "PATCH", auth: "platform",
+        body: JSON.stringify({ vpnIp: editPeerIp.trim() }),
+      });
+      toast.success(`Peer updated — new IP: ${editPeerIp}`);
+      setEditingPeer(null);
+      void loadServerStatus();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update peer");
+    } finally { setSavingPeer(false); }
+  };
+
+  return (
+    <div className="space-y-5">
+
+      {/* ── Flow guide ── */}
+      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+        <p className="font-semibold mb-2">How to connect a new tablet — no SSH from the browser</p>
+        <p className="mb-2 text-xs text-blue-700">
+          This is a real server-side WireGuard flow. The browser never runs SSH or system commands. The frontend calls authenticated backend endpoints on the server, and the backend executes the WireGuard setup on the host.
+        </p>
+        <ol className="list-decimal ml-4 space-y-1 text-xs text-blue-700">
+          <li><strong>Tablet wizard Step 2 (Keys):</strong> Generate keys on tablet → <em>copy the tablet public key</em></li>
+          <li><strong>Here below (Step 2):</strong> Paste tablet public key → click <em>Add Peer to VPN</em></li>
+          <li><strong>Here below (Step 1):</strong> Copy server public key + assigned VPN IP</li>
+          <li><strong>Tablet wizard Step 3 (Configure):</strong> Paste server public key + VPN IP</li>
+          <li><strong>Tablet wizard Step 4 (Activate):</strong> Tunnel goes live → ping test green</li>
+          <li><strong>Tablets tab:</strong> Register tablet using the VPN IP (e.g. 10.0.0.3) and port 5000</li>
+        </ol>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-2">
+
+        {/* ════════ SERVER INFO (copy to tablet) ════════ */}
+        <section className="rounded-xl border border-border bg-card">
+          <div className="border-b border-border px-5 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="grid h-9 w-9 place-items-center rounded-lg bg-blue-100 shrink-0">
+                <ShieldCheck className="h-5 w-5 text-blue-700" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-sm">Step 1 — Server Info</h2>
+                <p className="text-xs text-muted-foreground">Copy these into the tablet wizard (Step 3)</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={cn(
+                "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                serverStatus?.interfaceUp ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground"
+              )}>
+                {serverStatus?.interfaceUp
+                  ? <><Wifi className="h-3 w-3" /> VPN Active</>
+                  : <><WifiOff className="h-3 w-3" /> VPN Down</>}
+              </span>
+              <button
+                onClick={() => void loadServerStatus()}
+                disabled={serverLoading}
+                className="p-1.5 rounded-md border border-border hover:bg-muted text-muted-foreground disabled:opacity-50"
+                title="Refresh"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", serverLoading && "animate-spin")} />
+              </button>
+            </div>
+          </div>
+
+          <div className="p-5 space-y-4">
+            <KeyBox
+              label="Server Public Key — paste this into tablet wizard Step 3"
+              value={serverStatus?.serverPublicKey || ""}
+              placeholder={
+                serverLoading ? "Loading…"
+                : serverStatus ? "Not found — run: wg show wg0 public-key on server"
+                : "Click refresh ← to load"
+              }
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <KeyBox label="Server Endpoint" value={serverStatus?.serverEndpoint || ""} />
+              <KeyBox label="Next Available VPN IP" value={serverStatus?.nextAvailableIp || ""} />
+            </div>
+            {serverStatus?.vpnSubnet && (
+              <div className="rounded-lg border border-muted bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                Subnet: <span className="font-mono font-semibold text-foreground">{serverStatus.vpnSubnet}</span>
+                {" · "}Server: <span className="font-mono font-semibold text-foreground">{serverStatus.serverVpnIp}</span>
+                {" · "}Peers: <span className="font-semibold text-foreground">{serverStatus.peerCount}</span>
+              </div>
+            )}
+            {serverStatus && serverStatus.peers.length > 0 && (
+              <div className="border-t border-border pt-4 space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {serverStatus.peers.length} Registered Peer{serverStatus.peers.length !== 1 ? "s" : ""}
+                  <span className="ml-2 font-normal normal-case text-muted-foreground/70">— auto-refreshing every 10s</span>
+                </p>
+                {serverStatus.peers.map((p, i) => {
+                  const peerIp = p.allowedIps.split("/")[0];
+                  const isEditing = editingPeer === p.publicKey;
+                  const isDeleting = deletingPeer === p.publicKey;
+                  // Match registered tablet by VPN IP
+                  const matchedTablet = tablets.find(t => (t as any).ip === peerIp);
+                  // Handshake age calculation
+                  let handshakeAge = "Never connected";
+                  let isConnected = false;
+                  let isRecent = false;
+                  if (p.latestHandshake && p.latestHandshake !== "never") {
+                    const hs = new Date(p.latestHandshake);
+                    const ageMs = Date.now() - hs.getTime();
+                    const ageSec = Math.floor(ageMs / 1000);
+                    isConnected = true;
+                    isRecent = ageSec < 180; // connected = handshake within 3 minutes
+                    if (ageSec < 60) handshakeAge = `${ageSec}s ago`;
+                    else if (ageSec < 3600) handshakeAge = `${Math.floor(ageSec / 60)}m ago`;
+                    else handshakeAge = `${Math.floor(ageSec / 3600)}h ago`;
+                  }
+                  return (
+                    <div key={i} className={cn(
+                      "rounded-lg border px-3 py-2 text-xs space-y-1.5",
+                      isRecent ? "border-emerald-300/60 bg-emerald-50/50 dark:bg-emerald-950/20 dark:border-emerald-700/40"
+                      : isConnected ? "border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-700/40"
+                      : "border-border bg-muted/30"
+                    )}>
+                      {isEditing ? (
+                        /* ── Edit IP inline ── */
+                        <div className="space-y-2">
+                          <p className="font-semibold text-foreground">Edit peer IP</p>
+                          <div className="flex gap-2">
+                            <input
+                              value={editPeerIp}
+                              onChange={e => setEditPeerIp(e.target.value)}
+                              placeholder="10.0.0.x"
+                              className="flex-1 rounded border border-border bg-background px-2 py-1 font-mono text-xs"
+                              onKeyDown={e => e.key === "Enter" && void handleUpdatePeer(p.publicKey)}
+                            />
+                            <button onClick={() => void handleUpdatePeer(p.publicKey)} disabled={savingPeer}
+                              className="rounded bg-primary px-2 py-1 text-xs font-semibold text-primary-foreground disabled:opacity-50">
+                              {savingPeer ? "…" : "Save"}
+                            </button>
+                            <button onClick={() => setEditingPeer(null)}
+                              className="rounded border border-border px-2 py-1 text-xs hover:bg-muted">
+                              Cancel
+                            </button>
+                          </div>
+                          <div className="font-mono text-muted-foreground truncate">{p.publicKey}</div>
+                        </div>
+                      ) : (
+                        /* ── Normal row ── */
+                        <>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono font-semibold">{peerIp}</span>
+                              {matchedTablet && (
+                                <span className="rounded bg-primary/10 text-primary px-2 py-0.5 text-[11px] font-semibold">
+                                  {matchedTablet.name}
+                                </span>
+                              )}
+                              {!matchedTablet && (
+                                <span className="text-[10px] text-amber-600 italic">— not yet registered in Tablets tab</span>
+                              )}
+                              <span className={cn(
+                                "rounded-full px-2 py-0.5 font-bold",
+                                isRecent ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+                                : isConnected ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+                                : "bg-muted text-muted-foreground"
+                              )}>
+                                {isRecent ? `● Connected` : isConnected ? `⚠ Idle` : "○ No handshake"}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                onClick={() => { setEditingPeer(p.publicKey); setEditPeerIp(peerIp); }}
+                                title="Change VPN IP"
+                                className="p-1 rounded hover:bg-amber-100 hover:text-amber-700 text-muted-foreground border border-border">
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => void handleDeletePeer(p.publicKey, peerIp)}
+                                disabled={isDeleting}
+                                title="Remove this peer from VPN"
+                                className="p-1 rounded hover:bg-rose-100 hover:text-rose-700 text-muted-foreground border border-border disabled:opacity-40">
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 mt-1">
+                            <div className="text-muted-foreground">
+                              <span className="font-semibold text-foreground">Last handshake:</span> {handshakeAge}
+                            </div>
+                            {p.endpoint && (
+                              <div className="text-muted-foreground truncate">
+                                <span className="font-semibold text-foreground">Endpoint:</span> {p.endpoint}
+                              </div>
+                            )}
+                            {(p.transferRx || p.transferTx) && (
+                              <div className="text-muted-foreground col-span-2">
+                                <span className="font-semibold text-foreground">Transfer:</span>{" "}
+                                ↓ {formatBytes(Number(p.transferRx ?? 0))} ↑ {formatBytes(Number(p.transferTx ?? 0))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-muted-foreground font-mono truncate">{p.publicKey.slice(0, 32)}…</div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── Ping from server ── */}
+            <div className="border-t border-border pt-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Ping from Server — test VPN reachability
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Sends ICMP ping from the server to any VPN IP — exactly like running{" "}
+                <code className="font-mono text-xs bg-muted px-1 rounded">ping -c 4 10.0.0.3</code> in the server terminal.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  value={pingTarget}
+                  onChange={e => { setPingTarget(e.target.value); setPingResult(null); }}
+                  placeholder="10.0.0.3 (tablet VPN IP)"
+                  className="flex-1 rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+                  onKeyDown={e => e.key === "Enter" && void handlePingVpn()}
+                />
+                <button
+                  onClick={() => void handlePingVpn()}
+                  disabled={pinging2 || !pingTarget.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-xs font-semibold hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {pinging2
+                    ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Pinging…</>
+                    : <><Activity className="h-3.5 w-3.5" /> Ping</>}
+                </button>
+              </div>
+              {/* Auto-fill from peer list */}
+              {serverStatus && serverStatus.peers.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {serverStatus.peers.map((p, i) => {
+                    const ip = p.allowedIps.split("/")[0];
+                    return (
+                      <button key={i} onClick={() => { setPingTarget(ip); setPingResult(null); }}
+                        className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-mono hover:border-primary hover:text-primary transition">
+                        {ip}
+                      </button>
+                    );
+                  })}
+                  <span className="self-center text-xs text-muted-foreground">← click to ping</span>
+                </div>
+              )}
+              {pingResult && (
+                <div className={cn(
+                  "rounded-xl border p-4 space-y-2",
+                  pingResult.success
+                    ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 dark:border-emerald-800"
+                    : "border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800"
+                )}>
+                  <div className={cn("flex items-center gap-2 font-semibold text-sm",
+                    pingResult.success ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"
+                  )}>
+                    {pingResult.success
+                      ? <><CheckCircle2 className="h-4 w-4" /> {pingTarget} is reachable via VPN{pingResult.rttMs != null ? ` — avg ${pingResult.rttMs}ms` : ""}</>
+                      : <><WifiOff className="h-4 w-4" /> {pingTarget} did not respond — VPN tunnel may not be active</>}
+                  </div>
+                  <pre className="rounded-lg bg-black/10 dark:bg-white/5 p-3 text-xs font-mono text-foreground/80 overflow-x-auto whitespace-pre-wrap max-h-40">
+                    {pingResult.output}
+                  </pre>
+                  {!pingResult.success && (
+                    <ul className="list-disc pl-4 text-xs space-y-0.5 text-muted-foreground">
+                      <li>Make sure the tablet has activated its WireGuard tunnel (wizard Step 4)</li>
+                      <li>Make sure the server added this tablet as a peer (Step 2 above)</li>
+                      <li>Check server firewall: <code className="font-mono">ufw allow 51820/udp</code></li>
+                      <li>Check WireGuard status: <code className="font-mono">wg show</code></li>
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Fix Peer — key mismatch repair */}
+            <div className="border-t border-border pt-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Fix Key Mismatch
+              </p>
+              <p className="text-xs text-muted-foreground">
+                If the tablet wizard shows a key mismatch, paste the correct active key + VPN IP here.
+                The server will replace the wrong registration instantly.
+              </p>
+              <FixPeerPanel serverStatus={serverStatus} onFixed={loadServerStatus} />
+            </div>
+          </div>
+        </section>
+
+        {/* ════════ REGISTER TABLET (paste public key here) ════════ */}
+        <section className="rounded-xl border border-border bg-card">
+          <div className="border-b border-border px-5 py-4 flex items-center gap-3">
+            <div className="grid h-9 w-9 place-items-center rounded-lg bg-amber-100 shrink-0">
+              <Key className="h-5 w-5 text-amber-700" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-sm">Step 2 — Register Tablet on VPN</h2>
+              <p className="text-xs text-muted-foreground">Paste the tablet public key from the wizard</p>
+            </div>
+          </div>
+
+          <div className="p-5 space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+              <p className="font-semibold mb-1">From tablet wizard Step 2 (Keys):</p>
+              <p>Copy the public key shown on the tablet (e.g. <span className="font-mono">gbHhDpRr…=</span>) and paste it below.</p>
+            </div>
+
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold">
+                Tablet Public Key <span className="text-muted-foreground font-normal">(from tablet wizard)</span>
+              </span>
+              <div className="flex gap-2">
+                <input
+                  value={tabletPublicKey}
+                  onChange={e => { setTabletPublicKey(e.target.value); setPeerAdded(false); }}
+                  placeholder="Paste tablet public key here…"
+                  className="flex-1 rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+                />
+                {tabletPublicKey && (
+                  <button onClick={() => { setTabletPublicKey(""); setPeerAdded(false); }}
+                    className="p-2 rounded-md border border-border hover:bg-muted text-muted-foreground">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold">Assign VPN IP</span>
+                <input
+                  value={assignedVpnIp}
+                  onChange={e => { setAssignedVpnIp(e.target.value); setPeerAdded(false); }}
+                  placeholder="10.0.0.3"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold">
+                  Label / Tablet Name <span className="text-destructive">*</span>
+                  <span className="ml-1 font-normal text-muted-foreground">(used as tablet name — required)</span>
+                </span>
+                <input
+                  value={peerComment}
+                  onChange={e => setPeerComment(e.target.value)}
+                  placeholder="e.g. Green Hills Tablet 1 — Main Gate"
+                  required
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs"
+                />
+              </label>
+            </div>
+
+            <button
+              onClick={() => void handleAddPeer()}
+              disabled={addingPeer || !tabletPublicKey.trim() || !assignedVpnIp.trim() || !peerComment.trim()}
+              className={cn(
+                "w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50",
+                peerAdded
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "bg-primary text-primary-foreground hover:bg-primary/90"
+              )}
+            >
+              {addingPeer
+                ? <><RefreshCw className="h-4 w-4 animate-spin" /> Adding peer…</>
+                : peerAdded
+                ? <><CheckCircle2 className="h-4 w-4" /> Peer Added</>
+                : <><Key className="h-4 w-4" /> Add Peer to VPN</>}
+            </button>
+
+            {/* Success — show exactly what to copy into tablet wizard Step 3 */}
+            {peerAdded && (
+              <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 space-y-3">
+                <div className="flex items-center gap-2 text-emerald-800">
+                  <CheckCircle2 className="h-5 w-5 shrink-0" />
+                  <p className="font-semibold text-sm">Tablet registered! Now configure the tablet.</p>
+                </div>
+                <p className="text-xs text-emerald-700">
+                  Go to <strong>tablet wizard Step 3 (Configure)</strong> and enter these values:
+                </p>
+                <div className="space-y-2">
+                  <div className="rounded-lg border border-emerald-200 bg-white p-3 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-emerald-900">Server Public Key</span>
+                      {serverStatus?.serverPublicKey && <CopyButton value={serverStatus.serverPublicKey} label="Copy" />}
+                    </div>
+                    <div className="font-mono text-xs break-all text-emerald-800">
+                      {serverStatus?.serverPublicKey || "— click refresh on Step 1 panel —"}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-emerald-200 bg-white p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-emerald-900">Server Endpoint</span>
+                        {serverStatus?.serverEndpoint && <CopyButton value={serverStatus.serverEndpoint} label="Copy" />}
+                      </div>
+                      <div className="font-mono text-xs text-emerald-800">{serverStatus?.serverEndpoint || "—"}</div>
+                    </div>
+                    <div className="rounded-lg border border-emerald-200 bg-white p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-emerald-900">Your VPN IP</span>
+                        <CopyButton value={addedVpnIp} label="Copy" />
+                      </div>
+                      <div className="font-mono text-xs font-bold text-emerald-800">{addedVpnIp}</div>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-emerald-700 border-t border-emerald-200 pt-2">
+                  After Step 4 (Activate) succeeds, register this tablet in the <strong>Tablets tab</strong> with IP <strong className="font-mono">{addedVpnIp}</strong> port <strong>5000</strong>.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+
+// ── Device Location Assignment Tab ───────────────────────────────────────────
+
+function DeviceLocationsTab({
+  devices,
+  schools,
+  onRefresh,
+}: {
+  devices: PlatformDevice[];
+  schools: SchoolRecord[];
+  onRefresh: () => void;
+}) {
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState<{
+    location_scope: string;
+    dormitory_id: string;
+    location_label: string;
+  }>({ location_scope: "gate", dormitory_id: "", location_label: "" });
+  const [dormitories, setDormitories] = useState<{ id: string; name: string; block_name?: string | null }[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const loadDormitories = async (schoolId: string) => {
+    try {
+      const res = await apiRequest<{ data: { id: string; name: string; block_name?: string | null }[] }>(
+        `/boarding/dormitories?limit=200`,
+        { auth: "school" }
+      );
+      setDormitories(res.data ?? []);
+    } catch { setDormitories([]); }
+  };
+
+  const startEdit = (d: PlatformDevice) => {
+    setEditId(d.id);
+    setForm({
+      location_scope: (d as any).location_scope ?? "gate",
+      dormitory_id: (d as any).dormitory_id ?? "",
+      location_label: (d as any).location_label ?? "",
+    });
+    if (d.school?.id) void loadDormitories(d.school.id);
+  };
+
+  const handleSave = async () => {
+    if (!editId) return;
+    setSaving(true);
+    try {
+      await apiRequest(`/devices/${editId}/assign-location`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          location_scope: form.location_scope,
+          dormitory_id: form.dormitory_id || null,
+          location_label: form.location_label || null,
+        }),
+        auth: "school",
+      });
+      toast.success("Device location updated");
+      setEditId(null);
+      onRefresh();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update device location");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const SCOPES = [
+    { value: "gate", label: "Gate (entry/exit)" },
+    { value: "dormitory", label: "Dormitory" },
+    { value: "dining_hall", label: "Dining Hall" },
+    { value: "classroom", label: "Classroom" },
+    { value: "library", label: "Library" },
+    { value: "other", label: "Other" },
+  ];
+
+  const scopeColor = (s?: string) => {
+    if (s === "dormitory") return "bg-blue-100 text-blue-700";
+    if (s === "dining_hall") return "bg-amber-100 text-amber-700";
+    if (s === "gate") return "bg-emerald-100 text-emerald-700";
+    return "bg-muted text-muted-foreground";
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Cpu className="h-4 w-4 text-primary" />
+          <h2 className="font-display font-bold">Device Location Assignment</h2>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Assign each device to a specific location (gate, dormitory, dining hall). Dormitory-assigned devices
+          enable boarding attendance to be automatically linked to the correct block/hostel.
+        </p>
+      </div>
+
+      {devices.length === 0 ? (
+        <EmptyState message="No devices registered yet. Register devices in the Devices tab." />
+      ) : (
+        <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="divide-y divide-border">
+            {devices.map((d) => (
+              <div key={d.id} className="px-5 py-4">
+                {editId === d.id ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Cpu className="h-4 w-4 text-primary" />
+                      <span className="font-semibold text-sm">{d.name}</span>
+                      <span className="text-xs text-muted-foreground font-mono">{d.device_uid}</span>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <SaSelect
+                        label="Location Type"
+                        value={form.location_scope}
+                        onChange={(e) => setForm({ ...form, location_scope: e.target.value })}
+                      >
+                        {SCOPES.map((s) => (
+                          <option key={s.value} value={s.value}>{s.label}</option>
+                        ))}
+                      </SaSelect>
+                      <SaSelect
+                        label="Dormitory (if applicable)"
+                        value={form.dormitory_id}
+                        onChange={(e) => setForm({ ...form, dormitory_id: e.target.value })}
+                      >
+                        <option value="">— no specific dormitory —</option>
+                        {dormitories.map((dorm) => (
+                          <option key={dorm.id} value={dorm.id}>
+                            {dorm.name}{dorm.block_name ? ` (${dorm.block_name})` : ""}
+                          </option>
+                        ))}
+                      </SaSelect>
+                      <SaInput
+                        label="Location Label"
+                        value={form.location_label}
+                        onChange={(e) => setForm({ ...form, location_label: e.target.value })}
+                        placeholder="e.g. Boys Block A — Main Door"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        <Save className="h-3.5 w-3.5" />
+                        {saving ? "Saving…" : "Save"}
+                      </button>
+                      <button
+                        onClick={() => setEditId(null)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted"
+                      >
+                        <X className="h-3.5 w-3.5" /> Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted shrink-0">
+                      <Cpu className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm">{d.name}</span>
+                        <span className="text-xs text-muted-foreground font-mono">{d.device_uid}</span>
+                        {d.school && (
+                          <span className="text-xs bg-muted rounded px-1.5 py-0.5">{d.school.name}</span>
+                        )}
+                        <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold capitalize", scopeColor((d as any).location_scope))}>
+                          {(d as any).location_scope ?? "unassigned"}
+                        </span>
+                      </div>
+                      {(d as any).location_label && (
+                        <div className="text-xs text-muted-foreground mt-0.5">{(d as any).location_label}</div>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => startEdit(d)}
+                      className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Assign
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

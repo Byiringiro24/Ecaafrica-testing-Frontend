@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { SMSComposeModal } from "@/components/modals/SMSComposeModal";
 import { apiRequest } from "@/lib/api";
+import { studentIdNumber } from "@/lib/studentIdentity";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
@@ -34,6 +35,7 @@ type ApiSession = {
 
 type ApiStudent = {
   id: string;
+  student_school_id?: string | null;
   first_name: string;
   last_name: string;
   student_id_number?: string | null;
@@ -677,7 +679,7 @@ function ByStudent({ onNotify }: { onNotify: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [risk, setRisk] = useState<"all" | "good" | "atrisk" | "critical">("all");
   const filtered = useMemo(() => STUDENTS
-    .filter(s => s.name.toLowerCase().includes(q.toLowerCase()))
+    .filter(s => `${s.name} ${studentIdNumber(s)}`.toLowerCase().includes(q.toLowerCase()))
     .filter(s => {
       if (risk === "all") return true;
       if (risk === "good") return s.attendanceRate > 85;
@@ -691,7 +693,7 @@ function ByStudent({ onNotify }: { onNotify: (id: string) => void }) {
       <div className="p-4 flex flex-wrap gap-2 items-center border-b border-border">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search student…"
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search student by name or Student ID Number…"
             className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
         </div>
         {([
@@ -713,7 +715,7 @@ function ByStudent({ onNotify }: { onNotify: (id: string) => void }) {
             {filtered.slice(0, 25).map((s, i) => (
               <tr key={s.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
                 <td className="px-4 py-3 text-muted-foreground">{i + 1}</td>
-                <td className="px-4 py-3 font-medium">{s.name}</td>
+                <td className="px-4 py-3 font-medium">{s.name}<div className="text-xs font-normal text-muted-foreground">Student ID Number: {studentIdNumber(s)}</div></td>
                 <td className="px-4 py-3">{s.class}</td>
                 <td className="px-4 py-3">{Math.round(s.attendanceRate * 0.6)}</td>
                 <td className="px-4 py-3">{Math.round((100 - s.attendanceRate) * 0.5)}</td>

@@ -31,7 +31,8 @@ interface FormData {
   religion: string;
   bloodGroup: string;
   previousSchool: string;
-  parentName: string;
+  parentFirstName: string;
+  parentLastName: string;
   relationship: string;
   parentPhone: string;
   parentPhone2: string;
@@ -46,22 +47,13 @@ const EMPTY: FormData = {
   academicYearId: "", sectionId: "", sectionName: "", combination: "",
   year: new Date().getFullYear().toString(),
   religion: "", bloodGroup: "", previousSchool: "",
-  parentName: "", relationship: "Father", parentPhone: "",
+  parentFirstName: "", parentLastName: "", relationship: "Father", parentPhone: "",
   parentPhone2: "", email: "", address: "",
   parentOccupation: "", parentNationalId: "",
 };
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const STEPS = ["Student Info", "Parent Info", "Review"];
-
-const splitName = (name: string) => {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-
-  return {
-    firstName: parts[0] ?? "",
-    lastName: parts.slice(1).join(" ") || parts[0] || "",
-  };
-};
 
 export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
   const [step, setStep] = useState(0);
@@ -120,7 +112,8 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
       if (!data.year) e.year = true;
     }
     if (step === 1) {
-      if (!data.parentName.trim()) e.parentName = true;
+      if (!data.parentFirstName.trim()) e.parentFirstName = true;
+      if (!data.parentLastName.trim()) e.parentLastName = true;
       if (parsePhoneValue(data.parentPhone).nationalNumber.length !== 9) e.parentPhone = true;
       if (data.parentPhone2.trim() && parsePhoneValue(data.parentPhone2).nationalNumber.length !== 9) {
         e.parentPhone2 = true;
@@ -157,7 +150,7 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
         body: JSON.stringify({
           first_name: data.firstName.trim(),
           last_name: data.lastName.trim(),
-          student_id_number: data.studentIdNumber || undefined,
+          student_id_number: data.studentIdNumber.trim(),
           date_of_birth: data.dob || undefined,
           gender: data.gender.toLowerCase(),
           student_type: data.residency.toLowerCase(),
@@ -198,15 +191,13 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
       }
 
       // 4. Create parent and link if info provided
-      if (data.parentName.trim() && data.parentPhone.trim()) {
-        const { firstName: pFirst, lastName: pLast } = splitName(data.parentName);
-
+      if (data.parentFirstName.trim() && data.parentLastName.trim() && data.parentPhone.trim()) {
         const parent = await apiRequest<{ id: string }>("/parents", {
           method: "POST",
           auth: "school",
           body: JSON.stringify({
-            first_name: pFirst,
-            last_name: pLast,
+            first_name: data.parentFirstName.trim(),
+            last_name: data.parentLastName.trim(),
             phone: data.parentPhone,
             phone_alt: data.parentPhone2 || undefined,
             email: data.email || undefined,
@@ -283,20 +274,20 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
         <div className="px-6 py-5 overflow-y-auto flex-1">
           {step === 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Student ID Number *" error={errors.studentIdNumber}>
+              <Field label="Student ID Number *" required error={errors.studentIdNumber}>
                 <input value={data.studentIdNumber} onChange={e => set("studentIdNumber", e.target.value)}
-                  className={inputCls(errors.studentIdNumber)} placeholder="e.g. 2024001" />
+                  className={inputCls(errors.studentIdNumber, true)} placeholder="e.g. 2024001" />
               </Field>
-              <Field label="First Name *" error={errors.firstName}>
+              <Field label="First Name *" required error={errors.firstName}>
                 <input value={data.firstName} onChange={e => set("firstName", e.target.value)}
-                  className={inputCls(errors.firstName)} placeholder="e.g. Uwimana" />
+                  className={inputCls(errors.firstName, true)} placeholder="e.g. Uwimana" />
               </Field>
-              <Field label="Last Name *" error={errors.lastName}>
+              <Field label="Last Name *" required error={errors.lastName}>
                 <input value={data.lastName} onChange={e => set("lastName", e.target.value)}
-                  className={inputCls(errors.lastName)} placeholder="e.g. Marie" />
+                  className={inputCls(errors.lastName, true)} placeholder="e.g. Marie" />
               </Field>
-              <Field label="Date of Birth *" error={errors.dob}>
-                <input type="date" value={data.dob} onChange={e => set("dob", e.target.value)} className={inputCls(errors.dob)} />
+              <Field label="Date of Birth *" required error={errors.dob}>
+                <input type="date" value={data.dob} onChange={e => set("dob", e.target.value)} className={inputCls(errors.dob, true)} />
               </Field>
               <Field label="Gender">
                 <div className="flex gap-3 h-10 items-center">
@@ -308,8 +299,8 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
                   ))}
                 </div>
               </Field>
-              <Field label="Boarding / Day scholar *" error={errors.residency}>
-                <select value={data.residency} onChange={e => set("residency", e.target.value)} className={inputCls(errors.residency)}>
+              <Field label="Boarding / Day scholar *" required error={errors.residency}>
+                <select value={data.residency} onChange={e => set("residency", e.target.value)} className={inputCls(errors.residency, true)}>
                   <option value="Day">Day scholar</option>
                   <option value="Boarding">Boarding Student</option>
                 </select>
@@ -331,11 +322,11 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
                   ))}
                 </select>
               </Field>
-              <Field label="Class *" error={errors.sectionId}>
+              <Field label="Class *" required error={errors.sectionId}>
                 <select
                   value={data.sectionId}
                   onChange={e => handleSectionChange(e.target.value)}
-                  className={inputCls(errors.sectionId)}
+                  className={inputCls(errors.sectionId, true)}
                   disabled={refDataLoading}
                 >
                   <option value="">
@@ -356,8 +347,8 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
                   </select>
                 </Field>
               )}
-              <Field label="Year of Enrollment *" error={errors.year}>
-                <select value={data.year} onChange={e => set("year", e.target.value)} className={inputCls(errors.year)}>
+              <Field label="Year of Enrollment *" required error={errors.year}>
+                <select value={data.year} onChange={e => set("year", e.target.value)} className={inputCls(errors.year, true)}>
                   {["2022", "2023", "2024", "2025", "2026"].map(y => <option key={y}>{y}</option>)}
                 </select>
               </Field>
@@ -425,9 +416,13 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
 
           {step === 1 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Parent Full Name *" error={errors.parentName}>
-                <input value={data.parentName} onChange={e => set("parentName", e.target.value)}
-                  className={inputCls(errors.parentName)} placeholder="e.g. Habimana Jean" />
+              <Field label="Parent First Name *" required error={errors.parentFirstName}>
+                <input value={data.parentFirstName} onChange={e => set("parentFirstName", e.target.value)}
+                  className={inputCls(errors.parentFirstName, true)} placeholder="e.g. Jean" />
+              </Field>
+              <Field label="Parent Last Name *" required error={errors.parentLastName}>
+                <input value={data.parentLastName} onChange={e => set("parentLastName", e.target.value)}
+                  className={inputCls(errors.parentLastName, true)} placeholder="e.g. Habimana" />
               </Field>
               <Field label="Relationship">
                 <select value={data.relationship} onChange={e => set("relationship", e.target.value)} className={inputCls()}>
@@ -448,6 +443,7 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
                 onChange={(v) => set("parentPhone", v)}
                 defaultCountryName={schoolCountry ?? undefined}
                 error={!!errors.parentPhone}
+                required
                 className="sm:col-span-2"
               />
               <SaPhoneInput
@@ -487,7 +483,8 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
                 ["Previous School", data.previousSchool || "—"],
               ]} />
               <ReviewBlock title="Parent / Guardian" rows={[
-                ["Name", data.parentName],
+                ["First Name", data.parentFirstName],
+                ["Last Name", data.parentLastName],
                 ["Relationship", data.relationship],
                 ["Occupation", data.parentOccupation || "—"],
                 ["National ID", data.parentNationalId || "—"],
@@ -527,21 +524,21 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
   );
 }
 
-function inputCls(error?: boolean) {
+function inputCls(error?: boolean, required = false) {
   return cn(
     "h-10 w-full rounded-lg border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30",
-    error ? "border-destructive" : "border-border"
+    error ? "border-destructive" : required ? "border-orange-400 bg-orange-50/30" : "border-border"
   );
 }
 
 function Field({
-  label, error, className, children,
+  label, error, required, className, children,
 }: {
-  label: string; error?: boolean; className?: string; children: React.ReactNode;
+  label: string; error?: boolean; required?: boolean; className?: string; children: React.ReactNode;
 }) {
   return (
     <label className={cn("block", className)}>
-      <span className={cn("text-xs font-semibold mb-1.5 block", error ? "text-destructive" : "text-foreground")}>
+      <span className={cn("text-xs font-semibold mb-1.5 block", error ? "text-destructive" : required ? "text-orange-700" : "text-foreground")}>
         {label}
       </span>
       {children}

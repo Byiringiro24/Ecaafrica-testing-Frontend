@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { submitDemoRequest } from "@/lib/demoRequests";
+import countries from "@/lib/countries.json";
 
 type DemoFormState = {
   schoolName: string;
@@ -73,7 +74,7 @@ export default function BookDemo() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [requestId, setRequestId] = useState<string | null>(null);
+  const selectedCountry = countries.find((country) => country.isoAlpha2 === form.country);
 
   const handleChange = <K extends keyof DemoFormState>(field: K, value: DemoFormState[K]) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -125,12 +126,14 @@ export default function BookDemo() {
 
     setSubmitting(true);
     try {
-      const request = await submitDemoRequest({
+      await submitDemoRequest({
         schoolName: form.schoolName.trim(),
-        country: form.country,
+        country: selectedCountry?.name || form.country,
+        countryCode: selectedCountry?.isoAlpha2 || form.country,
+        phoneCountryCode: selectedCountry?.phoneCode || "+250",
         contactName: form.contactName.trim(),
         jobTitle: form.jobTitle.trim(),
-        phone: form.phone.trim(),
+        phone: `${selectedCountry?.phoneCode || ""} ${form.phone.trim()}`.trim(),
         whatsapp: form.whatsapp,
         email: form.email.trim(),
         studentCount: Number(form.studentCount),
@@ -144,7 +147,6 @@ export default function BookDemo() {
         additionalDetails: form.additionalDetails.trim(),
         consent: form.consent,
       });
-      setRequestId(request.id);
       setIsSubmitted(true);
     } catch {
       setErrors({ form: "Unable to submit your request right now. Please try again later." });
@@ -168,9 +170,6 @@ export default function BookDemo() {
                 <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
                   Our team will contact you shortly to schedule a personalized demo that matches your school’s needs.
                 </p>
-                {requestId && (
-                  <p className="mt-3 text-sm text-slate-500">Request ID: <span className="font-semibold text-slate-900">{requestId}</span></p>
-                )}
               </div>
 
               <div className="mt-10 grid gap-3 sm:grid-cols-2">
@@ -216,12 +215,18 @@ export default function BookDemo() {
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#0A3D91] focus:ring-2 focus:ring-[#0A3D91]/10"
                   >
                     <option value="">Select your country</option>
-                    <option value="RW">Rwanda</option>
-                    <option value="KE">Kenya</option>
-                    <option value="UG">Uganda</option>
-                    <option value="TZ">Tanzania</option>
-                    <option value="Other">Other</option>
+                    {countries.map((country) => (
+                      <option key={country.isoAlpha2} value={country.isoAlpha2}>
+                        {country.name} ({country.phoneCode})
+                      </option>
+                    ))}
                   </select>
+                  {selectedCountry && (
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <img src={`data:image/png;base64,${selectedCountry.flag}`} alt="" className="h-4 w-6 rounded-sm object-cover" />
+                      {selectedCountry.name} · {selectedCountry.phoneCode}
+                    </div>
+                  )}
                   {errors.country && <p className="text-xs text-destructive">{errors.country}</p>}
                 </div>
               </div>
@@ -242,7 +247,13 @@ export default function BookDemo() {
               <div className="grid gap-6 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="phone">Mobile Number</Label>
-                  <Input id="phone" type="tel" value={form.phone} onChange={(e) => handleChange("phone", e.target.value)} placeholder="Enter mobile number" />
+                  <div className="flex overflow-hidden rounded-2xl border border-slate-200 focus-within:border-[#0A3D91] focus-within:ring-2 focus-within:ring-[#0A3D91]/10">
+                    <div className="flex min-w-24 items-center gap-2 border-r border-slate-200 bg-slate-50 px-3 text-sm text-slate-700">
+                      {selectedCountry && <img src={`data:image/png;base64,${selectedCountry.flag}`} alt="" className="h-4 w-6 rounded-sm object-cover" />}
+                      <span>{selectedCountry?.phoneCode || "+—"}</span>
+                    </div>
+                    <Input id="phone" type="tel" value={form.phone} onChange={(e) => handleChange("phone", e.target.value)} placeholder="Enter mobile number" className="rounded-none border-0 focus-visible:ring-0" />
+                  </div>
                   {errors.phone && <p className="text-xs text-destructive">{errors.phone}</p>}
                 </div>
                 <div className="space-y-2">

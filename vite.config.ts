@@ -12,6 +12,10 @@ export default defineConfig({
 			"@": path.resolve(__dirname, "src"),
 		},
 	},
+	server: {
+		host: true,   // bind to 0.0.0.0 so LAN devices (tablets) can connect
+		port: 5173,
+	},
 	preview: {
 		allowedHosts: ["ecareafrica.net", "www.ecareafrica.net"],
 	},

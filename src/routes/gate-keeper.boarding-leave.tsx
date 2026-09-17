@@ -1,299 +1,337 @@
+/**
+ * Gate Keeper — Boarding Leave Verification & CONFIRM GATE EXIT
+ *
+ * Per spec:
+ * - Gate keeper can VIEW approved exits with student photo
+ * - Gate keeper can CONFIRM GATE EXIT (creates immutable exit audit record)
+ * - Gate keeper CANNOT approve/reject leave
+ * - Student photo is shown prominently for identity verification
+ */
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Search, ShieldCheck } from "lucide-react";
+import { Search, ShieldCheck, LogOut, CheckCircle, Clock, AlertTriangle, Download } from "lucide-react";
 import { toast } from "sonner";
 import { GateKeeperLayout } from "@/components/layout/GateKeeperLayout";
 import { gateKeeperRouteGuard } from "@/lib/schoolAuth";
 import { StatCard } from "@/components/ui-kit/StatCard";
-import { Avatar } from "@/components/ui-kit/Avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiRequest } from "@/lib/api";
+import { leavesApi, type ApprovedExit } from "@/lib/boardingApi";
+import { exportToExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/gate-keeper/boarding-leave")({
   beforeLoad: ({ location }) => gateKeeperRouteGuard(location),
   component: GateKeeperBoardingLeavePage,
 });
 
-type ParentRecord = {
-  id: string;
-  first_name: string;
-  last_name: string;
-  phone: string;
-};
-
-type StudentRecord = {
-  id: string;
-  first_name: string;
-  last_name: string;
-  student_type?: "boarding" | "day" | null;
-  current_section?: { name?: string | null; full_name?: string | null } | null;
-  primary_parent?: { first_name?: string | null; last_name?: string | null; phone?: string | null } | null;
-};
-
-type LeaveRecord = {
-  id: string;
-  student_id: string;
-  parent_id?: string | null;
-  leave_type: "weekend" | "medical" | "family" | "emergency" | "other";
-  start_date: string;
-  end_date: string;
-  reason?: string | null;
-  status: "pending" | "approved" | "rejected" | "cancelled";
-  approved_at?: string | null;
-  returned_at?: string | null;
-  exited_at?: string | null;
-};
-
-type LeaveRow = {
-  id: string;
-  studentName: string;
-  className: string;
-  leaveType: string;
-  startDate: string;
-  endDate: string;
-  reason: string;
-  contactPerson: string;
-  parentPhone: string;
-  approvedAt: string;
-  returnedAt: string;
-  isCurrentlyOut: boolean;
-};
-
-const LEAVE_TYPE_LABELS: Record<LeaveRecord["leave_type"], string> = {
-  weekend: "Weekend Leave",
-  medical: "Medical Leave",
-  emergency: "Family Emergency",
-  family: "Family Leave",
-  other: "Other",
-};
-
-const buildName = (first?: string | null, last?: string | null) =>
-  [first, last].filter(Boolean).join(" ").trim();
-
-const formatDate = (value?: string | null) => {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toISOString().slice(0, 10);
+const STATE_BADGE: Record<string, string> = {
+  awaiting_physical_exit: "bg-amber-100 text-amber-700",
+  outside_school:         "bg-orange-100 text-orange-700",
+  returned:               "bg-emerald-100 text-emerald-700",
 };
 
 function GateKeeperBoardingLeavePage() {
-  const [requests, setRequests] = useState<LeaveRecord[]>([]);
-  const [students, setStudents] = useState<StudentRecord[]>([]);
-  const [parents, setParents] = useState<ParentRecord[]>([]);
+  const [exits, setExits] = useState<ApprovedExit[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<"all" | "currently-out">("currently-out");
+  const [view, setView] = useState<"pending" | "all">("pending");
+  const [confirming, setConfirming] = useState<ApprovedExit | null>(null);
+  const [notes, setNotes] = useState("");
+  const [acting, setActing] = useState(false);
 
   const today = new Date().toISOString().slice(0, 10);
 
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      try {
-        const [leaveData, studentData, parentData] = await Promise.all([
-          apiRequest<LeaveRecord[]>("/boarding/student-leaves?limit=1000", { auth: "school" }),
-          apiRequest<StudentRecord[]>("/students?limit=2000", { auth: "school" }),
-          apiRequest<ParentRecord[]>("/parents?limit=2000", { auth: "school" }),
-        ]);
+  const load = async () => {
+    setLoading(true);
+    try {
+      const data = await leavesApi.getApprovedExits();
+      setExits(Array.isArray(data) ? data : []);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to load approved exits");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        setRequests(Array.isArray(leaveData) ? leaveData : []);
-        setStudents(Array.isArray(studentData) ? studentData : []);
-        setParents(Array.isArray(parentData) ? parentData : []);
-      } catch (error: any) {
-        toast.error(error?.message ?? "Failed to load boarding leave records");
-      } finally {
-        setLoading(false);
-      }
-    };
+  useEffect(() => { void load(); }, []);
 
-    void loadData();
-  }, []);
+  const filtered = useMemo(() => {
+    let list = exits;
+    if (view === "pending") list = list.filter(e => e.leave_state === "awaiting_physical_exit");
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      list = list.filter(e =>
+        e.student.full_name.toLowerCase().includes(q) ||
+        (e.student.student_id_number ?? "").toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [exits, view, query]);
 
-  const studentById = useMemo(() => new Map(students.map((s) => [s.id, s])), [students]);
-  const parentById = useMemo(() => new Map(parents.map((p) => [p.id, p])), [parents]);
-  const parentByPhone = useMemo(() => new Map(parents.map((p) => [p.phone, p])), [parents]);
+  const stats = {
+    awaitingExit: exits.filter(e => e.leave_state === "awaiting_physical_exit").length,
+    outside:      exits.filter(e => e.leave_state === "outside_school").length,
+    overdue:      exits.filter(e => e.leave_state === "outside_school" && e.end_date < today).length,
+  };
 
-  const rows = useMemo<LeaveRow[]>(() => {
-    return requests
-      .filter((request) => request.status === "approved")
-      .map((request) => {
-        const student = studentById.get(request.student_id);
-        const studentName = buildName(student?.first_name, student?.last_name) || "Unknown";
-        const className =
-          student?.current_section?.name ?? student?.current_section?.full_name ?? "—";
-        const parentFromLeave = request.parent_id ? parentById.get(request.parent_id) : undefined;
-        const parentFromStudent = student?.primary_parent?.phone
-          ? parentByPhone.get(student.primary_parent.phone)
-          : undefined;
-        const parent = parentFromLeave ?? parentFromStudent;
-        const contactPerson =
-          buildName(parent?.first_name, parent?.last_name) ||
-          buildName(student?.primary_parent?.first_name, student?.primary_parent?.last_name) ||
-          "—";
-        const parentPhone = parent?.phone ?? student?.primary_parent?.phone ?? "—";
-        const startDate = formatDate(request.start_date);
-        const endDate = formatDate(request.end_date);
-        const isCurrentlyOut =
-          !request.returned_at && startDate <= today && endDate >= today;
+  const handleExport = async () => {
+    if (filtered.length === 0) { toast.info("No records to export"); return; }
+    try {
+      await exportToExcel(
+        `gate-leave-${today}.xlsx`, "Boarding Leave",
+        [
+          { header: "Student Name", key: "name", width: 26 },
+          { header: "Student ID", key: "sid", width: 16 },
+          { header: "Leave Start", key: "start", width: 14 },
+          { header: "Due Back", key: "end", width: 14 },
+          { header: "State", key: "state", width: 20 },
+          { header: "Overdue", key: "overdue", width: 10 },
+        ],
+        filtered.map(e => ({
+          name: e.student.full_name,
+          sid: e.student.student_id_number ?? "—",
+          start: e.start_date,
+          end: e.end_date,
+          state: e.leave_state,
+          overdue: (e.leave_state === "outside_school" && e.end_date < today) ? "Yes" : "No",
+        })),
+        `Gate Leave Report — ${today}`
+      );
+      toast.success("Exported");
+    } catch (err: any) { toast.error(err?.message ?? "Export failed"); }
+  };
 
-        return {
-          id: request.id,
-          studentName,
-          className,
-          leaveType: LEAVE_TYPE_LABELS[request.leave_type] ?? "Other",
-          startDate,
-          endDate,
-          reason: request.reason ?? "—",
-          contactPerson,
-          parentPhone,
-          approvedAt: formatDate(request.approved_at),
-          returnedAt: formatDate(request.returned_at),
-          isCurrentlyOut,
-        };
-      })
-      .filter((row) => {
-        if (view === "currently-out" && !row.isCurrentlyOut) return false;
-        if (!query.trim()) return true;
-        const needle = query.toLowerCase();
-        return (
-          row.studentName.toLowerCase().includes(needle) ||
-          row.className.toLowerCase().includes(needle) ||
-          row.contactPerson.toLowerCase().includes(needle)
-        );
-      })
-      .sort((a, b) => a.startDate.localeCompare(b.startDate));
-  }, [requests, studentById, parentById, parentByPhone, query, view, today]);
-
-  const currentlyOut = rows.filter((row) => row.isCurrentlyOut).length;
-  const totalApproved = requests.filter((r) => r.status === "approved").length;
+  const handleConfirmExit = async () => {
+    if (!confirming) return;
+    setActing(true);
+    try {
+      await leavesApi.confirmExit(confirming.leave_id, notes || undefined);
+      toast.success(`Gate exit confirmed for ${confirming.student.full_name}`);
+      setConfirming(null);
+      setNotes("");
+      await load();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to confirm exit");
+    } finally {
+      setActing(false);
+    }
+  };
 
   return (
-    <GateKeeperLayout
-      title="Boarding Leave Verification"
-      subtitle="Read-only list of students with approved leave permissions"
-    >
-      <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 mb-5 flex items-start gap-2">
+    <GateKeeperLayout title="Boarding Leave — Gate Verification" subtitle="Verify student identity and confirm physical exit">
+      {/* Security info banner */}
+      <div className="mb-5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800 text-sm flex items-start gap-2">
         <ShieldCheck className="h-4 w-4 shrink-0 mt-0.5" />
         <span>
-          This view is read-only. Verify student identity against approved leave records before
-          allowing exit from boarding premises.
+          <strong>Security Protocol:</strong> Before allowing a student to exit, verify their physical appearance against the system photo.
+          Only students with <strong>Awaiting Exit</strong> status have approved leave. You cannot approve or create leave — contact the Director of Discipline.
         </span>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
         {loading ? (
-          <>
-            <Skeleton className="h-28" />
-            <Skeleton className="h-28" />
-            <Skeleton className="h-28" />
-          </>
+          Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-28" />)
         ) : (
           <>
-            <StatCard label="Approved Leaves" value={totalApproved} tone="primary" />
-            <StatCard label="Currently Out" value={currentlyOut} tone="warning" />
-            <StatCard label="Showing" value={rows.length} tone="secondary" />
+            <StatCard label="Awaiting Exit"    value={stats.awaitingExit} tone="warning"     icon={<Clock className="h-5 w-5" />} />
+            <StatCard label="Currently Outside" value={stats.outside}     tone="primary"     icon={<LogOut className="h-5 w-5" />} />
+            <StatCard label="Overdue Returns"   value={stats.overdue}     tone="destructive" icon={<AlertTriangle className="h-5 w-5" />} />
           </>
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2 items-center mb-4">
-        <div className="relative flex-1 min-w-60">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by student, class or contact..."
-            className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm"
-          />
+      {/* Overdue alert */}
+      {!loading && stats.overdue > 0 && (
+        <div className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-destructive text-sm font-semibold flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {stats.overdue} student{stats.overdue !== 1 ? "s" : ""} overdue — expected return date has passed. Notify the Director of Discipline.
         </div>
-        <select
-          value={view}
-          onChange={(e) => setView(e.target.value as typeof view)}
-          className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
-        >
-          <option value="currently-out">Currently Out</option>
-          <option value="all">All Approved</option>
-        </select>
+      )}
+
+      {/* Filter toolbar */}
+      <div className="flex flex-wrap gap-2 items-center mb-4">
+        <div className="relative flex-1 min-w-48">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input value={query} onChange={e => setQuery(e.target.value)}
+            placeholder="Search by name or student ID…"
+            className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
+        </div>
+        <div className="flex gap-1 rounded-lg border border-border p-1 bg-background">
+          {(["pending", "all"] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold capitalize transition ${view === v ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}>
+              {v === "pending" ? "Awaiting Exit" : "All Approved"}
+            </button>
+          ))}
+        </div>
+        <button onClick={handleExport}
+          className="h-10 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-sm font-semibold hover:bg-muted">
+          <Download className="h-4 w-4" /> Export
+        </button>
       </div>
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
-              <tr>
-                {[
-                  "Student",
-                  "Class",
-                  "Leave Type",
-                  "Departure",
-                  "Return",
-                  "Contact",
-                  "Status",
-                ].map((header) => (
-                  <th key={header} className="text-left px-4 py-3 whitespace-nowrap">
-                    {header}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    Loading approved leave records…
-                  </td>
-                </tr>
-              ) : rows.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                    No approved leave records match your filters.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => (
-                  <tr key={row.id} className="border-t border-border hover:bg-muted/30">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar name={row.studentName} size="sm" />
-                        <div>
-                          <div className="font-semibold">{row.studentName}</div>
-                          <div className="text-xs text-muted-foreground max-w-48 truncate">
-                            {row.reason}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">{row.className}</td>
-                    <td className="px-4 py-3">{row.leaveType}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{row.startDate}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{row.endDate}</td>
-                    <td className="px-4 py-3">
-                      <div>{row.contactPerson}</div>
-                      <div className="text-xs text-muted-foreground">{row.parentPhone}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {row.isCurrentlyOut ? (
-                        <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
-                          Out on Leave
-                        </span>
-                      ) : row.returnedAt !== "—" ? (
-                        <span className="inline-flex rounded-full bg-success/15 px-2.5 py-0.5 text-xs font-semibold text-success">
-                          Returned
-                        </span>
-                      ) : (
-                        <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
-                          Approved
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      {/* Cards grid — for awaiting exit, show large cards with photo */}
+      {loading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-64" />)}
         </div>
-      </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border p-12 text-center text-sm text-muted-foreground">
+          {view === "pending" ? "No students awaiting gate exit right now." : "No approved exits found."}
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filtered.map(exit => {
+            const isAwaiting = exit.leave_state === "awaiting_physical_exit";
+            const isOutside  = exit.leave_state === "outside_school";
+            const isOverdue  = isOutside && exit.end_date < today;
+            return (
+              <div key={exit.leave_id}
+                className={`rounded-xl border bg-card overflow-hidden transition ${
+                  isAwaiting ? "border-amber-300 shadow-md" :
+                  isOverdue  ? "border-destructive/40" : "border-border"
+                }`}>
+                {/* Student photo section */}
+                <div className="relative bg-muted/40 p-4 flex items-center gap-4">
+                  {exit.student.photo_url ? (
+                    <img src={exit.student.photo_url} alt={exit.student.full_name}
+                      className="h-20 w-20 rounded-xl object-cover border-2 border-background shadow-md shrink-0" />
+                  ) : (
+                    <div className="h-20 w-20 rounded-xl bg-muted flex items-center justify-center text-2xl font-bold shrink-0">
+                      {(exit.student.first_name?.[0] ?? "") + (exit.student.last_name?.[0] ?? "")}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="font-display font-bold text-base leading-tight truncate">{exit.student.full_name}</div>
+                    <div className="text-xs text-muted-foreground font-mono mt-0.5">{exit.student.student_id_number ?? "—"}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5 capitalize">{exit.student.gender ?? ""}</div>
+                    {exit.student.dormitory && (
+                      <div className="text-xs text-muted-foreground mt-0.5">{exit.student.dormitory.name}</div>
+                    )}
+                  </div>
+                  {/* State badge top-right */}
+                  <span className={`absolute top-2 right-2 rounded-full px-2 py-0.5 text-[10px] font-bold ${STATE_BADGE[exit.leave_state] ?? "bg-muted text-muted-foreground"}`}>
+                    {exit.leave_state.replace(/_/g, " ")}
+                  </span>
+                </div>
+
+                {/* Leave details */}
+                <div className="px-4 py-3 space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Leave Type:</span>
+                    <span className="font-medium capitalize">{exit.leave_type?.replace(/_/g, " ")}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Approved:</span>
+                    <span>{exit.approved_at?.slice(0, 16).replace("T", " ") ?? "—"}</span>
+                  </div>
+                  {exit.destination && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Destination:</span>
+                      <span className="truncate max-w-[140px] text-right">{exit.destination}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Return by:</span>
+                    <span className={isOverdue ? "text-destructive font-bold" : "font-medium"}>
+                      {exit.end_date} {isOverdue && "— OVERDUE"}
+                    </span>
+                  </div>
+                  {exit.exit_record && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Exited at:</span>
+                      <span className="text-emerald-600 font-medium">{exit.exit_record.exit_at.slice(11, 16)}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Action */}
+                <div className="px-4 pb-4">
+                  {isAwaiting ? (
+                    <button onClick={() => { setConfirming(exit); setNotes(""); }}
+                      className="w-full rounded-lg bg-emerald-600 text-white py-3 font-bold text-sm hover:bg-emerald-700 flex items-center justify-center gap-2 shadow-sm">
+                      <LogOut className="h-4 w-4" />
+                      CONFIRM GATE EXIT
+                    </button>
+                  ) : isOutside ? (
+                    <div className={`w-full rounded-lg py-2.5 text-center text-sm font-semibold ${isOverdue ? "bg-destructive/10 text-destructive" : "bg-orange-50 text-orange-700"}`}>
+                      {isOverdue ? "⚠ OVERDUE — Notify DOD" : "Student Outside School"}
+                    </div>
+                  ) : (
+                    <div className="w-full rounded-lg bg-emerald-50 text-emerald-700 py-2.5 text-center text-sm font-semibold flex items-center justify-center gap-1.5">
+                      <CheckCircle className="h-4 w-4" /> Exit Confirmed
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* CONFIRM GATE EXIT modal */}
+      {confirming && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-card shadow-2xl overflow-hidden">
+            {/* Photo header */}
+            <div className="bg-muted/50 p-5 flex items-center gap-4 border-b border-border">
+              {confirming.student.photo_url ? (
+                <img src={confirming.student.photo_url} alt="" className="h-16 w-16 rounded-xl object-cover border-2 border-white shadow shrink-0" />
+              ) : (
+                <div className="h-16 w-16 rounded-xl bg-muted flex items-center justify-center text-xl font-bold shrink-0">
+                  {(confirming.student.first_name?.[0] ?? "") + (confirming.student.last_name?.[0] ?? "")}
+                </div>
+              )}
+              <div>
+                <div className="font-display font-bold">{confirming.student.full_name}</div>
+                <div className="text-xs text-muted-foreground font-mono">{confirming.student.student_id_number}</div>
+                <div className="text-xs text-muted-foreground">{confirming.student.dormitory?.name}</div>
+              </div>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Identity check instruction */}
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-800 text-xs">
+                <strong>Identity Check:</strong> Visually compare the student in front of you against the photo above before confirming exit.
+              </div>
+
+              <div className="text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Leave Type:</span>
+                  <span className="font-medium capitalize">{confirming.leave_type?.replace(/_/g, " ")}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Expected Return:</span>
+                  <span className="font-medium">{confirming.end_date}</span>
+                </div>
+                {confirming.destination && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Destination:</span>
+                    <span>{confirming.destination}</span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">Notes (optional)</label>
+                <input value={notes} onChange={e => setNotes(e.target.value)}
+                  placeholder="e.g. Parent present at gate"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+              </div>
+
+              <button onClick={handleConfirmExit} disabled={acting}
+                className="w-full rounded-lg bg-emerald-600 text-white py-3 font-bold text-sm hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                <LogOut className="h-4 w-4" />
+                {acting ? "Confirming…" : "CONFIRM GATE EXIT"}
+              </button>
+              <button onClick={() => setConfirming(null)} disabled={acting}
+                className="w-full rounded-lg border border-border py-2.5 text-sm font-semibold hover:bg-muted">
+                Cancel — Do Not Exit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </GateKeeperLayout>
   );
 }

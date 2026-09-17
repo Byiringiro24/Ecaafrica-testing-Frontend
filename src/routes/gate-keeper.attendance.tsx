@@ -12,7 +12,7 @@ function GateKeeperAttendanceLayout() {
   return (
     <GateKeeperLayout
       title="Gate Attendance"
-      subtitle="Device logs, manual attendance, and history"
+      subtitle="View attendance recorded by devices"
     >
       <GateKeeperAttendanceNav />
       <Outlet />

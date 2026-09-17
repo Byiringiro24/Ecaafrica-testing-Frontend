@@ -110,7 +110,7 @@ function ExamsSchedulePage() {
                   </td>
                   <td className="p-3">
                     <span className="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-100 text-indigo-800">
-                      {examTypeLabel(exam.type)}
+                      {examTypeLabel(exam.type, exam.exam_type?.name)}
                     </span>
                   </td>
                   <td className="p-3">{exam.max_marks}</td>

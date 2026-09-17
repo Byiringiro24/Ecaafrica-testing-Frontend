@@ -48,6 +48,8 @@ import {
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest } from "@/lib/api";
+import { localDateInputValue } from "@/lib/dateInput";
+import { studentSearchText, studentIdNumber } from "@/lib/studentIdentity";
 import { DEFAULT_FK623_CONFIG } from "@/lib/tabletApi";
 import { cn } from "@/lib/utils";
 
@@ -223,7 +225,7 @@ const unwrapList = <T,>(payload: unknown): T[] => {
 };
 
 const studentName = (student: Student) =>
-  `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim() || student.student_id_number || student.id;
+  `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim() || studentIdNumber(student);
 
 const buildDeviceUserId = (student: Student) => {
   if (student.device_user_id) return student.device_user_id;
@@ -265,7 +267,7 @@ function ServerCommandCenter() {
     scan_method: "fingerprint",
     scanned_at: "",
   });
-  const [absentDate, setAbsentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [absentDate, setAbsentDate] = useState(localDateInputValue());
   const refreshAllInFlight = useRef(false);
   const statusPollInFlight = useRef(false);
 
@@ -280,8 +282,8 @@ function ServerCommandCenter() {
   const [dbLogsLoading, setDbLogsLoading] = useState(false);
   const [dbLogsMeta, setDbLogsMeta] = useState({ total: 0, page: 1, limit: 20, totalPages: 1 });
   const [dbLogsPage, setDbLogsPage] = useState(1);
-  const [dbStartDate, setDbStartDate] = useState(new Date().toISOString().slice(0, 10));
-  const [dbEndDate, setDbEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dbStartDate, setDbStartDate] = useState(localDateInputValue());
+  const [dbEndDate, setDbEndDate] = useState(localDateInputValue());
   const [dbStartTime, setDbStartTime] = useState("00:00");
   const [dbEndTime, setDbEndTime] = useState("23:59");
   const [dbSearch, setDbSearch] = useState("");
@@ -317,7 +319,7 @@ function ServerCommandCenter() {
     const normalizedQuery = query.trim().toLowerCase();
     return students.filter((student) => {
       const inClass = !classId || student.current_section?.class_id === classId;
-      const searchable = `${studentName(student)} ${student.student_id_number ?? ""} ${student.current_section?.full_name ?? ""}`.toLowerCase();
+      const searchable = `${studentSearchText(student)} ${student.current_section?.full_name ?? ""}`.toLowerCase();
       return inClass && (!normalizedQuery || searchable.includes(normalizedQuery));
     });
   }, [classId, query, students]);
@@ -371,7 +373,7 @@ function ServerCommandCenter() {
       setSelectedTabletId((current) => current || nextTablets[0]?.id || "");
 
       const currentDevice = nextDevices.find((device) => device.id === selectedDeviceId) ?? nextDevices[0];
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDateInputValue();
       if (currentDevice) {
         const [logsResult, sessionsResult] = await Promise.allSettled([
           apiRequest<AttendanceLog[]>(`/devices/${currentDevice.id}/logs?limit=500`, { auth: "school" }),
@@ -1273,7 +1275,7 @@ function ServerCommandCenter() {
                         </td>
                         <td>
                           <div className="font-semibold text-slate-900">{studentName(student)}</div>
-                          <div className="text-xs text-slate-500">{student.student_id_number ?? student.id}</div>
+                          <div className="text-xs text-slate-500">Student ID Number: {studentIdNumber(student)}</div>
                         </td>
                         <td>{student.current_section?.full_name ?? "Unassigned"}</td>
                         <td className="font-mono">{buildDeviceUserId(student)}</td>
@@ -1370,6 +1372,18 @@ function ServerCommandCenter() {
                   ))}
                 </div>
               )}
+            </Panel>
+
+            {/* ── Device Location Assignment ── */}
+            <Panel title="Device Location Assignment" icon={Settings}
+              action={<span className="text-xs text-muted-foreground">Assign each device to its physical location</span>}
+            >
+              <p className="mb-3 text-xs text-muted-foreground">
+                Assign devices to gates, hostels, dormitories, or dining halls. You can have multiple devices
+                per location (e.g. Main Gate + Side Gate, Boys Hostel + Girls Hostel). Dormitory-assigned
+                devices automatically record boarding attendance for that dorm.
+              </p>
+              <DeviceLocationAssignment devices={devices} />
             </Panel>
 
             {/* Live device users — read from the physical device */}
@@ -1635,7 +1649,7 @@ function ServerCommandCenter() {
                     <form onSubmit={recordManualAttendanceEvent} className="grid gap-3">
                       <SelectField label="Student" value={manualEventForm.student_id} onChange={(value) => setManualEventForm({ ...manualEventForm, student_id: value })}>
                         <option value="">No student selected</option>
-                        {students.map((student) => <option key={student.id} value={student.id}>{studentName(student)}</option>)}
+                        {students.map((student) => <option key={student.id} value={student.id}>{studentName(student)} · {studentIdNumber(student)}</option>)}
                       </SelectField>
                       <SelectField label="Session" value={manualEventForm.session_name} onChange={(value) => setManualEventForm({ ...manualEventForm, session_name: value })}>
                         <option value="">Default session</option>
@@ -1915,6 +1929,178 @@ function SelectField({
   );
 }
 
+// ── Device Location Assignment Component ─────────────────────────────────────
+// School admin assigns each device to a named location.
+// Multiple devices can share a type but need different labels:
+//   e.g. two gates: "Main Gate" and "Side Gate"
+//   e.g. two hostels: "Boys Hostel" and "Girls Hostel"
+
+function DeviceLocationAssignment({ devices }: { devices: Device[] }) {
+  const [editId, setEditId]       = useState<string | null>(null);
+  const [saving, setSaving]       = useState(false);
+  const [dormitories, setDormitories] = useState<{ id: string; name: string; block_name?: string | null }[]>([]);
+  const [form, setForm]           = useState({ scope: "gate", label: "", dormitory_id: "" });
+
+  const SCOPES = [
+    { value: "gate",        label: "Gate (entry/exit)" },
+    { value: "dormitory",   label: "Dormitory / Hostel" },
+    { value: "dining_hall", label: "Dining Hall" },
+    { value: "classroom",   label: "Classroom" },
+    { value: "library",     label: "Library" },
+    { value: "other",       label: "Other" },
+  ];
+
+  const scopeBadge = (scope?: string) => {
+    if (scope === "gate")        return "bg-emerald-100 text-emerald-700";
+    if (scope === "dormitory")   return "bg-blue-100 text-blue-700";
+    if (scope === "dining_hall") return "bg-amber-100 text-amber-700";
+    if (scope === "classroom")   return "bg-violet-100 text-violet-700";
+    return "bg-muted text-muted-foreground";
+  };
+
+  const loadDorms = async () => {
+    try {
+      const res = await apiRequest<{ data: { id: string; name: string; block_name?: string | null }[] }>(
+        "/boarding/dormitories?limit=200", { auth: "school" }
+      );
+      setDormitories(res.data ?? []);
+    } catch { setDormitories([]); }
+  };
+
+  const startEdit = (d: Device) => {
+    setEditId(d.id);
+    setForm({
+      scope: (d as any).location_scope ?? "gate",
+      label: (d as any).location_label ?? "",
+      dormitory_id: (d as any).dormitory_id ?? "",
+    });
+    void loadDorms();
+  };
+
+  const handleSave = async () => {
+    if (!editId) return;
+    setSaving(true);
+    try {
+      await apiRequest(`/devices/${editId}/assign-location`, {
+        method: "PATCH", auth: "school",
+        body: JSON.stringify({
+          location_scope: form.scope,
+          location_label: form.label || null,
+          dormitory_id:   form.dormitory_id || null,
+        }),
+      });
+      toast.success("Location saved");
+      setEditId(null);
+      // Refresh devices list
+      const res = await apiRequest<{ data: Device[] }>("/devices?limit=200", { auth: "school" });
+      // Note: parent state update not easily accessible here — user can refresh page
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save location");
+    } finally { setSaving(false); }
+  };
+
+  if (devices.length === 0) {
+    return <p className="text-xs text-muted-foreground">No devices assigned to your school yet.</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {devices.map((d) => {
+        const scope = (d as any).location_scope;
+        const label = (d as any).location_label;
+        const isEditing = editId === d.id;
+
+        return (
+          <div key={d.id} className="rounded-xl border border-border bg-background p-3">
+            {isEditing ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Cpu className="h-4 w-4 text-primary shrink-0" />
+                  <span className="font-semibold text-sm">{d.name}</span>
+                </div>
+                {/* Location type */}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold">Location Type</label>
+                  <select value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value })}
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                    {SCOPES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                </div>
+                {/* Location name — required, must be specific (e.g. "Main Gate", "Boys Hostel") */}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold">
+                    Location Name <span className="text-muted-foreground font-normal">(be specific — e.g. "Main Gate", "Boys Hostel Block A")</span>
+                  </label>
+                  <input value={form.label} onChange={e => setForm({ ...form, label: e.target.value })}
+                    placeholder={
+                      form.scope === "gate"        ? "e.g. Main Gate, Side Gate, Emergency Exit" :
+                      form.scope === "dormitory"   ? "e.g. Boys Hostel Block A, Girls Hostel" :
+                      form.scope === "dining_hall" ? "e.g. Main Dining Hall, Staff Canteen" :
+                      "Enter location name"
+                    }
+                    className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+                  />
+                </div>
+                {/* Dormitory picker — only for dormitory scope */}
+                {form.scope === "dormitory" && (
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold">Link to Dormitory (for automatic boarding attendance)</label>
+                    <select value={form.dormitory_id} onChange={e => setForm({ ...form, dormitory_id: e.target.value })}
+                      className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                      <option value="">— select dormitory —</option>
+                      {dormitories.map(dorm => (
+                        <option key={dorm.id} value={dorm.id}>
+                          {dorm.name}{dorm.block_name ? ` (${dorm.block_name})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {dormitories.length === 0 && (
+                      <p className="mt-1 text-xs text-amber-600">No dormitories found. Create them in Boarding → Dormitories first.</p>
+                    )}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button onClick={handleSave} disabled={saving}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {saving ? "Saving…" : "Save Location"}
+                  </button>
+                  <button onClick={() => setEditId(null)}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted shrink-0">
+                  <Cpu className="h-3.5 w-3.5 text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-sm">{d.name}</span>
+                    <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold capitalize", scopeBadge(scope))}>
+                      {scope ?? "unassigned"}
+                    </span>
+                    {label && <span className="text-xs text-muted-foreground">— {label}</span>}
+                  </div>
+                  {!(scope) && (
+                    <p className="text-xs text-amber-600 mt-0.5">Not assigned to a location yet — click Assign to set it up</p>
+                  )}
+                </div>
+                <button onClick={() => startEdit(d)}
+                  className="shrink-0 inline-flex items-center gap-1 rounded-xl border border-border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted">
+                  <Settings className="h-3.5 w-3.5" /> {scope ? "Edit" : "Assign"}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function LogTable({ logs }: { logs: AttendanceLog[] }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-border/70">
@@ -1935,7 +2121,7 @@ function LogTable({ logs }: { logs: AttendanceLog[] }) {
             <tr key={log.id}>
               <td>
                 <div className="font-semibold text-foreground">{`${log.first_name ?? ""} ${log.last_name ?? ""}`.trim() || log.student_id_number || log.student_id || "Unknown"}</div>
-                <div className="text-xs text-muted-foreground">{log.student_id_number ?? log.student_id ?? "-"}</div>
+                <div className="text-xs text-muted-foreground">Student ID Number: {log.student_id_number ?? log.student_id ?? "-"}</div>
               </td>
               <td>{log.device_id ?? "-"}</td>
               <td>{log.scan_method ?? "-"}</td>

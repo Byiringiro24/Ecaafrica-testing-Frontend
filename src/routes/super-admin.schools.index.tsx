@@ -22,6 +22,7 @@ type PlatformPlan = {
   student_limit?: number | null;
   staff_limit?: number | null;
   sms_bundle?: number | null;
+  features?: Record<string, unknown> | null;
   is_active?: boolean | null;
 };
 
@@ -76,6 +77,7 @@ type SchoolFormState = {
   school_phone: string;
   school_email: string;
   subscription_plan_id: string;
+  subscription_billing_cycle: string;
   status: string;
   timezone: string;
   currency: string;
@@ -126,6 +128,7 @@ const EMPTY_FORM: SchoolFormState = {
   school_phone: "",
   school_email: "",
   subscription_plan_id: "",
+  subscription_billing_cycle: "monthly",
   status: "trial",
   timezone: "Africa/Kigali",
   currency: "RWF",
@@ -254,6 +257,7 @@ function SchoolsIndexPage() {
       school_phone: form.school_phone.trim() || undefined,
       school_email: form.school_email.trim() || undefined,
       subscription_plan_id: form.subscription_plan_id || undefined,
+      subscription_billing_cycle: form.subscription_billing_cycle || undefined,
       status: form.status || undefined,
       timezone: form.timezone.trim() || undefined,
       currency: form.currency.trim() || undefined,
@@ -382,6 +386,7 @@ function SchoolsIndexPage() {
                         "Students",
                         "Staff",
                         "Status",
+                        "Registered",
                         "",
                       ].map((h) => (
                         <th key={h} className="text-left px-4 py-3">{h}</th>
@@ -410,6 +415,11 @@ function SchoolsIndexPage() {
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadgeClass(s.status ?? "")}`}>
                             {s.status ?? "—"}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                          {s.created_at
+                            ? new Date(s.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+                            : "—"}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <Link
@@ -505,11 +515,29 @@ function SchoolsIndexPage() {
             required
             error={Boolean(formErrors.school_phone)}
           />
-          <SaSelect label="Subscription Plan" value={form.subscription_plan_id} onChange={(e) => setForm({ ...form, subscription_plan_id: e.target.value })}>
+          <SaSelect label="Subscription Plan" value={form.subscription_plan_id} onChange={(e) => {
+            const selected = plans.find((plan) => plan.id === e.target.value);
+            const featureFlags = (selected?.features ?? {}) as Record<string, unknown>;
+            setForm({
+              ...form,
+              subscription_plan_id: e.target.value,
+              has_boarding: Boolean(featureFlags.boarding),
+              has_gate: Boolean(featureFlags.gate),
+              has_exam_system: Boolean(featureFlags.exams || featureFlags.examinations),
+              has_visitor_mgmt: Boolean(featureFlags.visitor_management || featureFlags.visitors),
+              has_salary_mgmt: Boolean(featureFlags.payroll || featureFlags.salary),
+              has_bulk_sms: Boolean(featureFlags.notifications || featureFlags.sms),
+              has_parent_app: Boolean(featureFlags.parent_app || featureFlags.notifications),
+            });
+          }}>
             <option value="">No plan</option>
             {plans.map((plan) => (
               <option key={plan.id} value={plan.id}>{plan.name}</option>
             ))}
+          </SaSelect>
+          <SaSelect label="Billing Cycle" value={form.subscription_billing_cycle} onChange={(e) => setForm({ ...form, subscription_billing_cycle: e.target.value })}>
+            <option value="monthly">Monthly</option>
+            <option value="annual">Annual (save 20%)</option>
           </SaSelect>
           <SaInput label="Timezone" value={form.timezone} onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
           <SaInput label="Currency" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
@@ -568,7 +596,7 @@ function SchoolsSkeleton() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
               <tr>
-                {Array.from({ length: 8 }).map((_, i) => (
+                {Array.from({ length: 9 }).map((_, i) => (
                   <th key={i} className="text-left px-4 py-3">
                     <Skeleton className="h-3 w-16" />
                   </th>
@@ -585,6 +613,7 @@ function SchoolsSkeleton() {
                   <td className="px-4 py-3"><Skeleton className="h-4 w-12" /></td>
                   <td className="px-4 py-3"><Skeleton className="h-4 w-12" /></td>
                   <td className="px-4 py-3"><Skeleton className="h-4 w-16 rounded-full" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
                   <td className="px-4 py-3"><Skeleton className="h-4 w-10" /></td>
                 </tr>
               ))}

@@ -1,3 +1,5 @@
+import { localDateInputValue } from "./dateInput";
+
 export type ApiStatus = "present" | "absent" | "late" | "excused";
 export type UiStatus = "Present" | "Absent" | "Late" | "Excused";
 
@@ -91,4 +93,4 @@ export const formatTime = (value?: string | null, status?: ApiStatus) => {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 };
 
-export const todayIso = () => new Date().toISOString().slice(0, 10);
+export const todayIso = () => localDateInputValue();

@@ -1,8 +1,20 @@
-import { ReactNode, useState, useEffect, useRef } from "react";
+﻿import { ReactNode, useState, useEffect, useRef } from "react";
+import { SuspendedBanner } from "@/components/layout/SuspendedBanner";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard, ListTree, FileText, Wallet, Users, Receipt,
-  Boxes, BarChart3, ShieldCheck, LogOut, Menu, X, Bell,
+  LayoutDashboard,
+  ListTree,
+  FileText,
+  Wallet,
+  Users,
+  Receipt,
+  Boxes,
+  BarChart3,
+  ShieldCheck,
+  LogOut,
+  Menu,
+  X,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
@@ -29,6 +41,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     section: "Operations",
     items: [
       { to: "/finance/payroll", label: "Payroll", icon: Users },
+      { to: "/finance/salary-management", label: "Salary Management", icon: Users },
       { to: "/finance/expenses", label: "Expenses", icon: Receipt },
       { to: "/finance/inventory", label: "Inventory", icon: Boxes },
     ],
@@ -47,7 +60,15 @@ function handleLogout() {
   window.location.replace("/login");
 }
 
-export function FinanceLayout({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
+export function FinanceLayout({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
@@ -71,7 +92,9 @@ export function FinanceLayout({ title, subtitle, children }: { title: string; su
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {open && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setOpen(false)} />}
+      {open && (
+        <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setOpen(false)} />
+      )}
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-sidebar text-sidebar-foreground transition-transform lg:static lg:shrink-0 lg:translate-x-0",
@@ -83,10 +106,16 @@ export function FinanceLayout({ title, subtitle, children }: { title: string; su
             <img src={logo} alt="ecareafrica logo" className="h-9 w-9 rounded-lg object-contain" />
             <div className="font-display font-bold text-sidebar-foreground text-base leading-tight">
               ecareafrica
-              <div className="text-[10px] font-normal text-sidebar-foreground/70">Finance Department</div>
+              <div className="text-[10px] font-normal text-sidebar-foreground/70">
+                Finance Department
+              </div>
             </div>
           </Link>
-          <button type="button" onClick={() => setOpen(false)} className="lg:hidden p-1.5 text-sidebar-foreground/70">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="lg:hidden p-1.5 text-sidebar-foreground/70"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -125,14 +154,17 @@ export function FinanceLayout({ title, subtitle, children }: { title: string; su
 
         <div className="border-t border-sidebar-border p-4 space-y-2">
           <div className="text-[11px] text-sidebar-foreground/60">
-            Session: <span className="text-sidebar-foreground font-semibold">{session.label ?? "--"}</span>
+            Session:{" "}
+            <span className="text-sidebar-foreground font-semibold">{session.label ?? "--"}</span>
           </div>
           <div className="flex items-center gap-3 pt-1">
             <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground font-semibold text-sm">
               {initials}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-sidebar-foreground truncate">{displayName}</div>
+              <div className="text-sm font-semibold text-sidebar-foreground truncate">
+                {displayName}
+              </div>
               <div className="text-[11px] text-sidebar-foreground/60 truncate">{role}</div>
             </div>
             <button
@@ -150,12 +182,18 @@ export function FinanceLayout({ title, subtitle, children }: { title: string; su
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         <header className="shrink-0 border-b border-border bg-background/85 backdrop-blur-md">
           <div className="flex items-center gap-4 px-4 md:px-8 py-4">
-            <button type="button" onClick={() => setOpen(true)} className="lg:hidden rounded-md p-2 hover:bg-muted">
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="lg:hidden rounded-md p-2 hover:bg-muted"
+            >
               <Menu className="h-5 w-5" />
             </button>
             <div className="min-w-0 flex-1">
               <h1 className="font-display text-xl md:text-2xl font-bold truncate">{title}</h1>
-              {subtitle && <p className="text-xs md:text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
+              {subtitle && (
+                <p className="text-xs md:text-sm text-muted-foreground mt-0.5">{subtitle}</p>
+              )}
             </div>
             <button
               type="button"
@@ -188,14 +226,14 @@ export function FinanceLayout({ title, subtitle, children }: { title: string; su
               {profileOpen && (
                 <div className="absolute right-0 mt-2 w-48 rounded-lg border border-border bg-card shadow-lg overflow-hidden z-30">
                   <Link
-                    to="/settings"
+                    to="/finance/profile"
                     onClick={() => setProfileOpen(false)}
                     className="block w-full text-left px-4 py-2 text-sm hover:bg-muted"
                   >
                     View Profile
                   </Link>
                   <Link
-                    to="/settings"
+                    to="/finance/settings"
                     onClick={() => setProfileOpen(false)}
                     className="block w-full text-left px-4 py-2 text-sm hover:bg-muted"
                   >
@@ -213,14 +251,22 @@ export function FinanceLayout({ title, subtitle, children }: { title: string; su
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6">{children}</main>
+        <main className="flex-1 overflow-y-auto px-4 md:px-8 py-6"><SuspendedBanner />{children}</main>
       </div>
     </div>
   );
 }
 
 // Shared little UI helpers reused across Finance pages
-export function ChartCard({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
+export function ChartCard({
+  title,
+  children,
+  action,
+}: {
+  title: string;
+  children: ReactNode;
+  action?: ReactNode;
+}) {
   return (
     <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
       <div className="flex items-center justify-between mb-3">
@@ -232,7 +278,13 @@ export function ChartCard({ title, children, action }: { title: string; children
   );
 }
 
-export function StatusPill({ label, tone }: { label: string; tone: "success" | "warning" | "destructive" | "muted" | "primary" }) {
+export function StatusPill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "success" | "warning" | "destructive" | "muted" | "primary";
+}) {
   const map = {
     success: "bg-success/15 text-success",
     warning: "bg-amber-100 text-amber-700",
@@ -240,5 +292,10 @@ export function StatusPill({ label, tone }: { label: string; tone: "success" | "
     muted: "bg-muted text-muted-foreground",
     primary: "bg-primary/10 text-primary",
   } as const;
-  return <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold ${map[tone]}`}>{label}</span>;
+  return (
+    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-bold ${map[tone]}`}>
+      {label}
+    </span>
+  );
 }
+

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search, UserPlus, Grid3X3, List, X, Phone, Pencil, Check, Loader2, Camera } from "lucide-react";
+import { Search, UserPlus, Grid3X3, List, X, Phone, Pencil, Check, Loader2, Camera, Mail, MapPin, Ban, Download } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatCard } from "@/components/ui-kit/StatCard";
@@ -9,6 +9,8 @@ import { StudentRegistrationModal } from "@/components/modals/StudentRegistratio
 import { apiRequest, API_BASE_URL, SERVER_BASE_URL } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { studentIdNumber } from "@/lib/studentIdentity";
+import { exportToExcel } from "@/lib/exportExcel";
 
 export const Route = createFileRoute("/students")({
   component: StudentsPage,
@@ -16,6 +18,7 @@ export const Route = createFileRoute("/students")({
 
 type ApiStudent = {
   id: string;
+  student_school_id?: string | null;
   student_id_number: string | null;
   first_name: string;
   last_name: string;
@@ -24,6 +27,7 @@ type ApiStudent = {
   gender: "male" | "female" | "other" | null;
   student_type: "boarding" | "day" | null;
   status: string | null;
+  visitor_access_restricted?: boolean;
   combination: string | null;
   enrollment_year: number | null;
   blood_group: string | null;
@@ -33,9 +37,16 @@ type ApiStudent = {
   photo_url: string | null;
   created_at: string;
   primary_parent: {
+    id: string;
     first_name: string;
     last_name: string;
     phone: string;
+    phone_alt?: string | null;
+    email?: string | null;
+    national_id?: string | null;
+    relationship?: string | null;
+    address?: string | null;
+    occupation?: string | null;
   } | null;
   current_section: {
     name: string;
@@ -107,7 +118,7 @@ function StudentsPage() {
 
   const filtered = useMemo(() => students.filter(s => {
     const fullName = `${s.first_name} ${s.last_name}`.toLowerCase();
-    const studentId = (s.student_id_number ?? "").toLowerCase();
+    const studentId = studentIdNumber(s).toLowerCase();
     const sectionName = s.current_section?.full_name ?? "";
     const residency = s.student_type ? capitalize(s.student_type) : "";
     return (
@@ -144,6 +155,38 @@ function StudentsPage() {
     await fetchStudents();
   };
 
+  const handleExport = async () => {
+    if (filtered.length === 0) { toast.info("No students to export"); return; }
+    try {
+      await exportToExcel(
+        `students-${residencyFilter.toLowerCase()}.xlsx`, "Students",
+        [
+          { header: "#", key: "no", width: 6 },
+          { header: "Student Name", key: "name", width: 28 },
+          { header: "Student ID", key: "sid", width: 16 },
+          { header: "Class", key: "cls", width: 20 },
+          { header: "Type", key: "type", width: 12 },
+          { header: "Gender", key: "gender", width: 10 },
+          { header: "Status", key: "status", width: 12 },
+        ],
+        filtered.map((s, i) => {
+          const sectionName = s.current_section?.full_name ?? s.current_section?.name ?? "—";
+          return {
+            no: i + 1,
+            name: `${s.first_name} ${s.last_name}`.trim(),
+            sid: studentIdNumber(s),
+            cls: sectionName,
+            type: s.student_type ?? "—",
+            gender: s.gender ?? "—",
+            status: s.status ?? "active",
+          };
+        }),
+        `Student List — ${residencyFilter}`
+      );
+      toast.success(`Exported ${filtered.length} students`);
+    } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
+  };
+
   return (
     <AppLayout title="Student Management" subtitle={`${total} students enrolled`}>
       {loading ? (
@@ -171,7 +214,7 @@ function StudentsPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name or ID…"
+                placeholder="Search by name or Student ID Number…"
                 className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm"
               />
             </div>
@@ -199,6 +242,10 @@ function StudentsPage() {
             <button onClick={() => setOpen(true)}
               className="h-10 inline-flex items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
               <UserPlus className="h-4 w-4" /> Register New Student
+            </button>
+            <button onClick={handleExport}
+              className="h-10 inline-flex items-center gap-2 rounded-lg border border-border bg-background px-4 text-sm font-semibold hover:bg-muted">
+              <Download className="h-4 w-4" /> Export
             </button>
           </div>
 
@@ -230,7 +277,7 @@ function StudentsPage() {
                       )}
                     </div>
                     <h3 className="font-display font-bold mt-3 truncate">{fullName}</h3>
-                    <p className="text-xs text-muted-foreground font-mono mt-0.5">{s.student_id_number ?? "—"}</p>
+                    <p className="text-xs text-muted-foreground font-mono mt-0.5">Student ID Number: {studentIdNumber(s)}</p>
                     <div className="mt-3 flex items-center gap-2 flex-wrap">
                       {sectionName && (
                         <span className="inline-flex items-center rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold">
@@ -240,6 +287,7 @@ function StudentsPage() {
                       <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${pushStatusClass(s)}`}>
                         {pushStatusLabel(s)}
                       </span>
+                      {s.visitor_access_restricted && <span className="inline-flex items-center rounded-md bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">Visitors blocked</span>}
                     </div>
                     {parentPhone && (
                       <div className="mt-3 pt-3 border-t border-border flex items-center gap-2 text-xs text-muted-foreground">
@@ -264,7 +312,7 @@ function StudentsPage() {
                   <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                     <tr>
                       <th className="text-left px-4 py-3">Name</th>
-                      <th className="text-left px-4 py-3">Student ID</th>
+                      <th className="text-left px-4 py-3">Student ID Number</th>
                       <th className="text-left px-4 py-3">Class</th>
                       <th className="text-left px-4 py-3">Residency</th>
                       <th className="text-left px-4 py-3">Device</th>
@@ -283,7 +331,7 @@ function StudentsPage() {
                       return (
                         <tr key={s.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
                           <td className="px-4 py-3 font-medium">{fullName}</td>
-                          <td className="px-4 py-3 font-mono text-xs">{s.student_id_number ?? "—"}</td>
+                          <td className="px-4 py-3 font-mono text-xs">{studentIdNumber(s)}</td>
                           <td className="px-4 py-3">{sectionName}</td>
                           <td className="px-4 py-3 text-xs font-semibold text-muted-foreground">{residency}</td>
                           <td className="px-4 py-3">
@@ -427,11 +475,14 @@ function StudentProfileSlideOver({
   onEditSuccess: () => void;
 }) {
   const [editOpen, setEditOpen] = useState(false);
+  const [parentEditOpen, setParentEditOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [photoSrc, setPhotoSrc] = useState<string | null>(
     student.photo_url ? `${SERVER_BASE_URL}/${student.photo_url}` : null
   );
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [updatingVisitorAccess, setUpdatingVisitorAccess] = useState(false);
+  const [visitorAccessConfirmOpen, setVisitorAccessConfirmOpen] = useState(false);
 
   const fullName = `${student.first_name} ${student.last_name}`;
   const residency = student.student_type ? capitalize(student.student_type) : null;
@@ -442,6 +493,25 @@ function StudentProfileSlideOver({
     : "—";
   const parentPhone = student.primary_parent?.phone ?? "—";
   const dob = student.date_of_birth ? new Date(student.date_of_birth).toLocaleDateString() : "—";
+
+  const toggleVisitorAccess = async () => {
+    const blocked = !student.visitor_access_restricted;
+    setUpdatingVisitorAccess(true);
+    try {
+      await apiRequest(`/students/${student.id}/visitor-access`, {
+        method: "PATCH",
+        auth: "school",
+        body: JSON.stringify({ blocked })
+      });
+      toast.success(blocked ? "Visitors blocked for this student" : "Visitors allowed for this student");
+      onEditSuccess();
+    } catch (err: any) {
+      toast.error(err?.message ?? "Failed to update visitor access");
+    } finally {
+      setUpdatingVisitorAccess(false);
+      setVisitorAccessConfirmOpen(false);
+    }
+  };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -533,7 +603,7 @@ function StudentProfileSlideOver({
 
               <div className="text-center">
                 <div className="font-display font-bold text-lg">{fullName}</div>
-                <div className="text-sm text-muted-foreground font-mono">{student.student_id_number ?? "—"}</div>
+                <div className="text-sm text-muted-foreground font-mono">Student ID Number: {studentIdNumber(student)}</div>
                 <div className="mt-2 flex items-center justify-center gap-2 flex-wrap">
                   {sectionName && (
                     <span className="inline-flex items-center rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold">
@@ -560,13 +630,98 @@ function StudentProfileSlideOver({
               <DetailRow label="Status" value={student.status ? capitalize(student.status) : "—"} />
             </DetailSection>
 
+            <div className={`rounded-xl border p-4 ${student.visitor_access_restricted ? "border-destructive/30 bg-destructive/5" : "border-border bg-background"}`}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="font-semibold">Visitor access</div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {student.visitor_access_restricted
+                      ? "Only a registered parent or guardian can register a visit for this student."
+                      : "Visitors can currently be registered for this student."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setVisitorAccessConfirmOpen(true)}
+                  disabled={updatingVisitorAccess}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold disabled:opacity-50 ${student.visitor_access_restricted ? "border border-border hover:bg-muted" : "bg-destructive text-destructive-foreground hover:bg-destructive/90"}`}
+                >
+                  <Ban className="h-3.5 w-3.5" />
+                  {updatingVisitorAccess ? "Saving…" : student.visitor_access_restricted ? "Allow visitors" : "Block visitors"}
+                </button>
+              </div>
+            </div>
+
             <DetailSection title="Parent / Guardian">
-              <DetailRow label="Name" value={parentName} />
-              <DetailRow label="Phone" value={parentPhone} />
+              {student.primary_parent ? (
+                <button
+                  type="button"
+                  onClick={() => setParentEditOpen(true)}
+                  className="col-span-2 rounded-xl border border-border bg-background p-3 text-left transition hover:border-primary/50 hover:bg-primary/5"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">{parentName}</div>
+                      <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                        <Phone className="h-3 w-3" /> {parentPhone}
+                      </div>
+                      {student.primary_parent.relationship && (
+                        <div className="mt-1 text-xs text-muted-foreground">{student.primary_parent.relationship}</div>
+                      )}
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                      <Pencil className="h-3 w-3" /> View / edit
+                    </span>
+                  </div>
+                </button>
+              ) : (
+                <div className="col-span-2 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                  No parent or guardian linked.
+                </div>
+              )}
             </DetailSection>
           </div>
         </div>
       </div>
+
+      {visitorAccessConfirmOpen && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4" onClick={() => setVisitorAccessConfirmOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              <div className="rounded-full bg-destructive/10 p-2 text-destructive">
+                <Ban className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-display text-lg font-bold">
+                  {student.visitor_access_restricted ? "Allow visitors again?" : "Block visitors?"}
+                </h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {student.visitor_access_restricted
+                    ? `Visitors will be allowed to register visits for ${fullName} again.`
+                    : `Only a registered parent or guardian will be allowed to register a visit for ${fullName}.`}
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setVisitorAccessConfirmOpen(false)}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={updatingVisitorAccess}
+                onClick={() => void toggleVisitorAccess()}
+                className="rounded-lg bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              >
+                {updatingVisitorAccess ? "Saving…" : student.visitor_access_restricted ? "Allow visitors" : "Block visitors"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editOpen && (
         <EditStudentModal
@@ -575,7 +730,109 @@ function StudentProfileSlideOver({
           onSuccess={() => { setEditOpen(false); onEditSuccess(); }}
         />
       )}
+      {parentEditOpen && student.primary_parent && (
+        <ParentInfoModal
+          parent={student.primary_parent}
+          onClose={() => setParentEditOpen(false)}
+          onSuccess={() => { setParentEditOpen(false); onEditSuccess(); }}
+        />
+      )}
     </>
+  );
+}
+
+type ParentRecord = NonNullable<ApiStudent["primary_parent"]>;
+
+function ParentInfoModal({
+  parent,
+  onClose,
+  onSuccess,
+}: {
+  parent: ParentRecord;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [form, setForm] = useState({
+    firstName: parent.first_name,
+    lastName: parent.last_name,
+    relationship: parent.relationship ?? "",
+    phone: parent.phone,
+    phoneAlt: parent.phone_alt ?? "",
+    email: parent.email ?? "",
+    nationalId: parent.national_id ?? "",
+    occupation: parent.occupation ?? "",
+    address: parent.address ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const set = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }));
+
+  const handleSave = async () => {
+    if (!form.firstName.trim() || !form.lastName.trim() || !form.relationship.trim() || !form.phone.trim()) {
+      setError("First name, last name, relationship, and phone are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await apiRequest(`/parents/${parent.id}`, {
+        method: "PATCH",
+        auth: "school",
+        body: JSON.stringify({
+          first_name: form.firstName.trim(),
+          last_name: form.lastName.trim(),
+          relationship: form.relationship.trim(),
+          phone: form.phone.trim(),
+          phone_alt: form.phoneAlt.trim() || undefined,
+          email: form.email.trim() || undefined,
+          national_id: form.nationalId.trim() || undefined,
+          occupation: form.occupation.trim() || undefined,
+          address: form.address.trim() || undefined,
+        }),
+      });
+      toast.success("Parent information updated successfully");
+      onSuccess();
+    } catch (err: any) {
+      setError(err?.message ?? "Failed to update parent information");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-60 grid place-items-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-2xl rounded-2xl bg-card shadow-2xl max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div>
+            <h2 className="font-display text-lg font-bold">Parent Information</h2>
+            <p className="text-xs text-muted-foreground">Update the primary parent or guardian linked to this student.</p>
+          </div>
+          <button onClick={onClose} disabled={saving} className="rounded-md p-1.5 hover:bg-muted disabled:opacity-50"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="px-6 py-5 overflow-y-auto">
+          {error && <div className="mb-4 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <EField label="First Name *"><input value={form.firstName} onChange={e => set("firstName", e.target.value)} className={eCls()} /></EField>
+            <EField label="Last Name *"><input value={form.lastName} onChange={e => set("lastName", e.target.value)} className={eCls()} /></EField>
+            <EField label="Relationship *"><input value={form.relationship} onChange={e => set("relationship", e.target.value)} className={eCls()} placeholder="e.g. Father" /></EField>
+            <EField label="Primary Phone *"><div className="relative"><Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input value={form.phone} onChange={e => set("phone", e.target.value)} className={cn(eCls(), "pl-9")} /></div></EField>
+            <EField label="Alternative Phone"><input value={form.phoneAlt} onChange={e => set("phoneAlt", e.target.value)} className={eCls()} /></EField>
+            <EField label="Email"><div className="relative"><Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input type="email" value={form.email} onChange={e => set("email", e.target.value)} className={cn(eCls(), "pl-9")} /></div></EField>
+            <EField label="National ID"><input value={form.nationalId} onChange={e => set("nationalId", e.target.value)} className={eCls()} /></EField>
+            <EField label="Occupation"><input value={form.occupation} onChange={e => set("occupation", e.target.value)} className={eCls()} /></EField>
+            <EField label="Address" className="sm:col-span-2"><div className="relative"><MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><input value={form.address} onChange={e => set("address", e.target.value)} className={cn(eCls(), "pl-9")} /></div></EField>
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
+          <button onClick={onClose} disabled={saving} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-50">Cancel</button>
+          <button onClick={() => void handleSave()} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

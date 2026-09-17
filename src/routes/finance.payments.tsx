@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FileInput, openDocument, type UploadedDoc } from "@/components/finance/ui";
 import { API_BASE_URL, apiRequest } from "@/lib/api";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { studentIdNumber, studentSearchText } from "@/lib/studentIdentity";
 import {
   formatRWF, toNum, paymentMethodLabel, PAYMENT_METHODS,
   listFeeAssignments, listFeeTransactions, createFeeTransaction, uploadTransactionReceipt,
@@ -16,10 +17,7 @@ import {
 
 export const Route = createFileRoute("/finance/payments")({ component: PaymentsPage });
 
-const TABS = ["Student Balances", "Transaction Logs"] as const;
-
 const BALANCE_HEADERS = ["Student", "Fee", "Total", "Paid", "Balance", "Due Date", "Status", "Actions"];
-const TX_HEADERS = ["Receipt #", "Date", "Student", "Amount", "Method", "Reference", "Collected By"];
 
 const STATUS_TONE = {
   paid: "success",
@@ -36,16 +34,16 @@ const docUrl = (url: string) =>
 
 type StudentRecord = {
   id: string;
+  student_school_id?: string | null;
   first_name?: string | null;
   last_name?: string | null;
-  student_number?: string | null;
+  student_id_number?: string | null;
 };
 
 const fullName = (s?: StudentRecord | null) =>
   s ? [s.first_name, s.last_name].filter(Boolean).join(" ") || "Unnamed" : "--";
 
 function PaymentsPage() {
-  const [tab, setTab] = useState<typeof TABS[number]>("Student Balances");
   const [students, setStudents] = useState<Record<string, StudentRecord>>({});
   const [assignments, setAssignments] = useState<FeeAssignment[]>([]);
   const [transactions, setTransactions] = useState<FeeTransaction[]>([]);
@@ -87,26 +85,13 @@ function PaymentsPage() {
         <StatCard compact label="Fee Assignments" value={assignments.length} />
       </div>
 
-      <div className="flex flex-wrap gap-1 border-b border-border mb-4 overflow-x-auto">
-        {TABS.map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {tab === "Student Balances" ? (
-        <StudentBalancesTab
-          assignments={assignments}
-          students={students}
-          loading={loading}
-          error={error}
-          onReload={load}
-        />
-      ) : (
-        <TransactionLogsTab transactions={transactions} students={students} loading={loading} />
-      )}
+      <StudentBalancesTab
+        assignments={assignments}
+        students={students}
+        loading={loading}
+        error={error}
+        onReload={load}
+      />
     </FinanceLayout>
   );
 }
@@ -132,7 +117,7 @@ function StudentBalancesTab({
   const rows = assignments.filter((a) => {
     const name = a.student_name ?? fullName(students[a.student_id]);
     return (
-      (q === "" || name.toLowerCase().includes(q.toLowerCase())) &&
+      (q === "" || `${name} ${studentSearchText(students[a.student_id])}`.toLowerCase().includes(q.toLowerCase())) &&
       (status === "All" || a.status === status)
     );
   });
@@ -142,7 +127,7 @@ function StudentBalancesTab({
       <div className="flex flex-wrap gap-2 items-center mb-4">
         <div className="relative flex-1 min-w-[240px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by student name..." className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by student name or Student ID Number..." className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
         </div>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm">
           <option value="All">All</option>
@@ -174,7 +159,7 @@ function StudentBalancesTab({
                     <tr key={a.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
                       <td className="px-4 py-3 font-medium">
                         {a.student_name ?? fullName(student)}
-                        <div className="text-[11px] text-muted-foreground">{a.student_number ?? student?.student_number ?? ""}</div>
+                        <div className="text-[11px] text-muted-foreground">Student ID Number: {studentIdNumber(student)}</div>
                       </td>
                       <td className="px-4 py-3 text-xs">{a.fee_name ?? "--"}</td>
                       <td className="px-4 py-3">{formatRWF(a.amount_due)}</td>
@@ -351,93 +336,6 @@ function ReceiptModal({
         </div>
         <div className="px-6 py-4 border-t border-border flex flex-wrap justify-end gap-2">
           <button onClick={() => window.print()} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-semibold hover:bg-muted"><Printer className="h-4 w-4" /> Print</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TransactionLogsTab({
-  transactions,
-  students,
-  loading,
-}: {
-  transactions: FeeTransaction[];
-  students: Record<string, StudentRecord>;
-  loading: boolean;
-}) {
-  const [page, setPage] = useState(0);
-  const pageSize = 20;
-  const totalAmount = transactions.reduce((s, t) => s + toNum(t.amount), 0);
-  const slice = transactions.slice(page * pageSize, (page + 1) * pageSize);
-  const pageCount = Math.max(1, Math.ceil(transactions.length / pageSize));
-
-  const exportCsv = () => {
-    if (transactions.length === 0) { toast.error("Nothing to export yet"); return; }
-    const headers = ["Receipt", "Date", "Student", "Amount", "Method", "Reference"];
-    const rows = transactions.map((t) => [
-      t.receipt_number,
-      shortDate(t.paid_at),
-      t.student_name ?? fullName(students[t.student_id]),
-      t.amount,
-      paymentMethodLabel(t.payment_method),
-      t.payment_ref ?? "",
-    ]);
-    const escape = (cell: string | number) => {
-      const value = String(cell ?? "");
-      return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-    };
-    const csv = [headers, ...rows].map((r) => r.map(escape).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "fee-transactions.csv";
-    link.click();
-    URL.revokeObjectURL(url);
-    toast.success("Transactions exported");
-  };
-
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <div className="text-sm text-muted-foreground">
-          {transactions.length} transactions · Total: <span className="font-bold text-foreground">{formatRWF(totalAmount)}</span>
-        </div>
-        <button onClick={exportCsv} className="rounded-lg border border-border px-3 py-2 text-sm font-semibold hover:bg-muted">Export CSV</button>
-      </div>
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-xs uppercase text-muted-foreground"><tr>{TX_HEADERS.map((h) => <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr></thead>
-            <tbody>
-              {loading ? (
-                Array.from({ length: 6 }, (_, i) => (
-                  <tr key={i} className="border-t border-border"><td colSpan={TX_HEADERS.length} className="px-4 py-3"><Skeleton className="h-5 w-full" /></td></tr>
-                ))
-              ) : slice.length === 0 ? (
-                <tr><td colSpan={TX_HEADERS.length} className="px-4 py-10 text-center text-sm text-muted-foreground">No transactions recorded yet.</td></tr>
-              ) : (
-                slice.map((t) => (
-                  <tr key={t.id} className="border-t border-border odd:bg-background even:bg-muted/20">
-                    <td className="px-4 py-3 font-mono text-xs">{t.receipt_number}</td>
-                    <td className="px-4 py-3 text-xs">{shortDate(t.paid_at)}</td>
-                    <td className="px-4 py-3 font-medium">{t.student_name ?? fullName(students[t.student_id])}</td>
-                    <td className="px-4 py-3 font-semibold text-success">{formatRWF(t.amount)}</td>
-                    <td className="px-4 py-3 text-xs">{paymentMethodLabel(t.payment_method)}</td>
-                    <td className="px-4 py-3 font-mono text-[11px]">{t.payment_ref ?? "--"}</td>
-                    <td className="px-4 py-3 text-xs">{t.received_by_name ?? "--"}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex justify-between items-center px-4 py-3 border-t border-border text-xs">
-          <span className="text-muted-foreground">Page {page + 1} of {pageCount}</span>
-          <div className="space-x-2">
-            <button disabled={page === 0} onClick={() => setPage((p) => p - 1)} className="rounded border border-border px-3 py-1 disabled:opacity-50">Prev</button>
-            <button disabled={(page + 1) * pageSize >= transactions.length} onClick={() => setPage((p) => p + 1)} className="rounded border border-border px-3 py-1 disabled:opacity-50">Next</button>
-          </div>
         </div>
       </div>
     </div>

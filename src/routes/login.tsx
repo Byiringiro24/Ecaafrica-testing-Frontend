@@ -78,14 +78,21 @@ function LoginPage() {
         ? "/teacher/dashboard"
         : role === "gate_keeper"
         ? "/gate-keeper/dashboard"
-        : role === "boarding_officer"
-        ? "/boarding-officer/dashboard"
+        : role === "director_of_discipline"
+        ? "/dod/dashboard"
+        : role === "patron" || role === "matron"
+        ? "/patron/dashboard"
+        : role === "director_of_studies"
+        ? "/dos/dashboard"
         : role === "finance_officer"
         ? "/finance"
         : role === "staff"
         ? "/staff/dashboard"
         : "/dashboard";
-      navigate({ to: isPlatform ? (redirect || fallbackRoute) : (redirect || fallbackRoute) });
+
+      const destination = isPlatform ? (redirect || fallbackRoute) : (redirect || fallbackRoute);
+      // Use window.location for reliable navigation (avoids TanStack Router type issues)
+      window.location.href = destination;
     } catch (err) {
       const message =
         typeof err === "object" && err !== null && "message" in err
@@ -166,10 +173,6 @@ function LoginPage() {
 
           <div className="mt-8 text-center text-xs text-[#5F6B7A] pt-6 border-t border-[#EEF4FF] space-y-2">
             <div>
-              Need a school account?{" "}
-              <Link to="/contact" className="text-[#42A5F5] font-bold hover:underline">Contact sales</Link>
-            </div>
-            <div>
               {isPlatform ? "School login?" : "Platform admin?"}{" "}
               <Link
                 to="/login"
@@ -189,4 +192,3 @@ function LoginPage() {
     </div>
   );
 }
- 

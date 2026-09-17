@@ -4,7 +4,7 @@ import {
   Globe, School as SchoolIcon,
   BarChart3, Megaphone, Headphones, Settings, ClipboardList,
   LogOut, X, Menu, Receipt, TrendingUp, Repeat, Cpu, TabletSmartphone, Mail,
-  MessageSquareMore,
+  MessageSquareMore, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
@@ -36,7 +36,7 @@ const NAV: NavSection[] = [
       { to: "/super-admin/analytics", label: "Platform Analytics", icon: BarChart3, hidden: true },
       { to: "/super-admin/announcements", label: "Announcements", icon: Megaphone, hidden: true },
       { to: "/super-admin/demo-requests", label: "Demo Requests", icon: ClipboardList },
-      { to: "/super-admin/support", label: "Support Tickets", icon: Headphones, hidden: true },
+      { to: "/super-admin/support", label: "Support Tickets", icon: Headphones },
     ],
   },
   {
@@ -44,7 +44,8 @@ const NAV: NavSection[] = [
     items: [
       { to: "/super-admin/billing", label: "Billing", icon: Receipt, hidden: true },
       { to: "/super-admin/revenue", label: "Revenue", icon: TrendingUp, hidden: true },
-      { to: "/super-admin/subscriptions", label: "Subscriptions", icon: Repeat, hidden: true },
+      { to: "/super-admin/subscriptions", label: "Subscriptions", icon: Repeat },
+      { to: "/super-admin/plans", label: "Subscription Plans", icon: Layers },
     ],
   },
 ];

@@ -4,9 +4,13 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { to: "/exams", label: "Overview", match: "exact" as const },
   { to: "/exams/terms", label: "Terms", match: "prefix" as const },
+  { to: "/exams/exam-types", label: "Exam Types", match: "prefix" as const },
+  { to: "/exams/grading-roles", label: "Grading Roles", match: "prefix" as const },
   { to: "/exams/review", label: "Review Submissions", match: "prefix" as const },
-  { to: "/exams/schedule", label: "All Exams", match: "prefix" as const },
-  { to: "/exams/published", label: "Published Results", match: "prefix" as const },
+  { to: "/exams/grade-update-requests", label: "Grade Update Requests", match: "prefix" as const },
+  { to: "/exams/schedule", label: "Exam Schedule", match: "prefix" as const },
+  { to: "/exams/published", label: "Published Results", match: "exact" as const },
+  { to: "/exams/published/all", label: "Whole Exam", match: "prefix" as const },
   { to: "/exams/report-cards", label: "Report Cards", match: "prefix" as const },
   { to: "/exams/analytics", label: "Analytics", match: "prefix" as const },
 ] as const;

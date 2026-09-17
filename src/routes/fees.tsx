@@ -7,6 +7,8 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { STUDENTS, STUDENT_FEES, TRANSACTIONS, FEE_STRUCTURE, schoolConfig, formatRWF, SUBSCRIPTION_INVOICES, subscriptionPlan, PLAN_OPTIONS, type StudentFee, type FeeTransaction, type SubscriptionInvoice } from "@/lib/mockData";
 import { Check, X as XIcon, Download } from "lucide-react";
+import { apiRequest } from "@/lib/api";
+import { studentIdNumber } from "@/lib/studentIdentity";
 
 export const Route = createFileRoute("/fees")({ component: FeesPage });
 
@@ -107,7 +109,7 @@ function StudentFeesTab() {
   const [receipt, setReceipt] = useState<{ tx: FeeTransaction; balance: number } | null>(null);
 
   const rows = useMemo(() => STUDENT_FEES.map(f => ({ fee: f, student: STUDENTS.find(s => s.id === f.studentId)! }))
-    .filter(r => (q === "" || r.student.name.toLowerCase().includes(q.toLowerCase())) &&
+    .filter(r => (q === "" || `${r.student.name} ${studentIdNumber(r.student)}`.toLowerCase().includes(q.toLowerCase())) &&
       (cls === "All" || r.student.class === cls) && (status === "All" || r.fee.status === status))
     .slice(0, 30), [q, cls, status]);
 
@@ -116,7 +118,7 @@ function StudentFeesTab() {
       <div className="flex flex-wrap gap-2 items-center mb-4">
         <div className="relative flex-1 min-w-[240px]">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by student name..." className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by student name or Student ID Number..." className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm" />
         </div>
         <select value={cls} onChange={e => setCls(e.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm">
           <option>All</option>{["S1A","S1B","S2A","S2B","S3A","S3B","S4A","S4B","S5A","S5B","S6A","S6B"].map(c => <option key={c}>{c}</option>)}
@@ -354,10 +356,28 @@ function Field({ label, value, onChange, placeholder, disabled }: any) {
 
 // =================== Subscription Tab ===================
 function SubscriptionTab() {
+  const [subscription, setSubscription] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    apiRequest<any>("/school/subscription", { auth: "school" })
+      .then(setSubscription)
+      .catch((error) => toast.error(error?.message ?? "Unable to load subscription"))
+      .finally(() => setLoading(false));
+  }, []);
+  if (loading) return <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">Loading subscription...</div>;
+  if (!subscription) return <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No subscription has been assigned. Contact your platform administrator.</div>;
+  const plan = subscription.plan;
+  const features = Object.entries((plan?.features ?? {}) as Record<string, unknown>).filter(([, enabled]) => enabled).map(([key]) => key.replace(/_/g, " "));
+  const saveAutoRenew = async (value: boolean) => {
+    setSaving(true);
+    try { const updated = await apiRequest<any>("/school/subscription", { auth: "school", method: "PATCH", body: JSON.stringify({ auto_renew: value }) }); setSubscription(updated); toast.success("Subscription preferences updated"); }
+    catch (error) { toast.error(error?.message ?? "Unable to update subscription"); }
+    finally { setSaving(false); }
+  };
   const [viewing, setViewing] = useState<SubscriptionInvoice | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const p = subscriptionPlan;
-  const statusColor = p.current.status === "Active" ? "bg-success/15 text-success" : p.current.status === "Expired" ? "bg-destructive/15 text-destructive" : "bg-amber-100 text-amber-700";
+  const statusColor = subscription.status === "active" ? "bg-success/15 text-success" : "bg-amber-100 text-amber-700";
 
   return (
     <div className="space-y-5">
@@ -366,30 +386,30 @@ function SubscriptionTab() {
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-3">
-              <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-primary/10 text-primary">{p.current.name}</span>
-              <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusColor}`}>{p.current.status}</span>
-              <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-muted text-muted-foreground">{p.current.cycle} billing</span>
+              <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-primary/10 text-primary">{plan?.name}</span>
+              <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusColor}`}>{subscription.status}</span>
+              <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-muted text-muted-foreground">{subscription.billing_cycle} billing</span>
             </div>
-            <div className="font-display text-3xl font-bold">{formatRWF(p.current.amount)} <span className="text-sm font-normal text-muted-foreground">/ month</span></div>
-            <p className="mt-1 text-sm text-muted-foreground">Next billing date: <span className="font-semibold text-foreground">{p.current.nextBilling}</span></p>
+            <div className="font-display text-3xl font-bold">{formatRWF(Number(subscription.amount))} <span className="text-sm font-normal text-muted-foreground">/ {subscription.billing_cycle}</span></div>
+            <p className="mt-1 text-sm text-muted-foreground">Renewal date: <span className="font-semibold text-foreground">{subscription.ends_at ? new Date(subscription.ends_at).toLocaleDateString() : "—"}</span></p>
             <ul className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {p.current.features.map(f => (
+              {features.map(f => (
                 <li key={f} className="flex items-center gap-2 text-sm"><Check className="h-4 w-4 text-success shrink-0" /> {f}</li>
               ))}
             </ul>
           </div>
           <div className="flex gap-2 shrink-0">
-            <button onClick={() => setUpgradeOpen(true)} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:opacity-90">Upgrade Plan</button>
-            <button onClick={() => toast.info("Billing portal — placeholder")} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Manage Billing</button>
+            <label className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" checked={subscription.auto_renew} disabled={saving} onChange={(e) => saveAutoRenew(e.target.checked)} /> Auto-renew</label>
+            <button onClick={() => setUpgradeOpen(true)} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:opacity-90">View plans</button>
           </div>
         </div>
       </div>
 
       {/* Usage Meters */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <UsageMeter label="Students" used={p.usage.students.used} limit={p.usage.students.limit} unit="" />
-        <UsageMeter label="SMS Sent This Month" used={p.usage.sms.used} limit={p.usage.sms.limit} unit="" />
-        <UsageMeter label="Staff Accounts" used={p.usage.staff.used} limit={p.usage.staff.limit} unit="" />
+        <UsageMeter label="Students" used={0} limit={plan?.student_limit ?? 0} unit="" />
+        <UsageMeter label="SMS Bundle" used={0} limit={plan?.sms_bundle ?? 0} unit="" />
+        <UsageMeter label="Staff Accounts" used={0} limit={plan?.staff_limit ?? 0} unit="" />
       </div>
 
       {/* Invoice History */}

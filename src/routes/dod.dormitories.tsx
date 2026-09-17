@@ -277,13 +277,15 @@ function DodDormitoriesPage() {
             <Field label="Staff Member *">
               <select value={patronUserId} onChange={e => setPatronUserId(e.target.value)} required className="field">
                 <option value="">— select staff —</option>
-                {availableStaff.map(s => (
+                {availableStaff
+                  .filter(s => s.role === (selectedDorm.gender === "male" ? "patron" : "matron"))
+                  .map(s => (
                   <option key={s.id} value={s.id}>{s.name} ({s.role?.replace(/_/g, " ")})</option>
-                ))}
-              </select>
-            </Field>
-            {availableStaff.length === 0 && (
-              <p className="text-xs text-amber-600">No staff with patron/matron roles found. Create users with role "patron" or "matron" in Staff Management.</p>
+                  ))}
+            </select>
+          </Field>
+            {availableStaff.filter(s => s.role === (selectedDorm.gender === "male" ? "patron" : "matron")).length === 0 && (
+              <p className="text-xs text-amber-600">No compatible {selectedDorm.gender === "male" ? "patrons" : "matrons"} found. Create one in Staff Management.</p>
             )}
             <div className="flex gap-3 pt-1">
               <button type="submit" disabled={!patronUserId} className="flex-1 rounded-lg bg-primary text-primary-foreground py-2.5 font-semibold text-sm hover:bg-primary/90 disabled:opacity-50">Assign</button>

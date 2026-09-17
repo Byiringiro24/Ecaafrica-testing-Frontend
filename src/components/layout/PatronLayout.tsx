@@ -24,6 +24,7 @@ const NAV = [
     items: [
       { to: "/patron/dashboard",   label: "Dashboard",             icon: LayoutDashboard },
       { to: "/patron/dormitories", label: "My Dormitories",        icon: Home },
+      { to: "/patron/assignments",  label: "Assign Students",       icon: UserCheck },
       { to: "/patron/attendance",  label: "Boarding Attendance",   icon: ClipboardCheck },
       { to: "/patron/leaves",      label: "Leave & Returns",       icon: CalendarDays },
       { to: "/patron/dining",      label: "Dining Attendance",     icon: Utensils },

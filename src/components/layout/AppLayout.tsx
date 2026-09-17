@@ -1,4 +1,5 @@
-import { ReactNode, useEffect, useState } from "react";
+﻿import { ReactNode, useEffect, useState } from "react";
+import { SuspendedBanner } from "@/components/layout/SuspendedBanner";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
 import { getSchoolAuth, isDirectorOfStudiesRole, isSchoolAdminRole, roleHome } from "@/lib/schoolAuth";
@@ -39,8 +40,9 @@ export function AppLayout({ title, subtitle, children }: Props) {
       <AppSidebar open={open} onClose={() => setOpen(false)} />
       <div className="flex-1 min-w-0 flex flex-col">
         <AppHeader title={title} subtitle={subtitle} onMenuClick={() => setOpen(true)} />
-        <main className="flex-1 px-4 md:px-8 py-6">{children}</main>
+        <main className="flex-1 px-4 md:px-8 py-6"><SuspendedBanner />{children}</main>
       </div>
     </div>
   );
 }
+

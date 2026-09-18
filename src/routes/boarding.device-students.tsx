@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowUpRight, Loader2, Search, UserPlus, Wifi, WifiOff, X } from "lucide-react";
+import { ArrowUpRight, Loader2, Search, Trash2, UserPlus, Wifi, WifiOff, X, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
@@ -63,6 +63,16 @@ function DeviceStudentsPage() {
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<{ type: "push-selected" | "push-class" | "push-all" | "push-single" | "remove"; id?: string } | null>(null);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus | null>(null);
+
+  // ── Delete modal state ────────────────────────────────────────────────────
+  type DeleteTarget =
+    | { mode: "single";    student: Student }
+    | { mode: "selected";  count: number; ids: string[] }
+    | { mode: "class";     className: string; classId: string }
+    | { mode: "all";       count: number };
+  const [deleteTarget,   setDeleteTarget]   = useState<DeleteTarget | null>(null);
+  const [deleteStep,     setDeleteStep]     = useState<1 | 2>(1);   // step 1 = first confirm, step 2 = final confirm
+  const [deleting,       setDeleting]       = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -283,25 +293,65 @@ function DeviceStudentsPage() {
   };
 
   const removeStudent = async (student: Student) => {
-    if (!device?.tabletId) {
-      toast.error("This device is not linked to a tablet");
-      return;
-    }
-    const userId = student.deviceUserId || student.id;
-    if (!window.confirm(`Remove ${student.name} from the device?`)) return;
+    // Open double-confirm modal for single student
+    setDeleteTarget({ mode: "single", student });
+    setDeleteStep(1);
+  };
 
-    setBusyAction({ type: "remove", id: student.id });
+  const removeSelected = () => {
+    if (selectedIds.size === 0) { toast.error("Select at least one student first"); return; }
+    setDeleteTarget({ mode: "selected", count: selectedIds.size, ids: Array.from(selectedIds) });
+    setDeleteStep(1);
+  };
+
+  const removeCurrentClass = () => {
+    if (classFilter === "All") { toast.error("Choose a class first"); return; }
+    const cls = classOptions.find(c => c.id === classFilter);
+    setDeleteTarget({ mode: "class", className: cls?.name ?? classFilter, classId: classFilter });
+    setDeleteStep(1);
+  };
+
+  const removeAllAssigned = () => {
+    if (assignedCount === 0) { toast.error("No assigned students to remove"); return; }
+    setDeleteTarget({ mode: "all", count: assignedCount });
+    setDeleteStep(1);
+  };
+
+  /** Called when user clicks the final "Confirm delete" in step 2 */
+  const executeDelete = async () => {
+    if (!deleteTarget || !deviceId) return;
+    setDeleting(true);
     try {
-      await apiRequest(`/tablets/${device.tabletId}/device/users/${encodeURIComponent(userId)}`, {
-        method: "DELETE",
+      let body: Record<string, unknown>;
+      if (deleteTarget.mode === "single") {
+        body = { mode: "selected", student_ids: [deleteTarget.student.id] };
+      } else if (deleteTarget.mode === "selected") {
+        body = { mode: "selected", student_ids: deleteTarget.ids };
+      } else if (deleteTarget.mode === "class") {
+        body = { mode: "class", class_id: deleteTarget.classId };
+      } else {
+        body = { mode: "all" };
+      }
+
+      const result = await apiRequest<any>(`/devices/${deviceId}/remove-students`, {
+        method: "POST",
         auth: "school",
+        body: JSON.stringify(body),
       });
-      toast.success(`${student.name} removed from device`);
+      const removed = result?.removed_count ?? result?.data?.removed_count ?? 0;
+      const failed  = result?.failed_count  ?? result?.data?.failed_count  ?? 0;
+      if (failed > 0) {
+        toast.warning(`Removed ${removed} students. ${failed} failed — device may be offline.`);
+      } else {
+        toast.success(`${removed} student${removed !== 1 ? "s" : ""} removed from device and fingerprints deleted.`);
+      }
+      setDeleteTarget(null);
+      setSelectedIds(new Set());
       await Promise.all([loadStudents(), loadSelectedDeviceStatus()]);
     } catch (error: any) {
-      toast.error(error?.message ?? "Failed to remove student from device");
+      toast.error(error?.message ?? "Failed to remove students from device");
     } finally {
-      setBusyAction(null);
+      setDeleting(false);
     }
   };
 
@@ -390,6 +440,19 @@ function DeviceStudentsPage() {
         >
           {busyAction?.type === "push-class" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />} Push Class
         </button>
+        {/* ── Remove buttons ── */}
+        {selectedIds.size > 0 && (
+          <button type="button" onClick={removeSelected}
+            className="h-10 inline-flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 text-sm font-semibold text-destructive hover:bg-destructive/20">
+            <Trash2 className="h-4 w-4" /> Remove Selected ({selectedIds.size})
+          </button>
+        )}
+        {classFilter !== "All" && (
+          <button type="button" onClick={removeCurrentClass}
+            className="h-10 inline-flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 text-sm font-semibold text-destructive hover:bg-destructive/20">
+            <Trash2 className="h-4 w-4" /> Remove Class
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr] gap-5">
@@ -503,7 +566,12 @@ function DeviceStudentsPage() {
               >
                 {busyAction?.type === "push-all" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />} Push All
               </button>
-            </div>
+              {assignedCount > 0 && (
+                <button type="button" onClick={removeAllAssigned}
+                  className="inline-flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive hover:bg-destructive/20">
+                  <Trash2 className="h-4 w-4" /> Remove All
+                </button>
+              )}            </div>
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <InfoItem label="Assigned" value={String(assignedCount)} />
               <InfoItem label="Capacity" value={`${assignedCount}/${capacity}`} />
@@ -554,7 +622,99 @@ function DeviceStudentsPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Double-confirm delete modal ── */}
+      {deleteTarget && (
+        <DeleteConfirmModal
+          target={deleteTarget}
+          step={deleteStep}
+          deleting={deleting}
+          onStepUp={() => setDeleteStep(2)}
+          onConfirm={() => void executeDelete()}
+          onCancel={() => { setDeleteTarget(null); setDeleteStep(1); }}
+          deviceName={device?.name ?? selectedDeviceLabel}
+        />
+      )}
     </AppLayout>
+  );
+}
+
+// ── Double-confirm delete modal ───────────────────────────────────────────────
+// (rendered at the bottom, outside AppLayout so it covers the full screen)
+function DeleteConfirmModal({
+  target,
+  step,
+  deleting,
+  onStepUp,
+  onConfirm,
+  onCancel,
+  deviceName,
+}: {
+  target: { mode: string; student?: { name: string }; count?: number; className?: string };
+  step: 1 | 2;
+  deleting: boolean;
+  onStepUp: () => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+  deviceName: string;
+}) {
+  const label =
+    target.mode === "single"   ? `${target.student!.name}` :
+    target.mode === "selected" ? `${target.count} selected students` :
+    target.mode === "class"    ? `all students in class "${(target as any).className}"` :
+                                 `all ${target.count} assigned students`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-destructive/40 bg-card p-6 shadow-2xl space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="grid h-10 w-10 place-items-center rounded-xl bg-destructive/15 text-destructive shrink-0">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="font-bold text-lg">
+              {step === 1 ? "Remove from device?" : "Are you absolutely sure?"}
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {step === 1 ? "Confirm to proceed" : "This cannot be undone — click once more to confirm"}
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm space-y-1">
+          <p className="font-semibold text-destructive">You are about to remove {label}</p>
+          <p className="text-muted-foreground">from device: <span className="font-semibold text-foreground">{deviceName}</span></p>
+          <p className="text-muted-foreground text-xs mt-1.5">
+            This will <strong>delete their fingerprints</strong> from the FK623 device.
+            Their records in the school database are not affected — you can re-push them at any time.
+          </p>
+        </div>
+
+        {step === 1 ? (
+          <div className="flex gap-3">
+            <button type="button" onClick={onStepUp}
+              className="flex-1 rounded-xl bg-destructive py-2.5 text-sm font-semibold text-white hover:bg-destructive/90">
+              Yes, remove from device
+            </button>
+            <button type="button" onClick={onCancel}
+              className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold hover:bg-muted">
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-3">
+            <button type="button" onClick={onConfirm} disabled={deleting}
+              className="flex-1 rounded-xl bg-destructive py-2.5 text-sm font-bold text-white hover:bg-destructive/90 disabled:opacity-60 inline-flex items-center justify-center gap-2">
+              {deleting ? <><Loader2 className="h-4 w-4 animate-spin" /> Deleting…</> : "Confirm — delete fingerprints now"}
+            </button>
+            <button type="button" onClick={onCancel} disabled={deleting}
+              className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50">
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

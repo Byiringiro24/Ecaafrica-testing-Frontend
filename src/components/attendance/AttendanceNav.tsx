@@ -2,11 +2,12 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { to: "/attendance/manual", label: "Manual Attendance" },
-  { to: "/attendance/boarding-manual", label: "Boarding Attendance" },
-  { to: "/attendance/device-attendance", label: "Device Attendance" },
-  { to: "/attendance/messages", label: "SMS Settings" },
-  { to: "/attendance/bulk-sms", label: "Bulk SMS" },
+  { to: "/attendance/manual",           label: "Class Attendance"    },
+  { to: "/attendance/boarding-manual",  label: "Boarding Attendance" },
+  { to: "/attendance/dining-hall",      label: "Dining Hall"         },
+  { to: "/attendance/device-attendance",label: "Device Attendance"   },
+  { to: "/attendance/messages",         label: "SMS Settings"        },
+  { to: "/attendance/bulk-sms",         label: "Bulk SMS"            },
 ] as const;
 
 export function AttendanceNav() {

@@ -4,7 +4,7 @@ import { patronRouteGuard } from "@/lib/schoolAuth";
 // (sessions, device push, manual attendance correction)
 import { PatronAttendancePage } from "@/routes/patron.attendance";
 
-export const Route = createFileRoute("/matron/attendance" as any)({
+export const Route = createFileRoute("/matron/attendance")({
   beforeLoad: ({ location }) => patronRouteGuard(location),
   component: PatronAttendancePage,
 });

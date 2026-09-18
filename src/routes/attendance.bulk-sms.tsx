@@ -11,7 +11,7 @@ import { Send, Users, Search, Eye, MessageSquare, Home, BookOpen, UserCheck } fr
 import { toast } from "sonner";
 import { apiRequest } from "@/lib/api";
 
-export const Route = createFileRoute("/attendance/bulk-sms" as any)({ component: BulkSmsPage });
+export const Route = createFileRoute("/attendance/bulk-sms")({ component: BulkSmsPage });
 
 type ClassRecord      = { id: string; name: string };
 type DormRecord       = { id: string; name: string; gender: string; hostel_name?: string | null };

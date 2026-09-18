@@ -14,7 +14,7 @@ import { apiRequest } from "@/lib/api";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const Route = createFileRoute("/attendance/dining-hall" as any)({
+export const Route = createFileRoute("/attendance/dining-hall")({
   component: DiningHallAttendancePage,
 });
 

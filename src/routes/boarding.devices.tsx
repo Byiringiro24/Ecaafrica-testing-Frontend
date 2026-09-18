@@ -57,7 +57,7 @@ export const Route = createFileRoute("/boarding/devices")({
   component: ServerCommandCenter,
 });
 
-type TabId = "overview" | "monitor" | "students" | "devices" | "sessions" | "reports" | "settings";
+type TabId = "overview" | "monitor" | "devices" | "sessions" | "reports" | "settings";
 type MonitorMode = "live" | "database";
 
 type Stats = {
@@ -205,7 +205,6 @@ const emptyStats: Stats = {
 const navItems: Array<{ id: TabId; label: string; icon: typeof LayoutDashboard }> = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
   { id: "monitor", label: "Live Monitor", icon: Activity },
-  { id: "students", label: "Students", icon: Users },
   { id: "devices", label: "Devices", icon: Cpu },
   { id: "reports", label: "Reports", icon: FileSpreadsheet },
 ];
@@ -1146,162 +1145,6 @@ function ServerCommandCenter() {
                 )}
               </Panel>
             </div>
-          </motion.section>
-        )}
-
-        {activeTab === "students" && (
-          <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="grid gap-4 xl:grid-cols-[0.9fr_1.4fr]">
-            <div className="space-y-4">
-              <Panel title="Push Target" icon={UploadCloud}>
-                <div className="grid gap-3">
-                  <label className="grid gap-1 text-sm font-medium text-slate-600">
-                    Class
-                    <select value={classId} onChange={(event) => setClassId(event.target.value)} className="form-field">
-                      <option value="">All classes</option>
-                      {classes.map((klass) => (
-                        <option key={klass.id} value={klass.id}>{klass.level_label || klass.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-slate-600">
-                    Push mode
-                    <select value={pushMode} onChange={(event) => setPushMode(event.target.value as PushMode)} className="form-field">
-                      <option value="selected">Selected students</option>
-                      <option value="class">Whole class</option>
-                      <option value="all">All active students</option>
-                    </select>
-                  </label>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <button type="button" onClick={() => setPushMode("class")} disabled={!classId} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60">
-                      <Users size={16} /> Use class
-                    </button>
-                    <button type="button" onClick={pushStudents} disabled={busy} className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
-                      <UploadCloud size={16} /> Push now
-                    </button>
-                  </div>
-                  <div className="rounded-2xl border border-border bg-muted/60 p-4 text-xs leading-5 text-muted-foreground">
-                    {pushMode === "class"
-                      ? `${filteredStudents.length} active student(s) from this class will be sent to the device.`
-                      : pushMode === "all"
-                        ? `${students.length} active student(s) from the PostgreSQL student database will be sent.`
-                        : `${selectedStudentIds.size} selected student(s) will be sent.`}
-                  </div>
-                </div>
-              </Panel>
-
-              <Panel title="Add Student To Class" icon={Plus}>
-                <form onSubmit={createStudentInClass} className="grid gap-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="First Name" value={studentForm.first_name} onChange={(value) => setStudentForm({ ...studentForm, first_name: value })} required />
-                    <Field label="Last Name" value={studentForm.last_name} onChange={(value) => setStudentForm({ ...studentForm, last_name: value })} required />
-                  </div>
-                  <Field label="Student Number" value={studentForm.student_id_number} onChange={(value) => setStudentForm({ ...studentForm, student_id_number: value })} />
-                  <label className="grid gap-1.5 text-sm font-medium text-muted-foreground">
-                    Section
-                    <select value={studentForm.section_id} onChange={(event) => setStudentForm({ ...studentForm, section_id: event.target.value })} className="form-field rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 shadow-sm backdrop-blur-md focus:border-primary focus:ring-2 focus:ring-primary/20" required>
-                      <option value="">Choose section</option>
-                      {classSections.map((section) => (
-                        <option key={section.id} value={section.id}>{section.full_name}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="grid gap-1.5 text-sm font-medium text-muted-foreground">
-                    Student Type
-                    <select value={studentForm.student_type} onChange={(event) => setStudentForm({ ...studentForm, student_type: event.target.value })} className="form-field rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 shadow-sm backdrop-blur-md focus:border-primary focus:ring-2 focus:ring-primary/20">
-                      <option value="boarding">Boarding</option>
-                      <option value="day">Day</option>
-                    </select>
-                  </label>
-                  <button className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60" disabled={busy || !selectedAcademicYear}>
-                    <Plus size={16} /> Add to class
-                  </button>
-                  <p className="text-xs text-muted-foreground">
-                    Enrolls in {selectedAcademicYear?.name ?? "the current academic year"}; push the class afterward to update the device.
-                  </p>
-                </form>
-              </Panel>
-            </div>
-            <Panel
-              title="Students"
-              icon={Users}
-              action={
-                <div className="relative min-w-60">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input value={query} onChange={(event) => setQuery(event.target.value)} className="form-field pl-9 rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-slate-100 shadow-sm backdrop-blur-md placeholder:text-slate-500 focus:border-primary focus:ring-2 focus:ring-primary/20" placeholder="Search students" />
-                </div>
-              }
-            >
-              <div className="mb-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-border bg-muted/50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Shown</p>
-                  <p className="mt-2 text-2xl font-bold text-foreground">{filteredStudents.length}</p>
-                </div>
-                <div className="rounded-2xl border border-border bg-muted/50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Selected</p>
-                  <p className="mt-2 text-2xl font-bold text-foreground">{selectedStudentIds.size}</p>
-                </div>
-                <div className="rounded-2xl border border-border bg-muted/50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Total Class Data</p>
-                  <p className="mt-2 text-2xl font-bold text-foreground">{students.length}</p>
-                </div>
-              </div>
-              <div className="overflow-x-auto rounded-2xl border border-border/70 bg-background/80">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>
-                        <input
-                          type="checkbox"
-                          checked={filteredStudents.length > 0 && filteredStudents.every((student) => selectedStudentIds.has(student.id))}
-                          onChange={() => {
-                            const allSelected = filteredStudents.every((student) => selectedStudentIds.has(student.id));
-                            setSelectedStudentIds(allSelected ? new Set() : new Set(filteredStudents.map((student) => student.id)));
-                          }}
-                        />
-                      </th>
-                      <th>Student</th>
-                      <th>Class</th>
-                      <th>Device User</th>
-                      <th>Sync</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredStudents.map((student) => (
-                      <tr key={student.id}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={selectedStudentIds.has(student.id)}
-                            onChange={() =>
-                              setSelectedStudentIds((current) => {
-                                const next = new Set(current);
-                                if (next.has(student.id)) next.delete(student.id);
-                                else next.add(student.id);
-                                return next;
-                              })
-                            }
-                          />
-                        </td>
-                        <td>
-                          <div className="font-semibold text-slate-900">{studentName(student)}</div>
-                          <div className="text-xs text-slate-500">Student ID Number: {studentIdNumber(student)}</div>
-                        </td>
-                        <td>{student.current_section?.full_name ?? "Unassigned"}</td>
-                        <td className="font-mono">{buildDeviceUserId(student)}</td>
-                        <td><StatusPill value={student.device_sync_status || "not synced"} /></td>
-                        <td>
-                          <button type="button" onClick={() => addSingleStudentToDevice(student)} className="secondary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700/60 bg-slate-950/75 px-3 py-2 text-sm font-semibold text-slate-100 shadow-md backdrop-blur-md transition-colors hover:bg-slate-900">
-                            <Plus size={14} /> Add one
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {!filteredStudents.length && <EmptyState text="No students match your filters." />}
-              </div>
-            </Panel>
           </motion.section>
         )}
 

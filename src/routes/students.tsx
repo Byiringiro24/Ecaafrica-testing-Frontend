@@ -61,6 +61,12 @@ function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+function residencyStyle(residency: string) {
+  if (residency === "Boarding") return "bg-green-100 text-green-700";
+  if (residency === "Day") return "bg-orange-100 text-orange-700";
+  return "bg-muted text-muted-foreground";
+}
+
 function pushStatusLabel(student: ApiStudent) {
   if (student.device_user_id || student.device_sync_status === "synced") return "Pushed to device";
   if (student.device_sync_status && student.device_sync_status !== "not synced") return capitalize(student.device_sync_status);
@@ -273,7 +279,7 @@ function StudentsPage() {
                     <div className="flex items-start justify-between">
                       <Avatar name={fullName} size="lg" src={s.photo_url ? `${SERVER_BASE_URL}/${s.photo_url}` : null} />
                       {residency && (
-                        <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                        <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-sm font-semibold ${residencyStyle(residency)}`}>
                           {residency}
                         </span>
                       )}
@@ -335,7 +341,11 @@ function StudentsPage() {
                           <td className="px-4 py-3 font-medium">{fullName}</td>
                           <td className="px-4 py-3 font-mono text-xs">{studentIdNumber(s)}</td>
                           <td className="px-4 py-3">{sectionName}</td>
-                          <td className="px-4 py-3 text-xs font-semibold text-muted-foreground">{residency}</td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-sm font-semibold ${residencyStyle(residency)}`}>
+                              {residency}
+                            </span>
+                          </td>
                           <td className="px-4 py-3">
                             <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${pushStatusClass(s)}`}>
                               {pushStatusLabel(s)}
@@ -613,7 +623,7 @@ function StudentProfileSlideOver({
                     </span>
                   )}
                   {residency && (
-                    <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-sm font-semibold ${residencyStyle(residency)}`}>
                       {residency}
                     </span>
                   )}

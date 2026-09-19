@@ -10,6 +10,8 @@ import { apiRequest } from "@/lib/api";
 
 export const Route = createFileRoute("/boarding/device-students")({ component: DeviceStudentsPage });
 
+const STUDENTS_PER_PAGE = 10;
+
 type Device = {
   id: string;
   name: string;
@@ -60,6 +62,7 @@ function DeviceStudentsPage() {
   const [residencyFilter, setResidencyFilter] = useState<"All" | "Boarding" | "Day">("All");
   const [search, setSearch] = useState("");
   const [showAssignedOnly, setShowAssignedOnly] = useState(false);
+  const [studentPage, setStudentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<{ type: "push-selected" | "push-class" | "push-all" | "push-single" | "remove"; id?: string } | null>(null);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus | null>(null);
@@ -171,6 +174,20 @@ function DeviceStudentsPage() {
       return matchesClass && matchesResidency && matchesSearch && matchesAssigned;
     });
   }, [assignedIds, classFilter, residencyFilter, search, showAssignedOnly, students]);
+
+  const studentPageCount = Math.max(1, Math.ceil(filteredStudents.length / STUDENTS_PER_PAGE));
+  const paginatedStudents = useMemo(() => {
+    const start = (studentPage - 1) * STUDENTS_PER_PAGE;
+    return filteredStudents.slice(start, start + STUDENTS_PER_PAGE);
+  }, [filteredStudents, studentPage]);
+
+  useEffect(() => {
+    setStudentPage(1);
+  }, [classFilter, residencyFilter, search, showAssignedOnly, deviceId]);
+
+  useEffect(() => {
+    setStudentPage((page) => Math.min(page, studentPageCount));
+  }, [studentPageCount]);
 
   const assignedList = useMemo(() => students.filter((student) => assignedIds.has(student.id)), [assignedIds, students]);
   const boardersAssigned = assignedList.filter((student) => student.residency === "Boarding").length;
@@ -485,7 +502,7 @@ function DeviceStudentsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredStudents.map((student) => {
+                {paginatedStudents.map((student) => {
                   const assigned = assignedIds.has(student.id);
                   return (
                     <tr key={student.id} className="border-t border-border odd:bg-background even:bg-muted/20">
@@ -548,6 +565,34 @@ function DeviceStudentsPage() {
               </tbody>
             </table>
           </div>
+          {filteredStudents.length > 0 && (
+            <div className="flex items-center justify-between border-t border-border px-5 py-3">
+              <p className="text-xs text-muted-foreground">
+                Showing {(studentPage - 1) * STUDENTS_PER_PAGE + 1}–{Math.min(studentPage * STUDENTS_PER_PAGE, filteredStudents.length)} of {filteredStudents.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setStudentPage((page) => Math.max(1, page - 1))}
+                  disabled={studentPage === 1}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <span className="min-w-16 text-center text-xs text-muted-foreground">
+                  Page {studentPage} of {studentPageCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setStudentPage((page) => Math.min(studentPageCount, page + 1))}
+                  disabled={studentPage === studentPageCount}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-5">

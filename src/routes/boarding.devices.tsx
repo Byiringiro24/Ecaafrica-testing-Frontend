@@ -228,8 +228,7 @@ const studentName = (student: Student) =>
 
 const buildDeviceUserId = (student: Student) => {
   if (student.device_user_id) return student.device_user_id;
-  const fromStudentNumber = student.student_id_number?.match(/\d+/g)?.join("");
-  return fromStudentNumber || student.id;
+  return student.id;
 };
 
 function ServerCommandCenter() {

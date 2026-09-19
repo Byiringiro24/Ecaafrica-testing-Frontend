@@ -54,6 +54,16 @@ const EMPTY: FormData = {
 
 const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const STEPS = ["Student Info", "Parent Info", "Review"];
+const SUPPORTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+const SUPPORTED_IMAGE_TEXT = "JPG, PNG or WEBP";
+
+const isSupportedImageFile = (file?: File | null) => {
+  if (!file) return false;
+  const mime = file.type?.toLowerCase();
+  const name = file.name?.toLowerCase() ?? "";
+  return SUPPORTED_IMAGE_TYPES.includes(mime as typeof SUPPORTED_IMAGE_TYPES[number]) ||
+    [".jpg", ".jpeg", ".png", ".webp"].some((ext) => name.endsWith(ext));
+};
 
 export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
   const [step, setStep] = useState(0);
@@ -129,6 +139,13 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (!isSupportedImageFile(file)) {
+      toast.error(`Unsupported image format. Please upload ${SUPPORTED_IMAGE_TEXT} files only.`);
+      e.target.value = "";
+      return;
+    }
+
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
   };
@@ -400,13 +417,13 @@ export function StudentRegistrationModal({ open, onClose, onSuccess }: Props) {
                         Remove
                       </button>
                     )}
-                    <p className="text-xs text-muted-foreground">JPG, PNG or WEBP — max 5 MB</p>
+                    <p className="text-xs text-muted-foreground">{SUPPORTED_IMAGE_TEXT} — max 5 MB</p>
                   </div>
                 </div>
                 <input
                   ref={photoInputRef}
                   type="file"
-                  accept="image/*"
+                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                   className="hidden"
                   onChange={handlePhotoChange}
                 />

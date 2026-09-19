@@ -149,6 +149,15 @@ function SchoolTab() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    const supportedTypes = ["image/jpeg", "image/png", "image/webp"];
+    const isSupported = supportedTypes.includes(file.type.toLowerCase()) || [".jpg", ".jpeg", ".png", ".webp"].some((ext) => file.name.toLowerCase().endsWith(ext));
+
+    if (!isSupported) {
+      toast.error("Unsupported image format. Please upload JPG, PNG, or WEBP files only.");
+      event.target.value = "";
+      return;
+    }
+
     const objectUrl = URL.createObjectURL(file);
     setLogoPreview(objectUrl);
 
@@ -308,9 +317,10 @@ function SchoolTab() {
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-background">
               <Upload className="h-4 w-4" />
               Upload logo
-              <input type="file" accept="image/*" className="hidden" onChange={handleLogoChange} />
+              <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" className="hidden" onChange={handleLogoChange} />
             </label>
           </div>
+          <p className="text-xs text-muted-foreground">Supported formats: JPG, PNG, or WEBP.</p>
           <div className="rounded-xl border border-border bg-background p-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Current academic year</p>
             <p className="mt-2 text-lg font-semibold">{currentYear?.name ?? "No academic year"}</p>

@@ -528,6 +528,17 @@ function StudentProfileSlideOver({
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const supportedTypes = ["image/jpeg", "image/png", "image/webp"];
+    const fileName = file.name.toLowerCase();
+    const isSupported = supportedTypes.includes(file.type.toLowerCase()) || [".jpg", ".jpeg", ".png", ".webp"].some((ext) => fileName.endsWith(ext));
+
+    if (!isSupported) {
+      toast.error("Unsupported image format. Please upload JPG, PNG, or WEBP files only.");
+      e.target.value = "";
+      return;
+    }
+
     setUploading(true);
     try {
       const fd = new FormData();
@@ -608,7 +619,7 @@ function StudentProfileSlideOver({
               <input
                 ref={photoInputRef}
                 type="file"
-                accept="image/*"
+                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                 className="hidden"
                 onChange={handlePhotoUpload}
               />

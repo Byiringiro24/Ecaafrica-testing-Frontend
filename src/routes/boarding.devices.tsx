@@ -90,6 +90,7 @@ type Device = {
   device_logs_count?: number | null;
   last_sync_at?: string | null;
   last_sync_status?: string | null;
+  last_status_message?: string | null;
   last_seen_at?: string | null;       // updated every 10s by auto-pull job
   last_connection_at?: string | null; // updated on connect/disconnect
 };
@@ -186,6 +187,24 @@ const isDeviceLiveOnline = (device: Device): boolean => {
     if (age < 90_000) return true;
   }
   return Boolean(device.is_connected || device.status === "online");
+};
+
+const getDeviceSyncStatus = (status?: string | null) => {
+  const normalized = status?.trim().toLowerCase();
+  if (!normalized) return null;
+  if (["syncing", "pending", "in_progress", "processing"].includes(normalized)) {
+    return { label: "In Progress", tone: "bg-amber-100 text-amber-800 border border-amber-200" };
+  }
+  if (normalized === "partial") {
+    return { label: "Partial", tone: "bg-orange-100 text-orange-800 border border-orange-200" };
+  }
+  if (normalized === "failed") {
+    return { label: "Failed", tone: "bg-red-100 text-red-800 border border-red-200" };
+  }
+  if (normalized === "synced") {
+    return { label: "Synced", tone: "bg-emerald-100 text-emerald-800 border border-emerald-200" };
+  }
+  return { label: normalized.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()), tone: "bg-slate-100 text-slate-700 border border-slate-200" };
 };
 
 const emptyStats: Stats = {
@@ -306,6 +325,8 @@ function ServerCommandCenter() {
   });
 
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? devices[0];
+  const selectedDeviceSyncState = getDeviceSyncStatus(selectedDevice?.last_sync_status ?? null);
+  const selectedDeviceSyncMessage = selectedDevice?.last_status_message ?? "No sync activity yet";
   const selectedTablet =
     tablets.find((tablet) => tablet.id === selectedTabletId) ??
     tablets.find((tablet) => tablet.id === selectedDevice?.tablet_id) ??
@@ -1085,6 +1106,12 @@ function ServerCommandCenter() {
                 {connected ? <Wifi size={16} /> : <WifiOff size={16} />}
                 <span className="text-sm font-semibold">{connected ? "Device Online" : "Device Offline"}</span>
               </div>
+              {selectedDeviceSyncState && (
+                <div className={cn("inline-flex items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-semibold shadow-sm", selectedDeviceSyncState.tone)}>
+                  {selectedDeviceSyncState.label}
+                  <span className="text-[11px] font-medium opacity-80">{selectedDeviceSyncMessage}</span>
+                </div>
+              )}
               <button type="button" onClick={() => void refreshAll()} disabled={busy} className="primary-action inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/20 bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60">
                 {busy ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />} Refresh
               </button>

@@ -16,6 +16,8 @@ type Device = {
   location: string;
   maxUsers: number;
   lastSync: string;
+  lastSyncStatus?: string | null;
+  lastStatusMessage?: string | null;
   tabletId?: string | null;
   deviceUsersCount?: number;
   deviceLogsCount?: number;
@@ -37,6 +39,7 @@ type DeviceStatus = {
   productName?: string;
   ipAddress?: string;
   last_sync_at?: string | null;
+  last_sync_status?: string | null;
 };
 
 type Student = {
@@ -48,6 +51,28 @@ type Student = {
   deviceUserId?: string | null;
   deviceSyncStatus?: string | null;
   lastDeviceSync?: string | null;
+};
+
+const getDeviceSyncState = (status?: string | null) => {
+  const normalized = status?.trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (["syncing", "pending", "in_progress", "processing"].includes(normalized)) {
+    return { label: "In Progress", tone: "bg-amber-100 text-amber-800 border border-amber-200" };
+  }
+  if (normalized === "partial") {
+    return { label: "Partial", tone: "bg-orange-100 text-orange-800 border border-orange-200" };
+  }
+  if (normalized === "failed") {
+    return { label: "Failed", tone: "bg-red-100 text-red-800 border border-red-200" };
+  }
+  if (normalized === "synced") {
+    return { label: "Synced", tone: "bg-emerald-100 text-emerald-800 border border-emerald-200" };
+  }
+  return {
+    label: normalized.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
+    tone: "bg-slate-100 text-slate-700 border border-slate-200"
+  };
 };
 
 function DeviceStudentsPage() {
@@ -89,6 +114,8 @@ function DeviceStudentsPage() {
           location: device.location ?? "—",
           maxUsers: 200,
           lastSync: device.last_sync_at ? new Date(device.last_sync_at).toLocaleString() : "No sync yet",
+          lastSyncStatus: device.last_sync_status ?? null,
+          lastStatusMessage: device.last_status_message ?? null,
           tabletId: device.tablet_id ?? null,
           deviceUsersCount: Number(device.device_users_count ?? 0),
           deviceLogsCount: Number(device.device_logs_count ?? 0),
@@ -109,7 +136,6 @@ function DeviceStudentsPage() {
         setDevices(mappedDevices);
         setClasses((Array.isArray(classData) ? classData : []).map((item) => ({ id: item.id, name: item.name })));
         setStudents(mappedStudents);
-        if (!deviceId && mappedDevices[0]) setDeviceId(mappedDevices[0].id);
       } catch (error: any) {
         toast.error(error?.message ?? "Failed to load device student data");
       } finally {
@@ -131,12 +157,13 @@ function DeviceStudentsPage() {
           connected: Boolean(status?.connected ?? result?.is_connected ?? result?.is_online),
           users: Number(status?.users ?? result?.device_users_count ?? result?.users ?? 0),
           logs: Number(status?.logs ?? result?.device_logs_count ?? result?.logs ?? 0),
-          message: status?.message ?? result?.message,
+          message: status?.message ?? result?.message ?? result?.last_status_message ?? null,
           deviceId: status?.deviceId ?? result?.device_uid,
           serialNumber: status?.serialNumber,
           productName: status?.productName ?? result?.product_name,
           ipAddress: status?.ipAddress ?? result?.tablet_ip,
           last_sync_at: result?.last_sync_at ?? result?.lastSyncAt ?? status?.last_sync_at ?? null,
+          last_sync_status: result?.last_sync_status ?? status?.last_sync_status ?? null,
         });
       } catch {
         setDeviceStatus(null);
@@ -178,11 +205,14 @@ function DeviceStudentsPage() {
   const assignedCount = assignedList.length;
   const capacity = device?.maxUsers ?? 200;
   const unassigned = Math.max(0, students.length - assignedList.length);
-  const selectedDeviceLabel = device?.name ?? "Selected device";
+  const selectedDeviceLabel = device?.name ?? (deviceId ? "Selected device" : "No device selected");
   const selectedDeviceLocation = device?.location ?? "—";
   const selectedDeviceLastSync = deviceStatus?.last_sync_at ? new Date(deviceStatus.last_sync_at).toLocaleString() : device?.lastSync ?? "No sync yet";
   const selectedDeviceIsOnline = Boolean(deviceStatus?.connected ?? device?.isConnected);
   const selectedDeviceStatusLabel = selectedDeviceIsOnline ? "Online" : "Offline";
+  const selectedDeviceSyncState = getDeviceSyncState(deviceStatus?.last_sync_status ?? device?.lastSyncStatus ?? null);
+  const selectedDeviceSyncMessage = deviceStatus?.message ?? device?.lastStatusMessage ?? "No push activity yet";
+  const hasSelectedDevice = Boolean(deviceId);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -222,12 +252,13 @@ function DeviceStudentsPage() {
       connected: Boolean(status?.connected ?? result?.is_connected ?? result?.is_online),
       users: Number(status?.users ?? result?.device_users_count ?? result?.users ?? 0),
       logs: Number(status?.logs ?? result?.device_logs_count ?? result?.logs ?? 0),
-      message: status?.message ?? result?.message,
+      message: status?.message ?? result?.message ?? result?.last_status_message ?? null,
       deviceId: status?.deviceId ?? result?.device_uid,
       serialNumber: status?.serialNumber,
       productName: status?.productName ?? result?.product_name,
       ipAddress: status?.ipAddress ?? result?.tablet_ip,
       last_sync_at: result?.last_sync_at ?? result?.lastSyncAt ?? status?.last_sync_at ?? null,
+      last_sync_status: result?.last_sync_status ?? status?.last_sync_status ?? null,
     });
   };
 
@@ -367,6 +398,12 @@ function DeviceStudentsPage() {
 
   return (
     <AppLayout title="Device Students" subtitle="Assign boarding and day students to biometric devices">
+      {!hasSelectedDevice && (
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Select a device to enable push and remove actions.
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         <StatCard label="Assigned Students" value={assignedCount} tone="success" icon={<UserPlus className="h-5 w-5" />} />
         <StatCard label="Boarding" value={boardersAssigned} />
@@ -386,6 +423,7 @@ function DeviceStudentsPage() {
           onChange={(event) => setDeviceId(event.target.value)}
           className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
         >
+          <option value="">Select a device</option>
           {devices.map((item) => (
             <option key={item.id} value={item.id}>{item.name}</option>
           ))}
@@ -427,7 +465,7 @@ function DeviceStudentsPage() {
         <button
           type="button"
           onClick={pushSelected}
-          disabled={Boolean(busyAction)}
+          disabled={!hasSelectedDevice || Boolean(busyAction)}
           className="h-10 inline-flex items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           {busyAction?.type === "push-selected" ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} Push Selected
@@ -435,21 +473,21 @@ function DeviceStudentsPage() {
         <button
           type="button"
           onClick={pushCurrentClass}
-          disabled={Boolean(busyAction) || classFilter === "All"}
+          disabled={!hasSelectedDevice || Boolean(busyAction) || classFilter === "All"}
           className="h-10 inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-50"
         >
           {busyAction?.type === "push-class" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />} Push Class
         </button>
         {/* ── Remove buttons ── */}
         {selectedIds.size > 0 && (
-          <button type="button" onClick={removeSelected}
-            className="h-10 inline-flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 text-sm font-semibold text-destructive hover:bg-destructive/20">
+          <button type="button" onClick={removeSelected} disabled={!hasSelectedDevice}
+            className="h-10 inline-flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 text-sm font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50">
             <Trash2 className="h-4 w-4" /> Remove Selected ({selectedIds.size})
           </button>
         )}
         {classFilter !== "All" && (
-          <button type="button" onClick={removeCurrentClass}
-            className="h-10 inline-flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 text-sm font-semibold text-destructive hover:bg-destructive/20">
+          <button type="button" onClick={removeCurrentClass} disabled={!hasSelectedDevice}
+            className="h-10 inline-flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 text-sm font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50">
             <Trash2 className="h-4 w-4" /> Remove Class
           </button>
         )}
@@ -561,14 +599,14 @@ function DeviceStudentsPage() {
               <button
                 type="button"
                 onClick={pushAllAssigned}
-                disabled={Boolean(busyAction)}
+                disabled={!hasSelectedDevice || Boolean(busyAction)}
                 className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
               >
                 {busyAction?.type === "push-all" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />} Push All
               </button>
               {assignedCount > 0 && (
-                <button type="button" onClick={removeAllAssigned}
-                  className="inline-flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive hover:bg-destructive/20">
+                <button type="button" onClick={removeAllAssigned} disabled={!hasSelectedDevice}
+                  className="inline-flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50">
                   <Trash2 className="h-4 w-4" /> Remove All
                 </button>
               )}            </div>
@@ -580,8 +618,16 @@ function DeviceStudentsPage() {
             </div>
             <div className="mt-4 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
               {selectedDeviceIsOnline ? "Device online" : "Device offline"}
-              {deviceStatus?.message ? ` - ${deviceStatus.message}` : ""}
+              {deviceStatus?.message || device?.lastStatusMessage ? ` - ${deviceStatus?.message ?? device?.lastStatusMessage}` : ""}
             </div>
+            {selectedDeviceSyncState && (
+              <div className="mt-3 rounded-lg px-3 py-2 text-xs">
+                <span className={`inline-flex items-center rounded-full px-2 py-1 font-semibold ${selectedDeviceSyncState.tone}`}>
+                  {selectedDeviceSyncState.label}
+                </span>
+                <span className="ml-2 text-muted-foreground">{selectedDeviceSyncMessage}</span>
+              </div>
+            )}
           </div>
 
           <div className="rounded-xl border border-border bg-card p-5 shadow-sm">

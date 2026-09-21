@@ -29,6 +29,24 @@ export const Route = createFileRoute("/dod/devices")({
 
 const DEVICE_CAPACITY = 2000;
 
+const getDeviceSyncStatus = (status?: string | null) => {
+  const normalized = status?.trim().toLowerCase();
+  if (!normalized) return null;
+  if (["syncing", "pending", "in_progress", "processing"].includes(normalized)) {
+    return { label: "In Progress", tone: "bg-amber-100 text-amber-800 border border-amber-200" };
+  }
+  if (normalized === "partial") {
+    return { label: "Partial", tone: "bg-orange-100 text-orange-800 border border-orange-200" };
+  }
+  if (normalized === "failed") {
+    return { label: "Failed", tone: "bg-red-100 text-red-800 border border-red-200" };
+  }
+  if (normalized === "synced") {
+    return { label: "Synced", tone: "bg-emerald-100 text-emerald-800 border border-emerald-200" };
+  }
+  return { label: normalized.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()), tone: "bg-slate-100 text-slate-700 border border-slate-200" };
+};
+
 const SCOPE_OPTIONS = [
   { value: "gate",        label: "Gate (all students)",        icon: Shield   },
   { value: "dormitory",   label: "Dormitory (boarding only)",  icon: Home     },
@@ -41,6 +59,8 @@ type DeviceRow = {
   id: string; name: string; device_uid: string; mode: string;
   is_connected: boolean; location_scope: string | null;
   location_label: string | null; dormitory_id: string | null;
+  last_sync_status?: string | null;
+  last_status_message?: string | null;
   dormitory?: { id: string; name: string } | null;
   tablet?: { id: string; name: string; ip: string } | null;
 };
@@ -54,7 +74,26 @@ type StudentGroup = {
     student_id_number?: string | null;
     student_type: string;
     photo_url?: string | null;
+    device_sync_status?: string | null;
+    sync_status?: "pushed" | "pending" | "failed";
+    class_name?: string | null;
   }>;
+};
+
+type StudentFilterState = {
+  status: "all" | "pushed" | "pending" | "failed";
+  className: string;
+  query: string;
+};
+
+const DEFAULT_FILTER: StudentFilterState = { status: "all", className: "all", query: "" };
+
+const getStudentSyncStatus = (student: { device_sync_status?: string | null; device_user_id?: string | null }) => {
+  const raw = (student.device_sync_status ?? "").trim().toLowerCase();
+  if (raw === "failed" || raw === "disabled") return "failed" as const;
+  if (["syncing", "pending", "in_progress", "processing", ""].includes(raw)) return "pending" as const;
+  if (student.device_user_id) return "pushed" as const;
+  return "pending" as const;
 };
 
 function DodDevicesPage() {
@@ -67,6 +106,7 @@ function DodDevicesPage() {
   const [saving,      setSaving]      = useState(false);
   const [groups,      setGroups]      = useState<Record<string, { total: number; groupCount: number; groups: StudentGroup[] }>>({});
   const [pushing,     setPushing]     = useState<string | null>(null);
+  const [studentFilters, setStudentFilters] = useState<Record<string, StudentFilterState>>({});
 
   const load = async () => {
     setLoading(true);
@@ -138,6 +178,16 @@ function DodDevicesPage() {
   const scopeLabel = (scope?: string | null) =>
     SCOPE_OPTIONS.find(o => o.value === scope)?.label ?? scope ?? "Unassigned";
 
+  const getDeviceFilter = (deviceId: string): StudentFilterState =>
+    studentFilters[deviceId] ?? DEFAULT_FILTER;
+
+  const updateDeviceFilter = (deviceId: string, updates: Partial<StudentFilterState>) => {
+    setStudentFilters(prev => ({
+      ...prev,
+      [deviceId]: { ...DEFAULT_FILTER, ...(prev[deviceId] ?? {}), ...updates },
+    }));
+  };
+
   return (
     <DodLayout title="Device Location Assignment" subtitle="Assign tablets to gates, dormitories, dining halls and classrooms — students are auto-grouped and pushed">
 
@@ -163,6 +213,7 @@ function DodDevicesPage() {
             const isEditing  = editing === d.id;
             const grp        = groups[d.id];
 
+            const syncState = getDeviceSyncStatus(d.last_sync_status);
             return (
               <div key={d.id} className="rounded-xl border border-border bg-card overflow-hidden">
                 {/* Header row */}
@@ -184,11 +235,19 @@ function DodDevicesPage() {
                       ) : (
                         <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-bold">Not assigned</span>
                       )}
+                      {syncState && (
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${syncState.tone}`}>
+                          {syncState.label}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {d.tablet ? `Tablet: ${d.tablet.name} (${d.tablet.ip})` : "No tablet linked"}
                       {d.dormitory ? ` · Dorm: ${d.dormitory.name}` : ""}
                     </p>
+                    {d.last_status_message && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">{d.last_status_message}</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <button onClick={() => startEdit(d)}
@@ -265,62 +324,126 @@ function DodDevicesPage() {
                       <div className="flex items-center gap-2 text-sm text-amber-600">
                         <AlertTriangle className="h-4 w-4" /> No students. Assign a location first.
                       </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm font-semibold">{grp.total} students</span>
-                          {grp.groupCount > 1 && (
-                            <span className="rounded-full bg-amber-100 text-amber-700 px-3 py-0.5 text-xs font-bold">
-                              {grp.groupCount} groups needed (max {DEVICE_CAPACITY}/device)
-                            </span>
-                          )}
-                        </div>
-                        {grp.groups.map(g => (
-                          <div key={g.group} className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className="font-semibold text-sm">{g.label}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  Day: {g.students.filter(s => s.student_type === "day").length} &nbsp;|&nbsp;
-                                  Boarding: {g.students.filter(s => s.student_type === "boarding").length}
-                                </p>
-                              </div>
-                              {d.tablet && (
-                                <button onClick={() => void handlePushGroup(d.id, g.group)}
-                                  disabled={!!pushing}
-                                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-                                  <Upload className="h-3.5 w-3.5" />
-                                  {pushing === `${d.id}-${g.group}` ? "Pushing..." : `Push Group ${g.group}`}
-                                </button>
+                    ) : (() => {
+                      const filter = getDeviceFilter(d.id);
+                      const classOptions = Array.from(
+                        new Set(grp.groups.flatMap(g => g.students.map(s => s.class_name).filter(Boolean) as string[]))
+                      ).sort();
+
+                      const filteredGroups = grp.groups.map(g => ({
+                        ...g,
+                        students: g.students.filter(s => {
+                          const status = s.sync_status ?? getStudentSyncStatus(s);
+                          const matchesStatus = filter.status === "all" || status === filter.status;
+                          const matchesClass = filter.className === "all" || s.class_name === filter.className;
+                          const query = filter.query.trim().toLowerCase();
+                          const matchesQuery = !query || [
+                            s.full_name,
+                            s.student_id_number ?? "",
+                            s.class_name ?? "",
+                          ].join(" ").toLowerCase().includes(query);
+                          return matchesStatus && matchesClass && matchesQuery;
+                        }),
+                      })).filter(g => g.students.length > 0);
+
+                      const visibleTotal = filteredGroups.reduce((sum, g) => sum + g.students.length, 0);
+                      const counts = grp.groups.flatMap(g => g.students).reduce((acc, s) => {
+                        const status = s.sync_status ?? getStudentSyncStatus(s);
+                        acc[status] += 1;
+                        return acc;
+                      }, { pushed: 0, pending: 0, failed: 0 } as Record<"pushed" | "pending" | "failed", number>);
+
+                      return (
+                        <>
+                          <div className="flex flex-col gap-3 rounded-xl border border-border bg-slate-50 p-3">
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <span className="text-sm font-semibold">{grp.total} students</span>
+                              <span className="rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-[10px] font-bold">Pushed {counts.pushed}</span>
+                              <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-bold">Pending {counts.pending}</span>
+                              <span className="rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-[10px] font-bold">Failed {counts.failed}</span>
+                              {grp.groupCount > 1 && (
+                                <span className="rounded-full bg-amber-100 text-amber-700 px-3 py-0.5 text-xs font-bold">
+                                  {grp.groupCount} groups needed (max {DEVICE_CAPACITY}/device)
+                                </span>
                               )}
                             </div>
-                            {/* Student preview */}
-                            <div className="flex flex-wrap gap-1.5">
-                              {g.students.slice(0, 10).map(s => (
-                                <div key={s.id} className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs">
-                                  {s.photo_url ? (
-                                    <img src={s.photo_url} alt="" className="h-5 w-5 rounded-full object-cover border border-border shrink-0" />
-                                  ) : (
-                                    <div className={cn(
-                                      "h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0",
-                                      s.student_type === "boarding" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"
-                                    )}>
-                                      {s.full_name.split(" ").map(w => w[0]).join("").slice(0,2)}
-                                    </div>
-                                  )}
-                                  <span className="truncate max-w-[80px]">{s.full_name}</span>
-                                </div>
-                              ))}
-                              {g.students.length > 10 && (
-                                <div className="flex items-center rounded-lg border border-dashed border-border px-2 py-1 text-xs text-muted-foreground">
-                                  +{g.students.length - 10} more
-                                </div>
-                              )}
+                            <div className="grid gap-2 md:grid-cols-[140px_180px_1fr]">
+                              <select value={filter.status} onChange={e => updateDeviceFilter(d.id, { status: e.target.value as StudentFilterState["status"] })}
+                                className="rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                                <option value="all">All Status</option>
+                                <option value="pushed">Pushed</option>
+                                <option value="pending">Pending</option>
+                                <option value="failed">Failed</option>
+                              </select>
+                              <select value={filter.className} onChange={e => updateDeviceFilter(d.id, { className: e.target.value })}
+                                className="rounded-xl border border-border bg-background px-3 py-2 text-sm">
+                                <option value="all">All Classes</option>
+                                {classOptions.map(cls => <option key={cls} value={cls}>{cls}</option>)}
+                              </select>
+                              <input value={filter.query} onChange={e => updateDeviceFilter(d.id, { query: e.target.value })}
+                                placeholder="Search student name / ID / class"
+                                className="rounded-xl border border-border bg-background px-3 py-2 text-sm" />
                             </div>
+                            <p className="text-xs text-muted-foreground">Showing {visibleTotal} of {grp.total} students</p>
                           </div>
-                        ))}
-                      </>
-                    )}
+                          {filteredGroups.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">
+                              No students match the current filter.
+                            </div>
+                          ) : filteredGroups.map(g => (
+                            <div key={g.group} className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-semibold text-sm">{g.label}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Day: {g.students.filter(s => s.student_type === "day").length} &nbsp;|&nbsp;
+                                    Boarding: {g.students.filter(s => s.student_type === "boarding").length}
+                                  </p>
+                                </div>
+                                {d.tablet && (
+                                  <button onClick={() => void handlePushGroup(d.id, g.group)}
+                                    disabled={!!pushing}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                                    <Upload className="h-3.5 w-3.5" />
+                                    {pushing === `${d.id}-${g.group}` ? "Pushing..." : `Push Group ${g.group}`}
+                                  </button>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {g.students.slice(0, 10).map(s => {
+                                  const status = s.sync_status ?? getStudentSyncStatus(s);
+                                  return (
+                                    <div key={s.id} className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1 text-xs">
+                                      {s.photo_url ? (
+                                        <img src={s.photo_url} alt="" className="h-5 w-5 rounded-full object-cover border border-border shrink-0" />
+                                      ) : (
+                                        <div className={cn(
+                                          "h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0",
+                                          s.student_type === "boarding" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"
+                                        )}>
+                                          {s.full_name.split(" ").map(w => w[0]).join("").slice(0,2)}
+                                        </div>
+                                      )}
+                                      <span className="truncate max-w-[80px]">{s.full_name}</span>
+                                      <span className={cn(
+                                        "rounded-full px-1.5 py-0.5 text-[9px] font-bold",
+                                        status === "pushed" ? "bg-emerald-100 text-emerald-700" :
+                                        status === "failed" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                                      )}>{status === "pushed" ? "Pushed" : status === "failed" ? "Failed" : "Pending"}</span>
+                                    </div>
+                                  );
+                                })}
+                                {g.students.length > 10 && (
+                                  <div className="flex items-center rounded-lg border border-dashed border-border px-2 py-1 text-xs text-muted-foreground">
+                                    +{g.students.length - 10} more
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

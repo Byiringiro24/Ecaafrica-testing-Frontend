@@ -77,12 +77,12 @@ export async function fetchDeviceLogs(params: {
  * Fetch today's attendance logs from the attendance_logs table.
  */
 export async function fetchTodayAttendance(): Promise<TodayAttendanceResponse> {
-  const response = await apiRequest<{ data: DeviceLog[] }>(
+  const response = await apiRequest<DeviceLog[] | { data: DeviceLog[] }>(
     '/attendance/records/device-logs/today',
     { auth: 'school' }
   );
 
-  return { data: response.data ?? [] };
+  return { data: Array.isArray(response) ? response : response.data ?? [] };
 }
 
 /**

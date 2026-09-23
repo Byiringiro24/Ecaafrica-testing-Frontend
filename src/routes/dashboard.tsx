@@ -12,6 +12,9 @@ import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { localDateInputValue } from "@/lib/dateInput";
+import { fetchDeviceLogs, fetchTodayAttendance } from "@/lib/device-logs-api";
+import type { DeviceLog } from "@/lib/device-logs-types";
 
 export const Route = createFileRoute("/dashboard")({
   component: DashboardPage,
@@ -22,13 +25,11 @@ const PIE_COLORS = [
   "#14B8A6","#F97316","#6366F1","#22C55E","#EAB308","#F43F5E",
 ];
 
-type ApiStatus = "present" | "absent" | "late" | "excused";
-
 type ApiRecord = {
   id: string;
   session_id: string;
   student_id: string;
-  status: ApiStatus;
+  status: "present" | "absent" | "late" | "excused";
   scanned_at?: string | null;
   created_at?: string | null;
 };
@@ -90,14 +91,60 @@ type DeviceRecord = {
   last_seen_at?: string | null;
 };
 
-const STATUS_LABEL: Record<ApiStatus, RecentCheckin["status"]> = {
-  present: "Present",
-  absent: "Absent",
-  late: "Late",
-  excused: "Excused",
+const deviceStatusLabel = (status?: string | null): RecentCheckin["status"] => {
+  switch ((status ?? "").toLowerCase()) {
+    case "late":
+      return "Late";
+    case "absent":
+      return "Absent";
+    case "excused":
+      return "Excused";
+    default:
+      return "Present";
+  }
 };
 
-const isPresentStatus = (status: ApiStatus) => status !== "absent";
+const deviceStudentKey = (log: DeviceLog) => log.studentId || log.studentName;
+
+const fetchAllDeviceLogsForDate = async (date: string) => {
+  const firstPage = await fetchDeviceLogs({ page: 1, limit: 200, startDate: date, endDate: date });
+  const pages = await Promise.all(
+    Array.from({ length: Math.max(0, firstPage.meta.totalPages - 1) }, (_, index) =>
+      fetchDeviceLogs({
+        page: index + 2,
+        limit: 200,
+        startDate: date,
+        endDate: date,
+      })
+    )
+  );
+  return [firstPage.data, ...pages.map((page) => page.data)].flat();
+};
+
+const summarizeDeviceAttendance = (logs: DeviceLog[], totalStudents: number) => {
+  const latestByStudent = new Map<string, DeviceLog>();
+  logs.forEach((log) => {
+    const key = deviceStudentKey(log);
+    if (!key || !latestByStudent.has(key)) latestByStudent.set(key, log);
+  });
+
+  let present = 0;
+  let late = 0;
+  let explicitAbsent = 0;
+  latestByStudent.forEach((log) => {
+    const status = (log.status ?? "").toLowerCase();
+    if (status === "late") late += 1;
+    else if (status === "absent") explicitAbsent += 1;
+    else present += 1;
+  });
+
+  return {
+    total: totalStudents,
+    present,
+    late,
+    absent: Math.max(explicitAbsent, totalStudents - present - late),
+  };
+};
 
 const formatTime = (value?: string | null) => {
   if (!value) return "--";
@@ -107,7 +154,13 @@ const formatTime = (value?: string | null) => {
 };
 
 const formatDayLabel = (value: string) =>
-  new Date(value).toLocaleDateString("en-US", { weekday: "short" });
+  new Date(`${value}T12:00:00`).toLocaleDateString("en-US", { weekday: "short" });
+
+const formatDateKey = (value: Date) => {
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${value.getFullYear()}-${month}-${day}`;
+};
 
 const getLastDates = (days: number) => {
   const result: string[] = [];
@@ -115,7 +168,7 @@ const getLastDates = (days: number) => {
   for (let i = days - 1; i >= 0; i -= 1) {
     const next = new Date(base);
     next.setDate(base.getDate() - i);
-    result.push(next.toISOString().slice(0, 10));
+    result.push(formatDateKey(next));
   }
   return result;
 };
@@ -180,19 +233,13 @@ function DashboardPage() {
     const load = async () => {
       setLoading(true);
       try {
-        const today = new Date().toISOString().slice(0, 10);
-        const [
-          studentMeta,
-          classes,
-          sections,
-          sessions,
-          records,
-          deviceList
-        ] = await Promise.all([
+        const today = localDateInputValue();
+        const [studentMeta, todayDeviceLogs, classes, sections, sessions, records, deviceList] = await Promise.all([
           apiRequest<StudentCountResponse>("/students?limit=1", {
             auth: "school",
             returnMeta: true
           }).catch(() => ({ data: [], meta: { total: 0 } })),
+          fetchTodayAttendance().catch(() => ({ data: [] as DeviceLog[] })),
           apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }).catch(() => []),
           apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" }).catch(() => []),
           apiRequest<ApiSession[]>(`/attendance/sessions?date=${today}&limit=500`, {
@@ -214,33 +261,13 @@ function DashboardPage() {
         const sectionMap = new Map(sections.map((item) => [item.id, item]));
         const sessionMap = new Map(sessions.map((item) => [item.id, item.section_id]));
 
-        const totalStudents = studentMeta.meta?.total ?? records.length;
-        const summary = records.reduce(
-          (acc, record) => {
-            acc.total += 1;
-            if (record.status === "present") acc.present += 1;
-            if (record.status === "absent") acc.absent += 1;
-            if (record.status === "late") acc.late += 1;
-            return acc;
-          },
-          { total: 0, present: 0, absent: 0, late: 0 }
-        );
-
-        setCounts({
-          total: totalStudents,
-          present: summary.present,
-          absent: summary.absent,
-          late: summary.late
-        });
+        const totalStudents = studentMeta.meta?.total || records.length;
+        setCounts(summarizeDeviceAttendance(todayDeviceLogs.data, totalStudents));
 
         const weekDates = getLastDates(5);
-        const weekRecords = await Promise.all(
+        const weekDeviceLogs = await Promise.all(
           weekDates.map((date) =>
-            date === today
-              ? Promise.resolve(records)
-              : apiRequest<ApiRecord[]>(`/attendance/records?date=${date}&limit=5000`, {
-                  auth: "school"
-                }).catch(() => [])
+            date === today ? Promise.resolve(todayDeviceLogs.data) : fetchAllDeviceLogsForDate(date).catch(() => [])
           )
         );
 
@@ -248,80 +275,79 @@ function DashboardPage() {
 
         setWeekAttendance(
           weekDates.map((date, idx) => {
-            const daySummary = weekRecords[idx].reduce(
-              (acc, record) => {
-                if (record.status === "present") acc.Present += 1;
-                if (record.status === "absent") acc.Absent += 1;
-                if (record.status === "late") acc.Late += 1;
-                return acc;
-              },
-              { Present: 0, Absent: 0, Late: 0 }
-            );
-            return { day: formatDayLabel(date), ...daySummary };
-          })
-        );
-
-        const sectionIds = Array.from(new Set(sessions.map((item) => item.section_id)));
-        const studentsById = await fetchStudentsForSections(sectionIds);
-
-        if (!active) return;
-
-        const pieTotals = new Map<string, number>();
-        records.forEach((record) => {
-          const sectionId = sessionMap.get(record.session_id);
-          if (!sectionId || !isPresentStatus(record.status)) return;
-          const className = classLabelForSection(sectionId, sectionMap, classMap);
-          const current = pieTotals.get(className) ?? 0;
-          pieTotals.set(className, current + 1);
-        });
-
-        setClassPie(
-          Array.from(pieTotals.entries()).map(([name, value]) => ({ name, value }))
-        );
-
-        const sortedRecords = [...records]
-          .filter((record) => record.scanned_at || record.created_at)
-          .sort((a, b) => {
-            const ta = new Date(a.scanned_at ?? a.created_at ?? 0).getTime();
-            const tb = new Date(b.scanned_at ?? b.created_at ?? 0).getTime();
-            return tb - ta;
-          });
-
-        setRecentCheckins(
-          sortedRecords.slice(0, 6).map((record) => {
-            const student = studentsById[record.student_id];
-            const studentName = student
-              ? `${student.first_name} ${student.last_name}`.trim()
-              : "Unknown student";
-            const sectionId = sessionMap.get(record.session_id);
+            const daySummary = summarizeDeviceAttendance(weekDeviceLogs[idx], totalStudents);
             return {
-              id: record.id,
-              name: studentName,
-              className: classLabelForSection(sectionId, sectionMap, classMap),
-              time: formatTime(record.scanned_at ?? record.created_at),
-              status: STATUS_LABEL[record.status]
+              day: formatDayLabel(date),
+              Present: daySummary.present,
+              Absent: daySummary.absent,
+              Late: daySummary.late
             };
           })
         );
 
-        setAbsenceAlerts(
-          records
-            .filter((record) => record.status === "absent")
-            .slice(0, 5)
-            .map((record) => {
-              const student = studentsById[record.student_id];
-              const studentName = student
-                ? `${student.first_name} ${student.last_name}`.trim()
-                : "Unknown student";
-              const sectionId = sessionMap.get(record.session_id);
-              return {
-                id: record.student_id,
-                name: studentName,
-                className: classLabelForSection(sectionId, sectionMap, classMap),
-                daysMissed: 1
-              };
-            })
+        // Device logs include the class/section captured at scan time. Count each
+        // student once so repeated scans do not inflate the class breakdown.
+        const studentsByClass = new Map<string, Set<string>>();
+        todayDeviceLogs.data.forEach((log) => {
+          if ((log.status ?? "").toLowerCase() === "absent") return;
+          const className = log.className || log.section || "Unknown class";
+          const students = studentsByClass.get(className) ?? new Set<string>();
+          students.add(deviceStudentKey(log));
+          studentsByClass.set(className, students);
+        });
+
+        setClassPie(
+          Array.from(studentsByClass.entries()).map(([name, students]) => ({ name, value: students.size }))
         );
+
+        setRecentCheckins(
+          todayDeviceLogs.data.slice(0, 6).map((log) => {
+            return {
+              id: log.id,
+              name: log.studentName || "Unknown student",
+              className: log.className || log.section || "Unknown class",
+              time: formatTime(log.timestamp),
+              status: deviceStatusLabel(log.status)
+            };
+          })
+        );
+
+        const deviceAbsenceAlerts = Array.from(
+          todayDeviceLogs.data
+            .filter((log) => (log.status ?? "").toLowerCase() === "absent")
+            .reduce((alerts, log) => {
+              alerts.set(deviceStudentKey(log), {
+                id: deviceStudentKey(log),
+                name: log.studentName || "Unknown student",
+                className: log.className || log.section || "Unknown class",
+                daysMissed: 1
+              });
+              return alerts;
+            }, new Map<string, AbsenceAlert>())
+            .values()
+        );
+
+        if (deviceAbsenceAlerts.length) {
+          setAbsenceAlerts(deviceAbsenceAlerts.slice(0, 5));
+        } else {
+          const sectionIds = Array.from(new Set(sessions.map((item) => item.section_id)));
+          const studentsById = await fetchStudentsForSections(sectionIds);
+          setAbsenceAlerts(
+            records
+              .filter((record) => record.status === "absent")
+              .slice(0, 5)
+              .map((record) => {
+                const student = studentsById[record.student_id];
+                const sectionId = sessionMap.get(record.session_id);
+                return {
+                  id: record.student_id,
+                  name: student ? `${student.first_name} ${student.last_name}`.trim() : "Unknown student",
+                  className: classLabelForSection(sectionId, sectionMap, classMap),
+                  daysMissed: 1
+                };
+              })
+          );
+        }
       } catch (error: any) {
         if (active) {
           toast.error(error?.message ?? "Failed to load dashboard data");

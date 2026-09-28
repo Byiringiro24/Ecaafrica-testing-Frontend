@@ -239,6 +239,8 @@ function SchoolDetailPage() {
   const [billingLoading, setBillingLoading] = useState(false);
   const [users, setUsers] = useState<SchoolUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState("All");
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
   const [resettingSchoolPassword, setResettingSchoolPassword] = useState(false);
   const [auditLogs, setAuditLogs] = useState<SchoolAuditLog[]>([]);
@@ -357,12 +359,16 @@ function SchoolDetailPage() {
   }, [id, tab]);
 
   useEffect(() => {
-    if (tab !== "Users") return;
+    if (tab !== "Users") {
+      setUserSearch("");
+      setUserRoleFilter("All");
+      return;
+    }
     let active = true;
     const loadUsers = async () => {
       setUsersLoading(true);
       try {
-        // Fetch up to 500 users — schools rarely exceed this, avoids pagination complexity
+        // Fetch up to 500 users — all users per school visible at once
         const resp = await apiRequest<{ data: SchoolUser[] }>(
           `/platform/schools/${id}/users?page=1&limit=500`,
           { returnMeta: true }
@@ -379,9 +385,7 @@ function SchoolDetailPage() {
     };
 
     loadUsers();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [id, tab]);
 
   useEffect(() => {
@@ -803,49 +807,99 @@ function SchoolDetailPage() {
       )}
 
       {tab === "Users" && (
-        <div className="rounded-xl border border-border bg-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-xs uppercase"><tr>{["Name", "Role", "Email", "Last Login", "Status", ""].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr></thead>
-            <tbody>
-              {usersLoading ? (
-                Array.from({ length: 4 }).map((_, i) => (
-                  <tr key={i} className="border-t border-border">
-                    <td className="px-4 py-3"><Skeleton className="h-3 w-28" /></td>
-                    <td className="px-4 py-3"><Skeleton className="h-3 w-20" /></td>
-                    <td className="px-4 py-3"><Skeleton className="h-3 w-32" /></td>
-                    <td className="px-4 py-3"><Skeleton className="h-3 w-20" /></td>
-                    <td className="px-4 py-3"><Skeleton className="h-3 w-16" /></td>
-                    <td className="px-4 py-3"><Skeleton className="h-3 w-24" /></td>
-                  </tr>
-                ))
-              ) : users.length ? (
-                users.map(u => (
-                  <tr key={u.id} className="border-t border-border">
-                    <td className="px-4 py-3 font-medium">{u.name}</td>
-                    <td className="px-4 py-3">{u.role ?? "—"}</td>
-                    <td className="px-4 py-3 text-xs">{u.email ?? "—"}</td>
-                    <td className="px-4 py-3 text-xs">{formatDateTime(u.last_login_at)}</td>
-                    <td className="px-4 py-3 capitalize">{u.status ?? "—"}</td>
-                    <td className="px-4 py-3 space-x-2 whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={() => handleResetPassword(u)}
-                        disabled={!u.email || resettingUserId === u.id}
-                        className="text-xs text-primary font-semibold hover:underline disabled:opacity-50"
-                      >
-                        {resettingUserId === u.id ? "Sending..." : "Reset Password"}
-                      </button>
-                      <button type="button" className="text-xs text-destructive font-semibold hover:underline">Deactivate</button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr className="border-t border-border">
-                  <td className="px-4 py-6 text-center text-muted-foreground" colSpan={6}>No users found.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {/* Search + role filter */}
+          <div className="flex flex-wrap gap-3 items-center">
+            <input
+              value={userSearch}
+              onChange={e => setUserSearch(e.target.value)}
+              placeholder="Search by name or email…"
+              className="h-9 flex-1 min-w-48 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+            />
+            <select
+              value={userRoleFilter}
+              onChange={e => setUserRoleFilter(e.target.value)}
+              className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
+            >
+              <option value="All">All Roles</option>
+              {Array.from(new Set(users.map(u => u.role).filter(Boolean))).sort().map(r => (
+                <option key={r!} value={r!}>{r!.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>
+              ))}
+            </select>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {(() => {
+                const q = userSearch.toLowerCase();
+                const count = users.filter(u =>
+                  (userRoleFilter === "All" || u.role === userRoleFilter) &&
+                  (!q || (u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)))
+                ).length;
+                return `${count} of ${users.length} user${users.length !== 1 ? "s" : ""}`;
+              })()}
+            </span>
+          </div>
+
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 text-xs uppercase">
+                <tr>{["Name", "Role", "Email", "Last Login", "Status", ""].map(h => <th key={h} className="text-left px-4 py-3">{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {usersLoading ? (
+                  Array.from({ length: 4 }).map((_, i) => (
+                    <tr key={i} className="border-t border-border">
+                      <td className="px-4 py-3"><Skeleton className="h-3 w-28" /></td>
+                      <td className="px-4 py-3"><Skeleton className="h-3 w-20" /></td>
+                      <td className="px-4 py-3"><Skeleton className="h-3 w-32" /></td>
+                      <td className="px-4 py-3"><Skeleton className="h-3 w-20" /></td>
+                      <td className="px-4 py-3"><Skeleton className="h-3 w-16" /></td>
+                      <td className="px-4 py-3"><Skeleton className="h-3 w-24" /></td>
+                    </tr>
+                  ))
+                ) : (() => {
+                  const q = userSearch.toLowerCase();
+                  const filtered = users.filter(u =>
+                    (userRoleFilter === "All" || u.role === userRoleFilter) &&
+                    (!q || (u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)))
+                  );
+                  if (!filtered.length) return (
+                    <tr className="border-t border-border">
+                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={6}>
+                        {users.length ? "No users match your search." : "No users found."}
+                      </td>
+                    </tr>
+                  );
+                  return filtered.map(u => (
+                    <tr key={u.id} className="border-t border-border hover:bg-muted/20">
+                      <td className="px-4 py-3 font-medium">{u.name}</td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold capitalize">
+                          {(u.role ?? "—").replace(/_/g, " ")}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs">{u.email ?? "—"}</td>
+                      <td className="px-4 py-3 text-xs">{formatDateTime(u.last_login_at)}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${u.status === "active" ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
+                          {u.status ?? "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 space-x-2 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => handleResetPassword(u)}
+                          disabled={!u.email || resettingUserId === u.id}
+                          className="text-xs text-primary font-semibold hover:underline disabled:opacity-50"
+                        >
+                          {resettingUserId === u.id ? "Sending..." : "Reset Password"}
+                        </button>
+                        <button type="button" className="text-xs text-destructive font-semibold hover:underline">Deactivate</button>
+                      </td>
+                    </tr>
+                  ));
+                })()}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

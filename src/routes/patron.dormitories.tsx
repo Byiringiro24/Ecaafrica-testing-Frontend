@@ -110,6 +110,7 @@ function PatronDormitoriesPage() {
   };
 
   return (
+    <>
     <PatronLayout title="My Dormitories" subtitle="Students in your assigned dormitories">
       {loading ? (
         <Skeleton className="h-80" />
@@ -207,6 +208,7 @@ function PatronDormitoriesPage() {
         }}
       />
     )}
+    </>
   );
 }
 

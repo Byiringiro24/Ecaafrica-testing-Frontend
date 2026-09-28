@@ -1,4 +1,4 @@
-﻿import { ReactNode, useState } from "react";
+import { ReactNode, useState } from "react";
 import { SuspendedBanner } from "@/components/layout/SuspendedBanner";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
@@ -21,6 +21,7 @@ import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 import logo from "@/assets/logo.png";
+import { RoleSwitcher } from "@/components/RoleSwitcher";
 
 const NAV = [
   {
@@ -145,6 +146,10 @@ export function DodLayout({
             >
               <LogOut className="h-4 w-4" />
             </button>
+          {/* Role switcher — visible when user has multiple roles */}
+          <div className="mt-2">
+            <RoleSwitcher />
+          </div>
           </div>
         </div>
       </aside>

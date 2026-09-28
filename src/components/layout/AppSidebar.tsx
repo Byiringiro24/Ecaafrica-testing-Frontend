@@ -12,6 +12,7 @@ import { schoolConfig } from "@/lib/mockData";
 import logo from "@/assets/logo.png";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 import { clearSchoolAuth, isDirectorOfStudiesRole } from "@/lib/schoolAuth";
+import { RoleSwitcher } from "@/components/RoleSwitcher";
 
 function handleLogout() {
   clearSchoolAuth();
@@ -188,6 +189,10 @@ export function AppSidebar({ open, onClose }: Props) {
             <button onClick={handleLogout} className="rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-foreground" aria-label="Logout">
               <LogOut className="h-4 w-4" />
             </button>
+          </div>
+          {/* Role switcher — visible when user has multiple roles */}
+          <div className="mt-2">
+            <RoleSwitcher />
           </div>
         </div>
       </aside>

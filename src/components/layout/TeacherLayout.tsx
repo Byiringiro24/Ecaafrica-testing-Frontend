@@ -1,4 +1,4 @@
-﻿import { ReactNode, useState } from "react";
+import { ReactNode, useState } from "react";
 import { SuspendedBanner } from "@/components/layout/SuspendedBanner";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { TEACHER_ME } from "@/lib/teacherStaffData";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 import logo from "@/assets/logo.png";
+import { RoleSwitcher } from "@/components/RoleSwitcher";
 
 const NAV = [
   { section: "Main", items: [
@@ -96,6 +97,10 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
             >
               <LogOut className="h-4 w-4" />
             </button>
+          {/* Role switcher — visible when user has multiple roles */}
+          <div className="mt-2">
+            <RoleSwitcher />
+          </div>
           </div>
         </div>
       </aside>

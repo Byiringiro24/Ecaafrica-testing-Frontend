@@ -1,12 +1,13 @@
-﻿/** DOS — Full timetable management (same functionality as school admin timetable) */
+﻿/** DOS — Full timetable management with combined-class support and exam scheduling */
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useMemo } from "react";
-import { Plus, X, Trash2, Loader2, Settings, Clock } from "lucide-react";
+import { Plus, X, Trash2, Loader2, Settings, Clock, Users, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 import { DosLayout } from "@/components/layout/DosLayout";
 import { directorOfStudiesRouteGuard } from "@/lib/schoolAuth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/dos/timetable")({
   beforeLoad: ({ location }) => directorOfStudiesRouteGuard(location),
@@ -52,11 +53,14 @@ function DosTimetablePage() {
 
   // Add slot form
   const [showAdd, setShowAdd]     = useState(false);
+  const [addMode, setAddMode]     = useState<"single" | "combined">("single");
   const [addDay, setAddDay]       = useState(1);
   const [addPeriodId, setAddPeriodId] = useState("");
   const [addSubjectId, setAddSubjectId] = useState("");
   const [addTeacherId, setAddTeacherId] = useState("");
   const [addRoom, setAddRoom]     = useState("");
+  // Combined mode — multiple section IDs
+  const [addSectionIds, setAddSectionIds] = useState<string[]>([]);
 
   useEffect(() => {
     const load = async () => {
@@ -117,17 +121,37 @@ function DosTimetablePage() {
     }
     setSaving(true);
     try {
-      await apiRequest("/timetable-slots", {
-        method: "POST", ...AUTH,
-        body: JSON.stringify({
-          section_id: sectionId, period_id: addPeriodId,
-          subject_id: addSubjectId, teacher_id: addTeacherId,
-          day_of_week: addDay, room: addRoom || null, term_id: termId || null,
-        }),
-      });
-      toast.success("Slot added");
+      if (addMode === "combined" && addSectionIds.length > 0) {
+        // Combined classes — creates one slot per selected section (POST /timetable-slots/bulk)
+        await apiRequest("/timetable-slots/bulk", {
+          method: "POST", ...AUTH,
+          body: JSON.stringify({
+            section_ids: addSectionIds,
+            period_id: addPeriodId,
+            subject_id: addSubjectId,
+            teacher_id: addTeacherId,
+            day_of_week: addDay,
+            room: addRoom || null,
+            term_id: termId || null,
+          }),
+        });
+        toast.success(`Combined slot created for ${addSectionIds.length} sections`);
+      } else {
+        // Single section
+        await apiRequest("/timetable-slots", {
+          method: "POST", ...AUTH,
+          body: JSON.stringify({
+            section_id: sectionId, period_id: addPeriodId,
+            subject_id: addSubjectId, teacher_id: addTeacherId,
+            day_of_week: addDay, room: addRoom || null, term_id: termId || null,
+          }),
+        });
+        toast.success("Slot added");
+      }
       setShowAdd(false);
       setAddRoom("");
+      setAddSectionIds([]);
+      setAddMode("single");
       // Refresh slots
       const params = new URLSearchParams({ section_id: sectionId, limit: "500" });
       if (termId) params.set("term_id", termId);
@@ -240,10 +264,21 @@ function DosTimetablePage() {
       {/* Add Slot Modal */}
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl">
+          <div className="w-full max-w-md rounded-xl bg-card p-6 shadow-xl">
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-display font-bold">Add Timetable Slot</h3>
               <button onClick={() => setShowAdd(false)}><X className="h-4 w-4" /></button>
+            </div>
+            {/* Mode tabs */}
+            <div className="flex gap-1 rounded-lg border border-border bg-muted/30 p-1 mb-4">
+              <button type="button" onClick={() => setAddMode("single")}
+                className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition ${addMode === "single" ? "bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                Single Section
+              </button>
+              <button type="button" onClick={() => setAddMode("combined")}
+                className={`flex-1 rounded-md py-1.5 text-xs font-semibold transition flex items-center justify-center gap-1 ${addMode === "combined" ? "bg-card shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                <Users className="h-3.5 w-3.5" /> Combined Classes
+              </button>
             </div>
             <form onSubmit={handleAddSlot} className="space-y-3">
               <div>
@@ -262,6 +297,37 @@ function DosTimetablePage() {
                   ))}
                 </select>
               </div>
+              {addMode === "combined" ? (
+                <div>
+                  <label className="block text-xs font-semibold mb-1">
+                    Sections to combine <span className="text-muted-foreground font-normal">(select all that share this lesson)</span>
+                  </label>
+                  <div className="rounded-lg border border-border bg-background p-2 max-h-36 overflow-y-auto space-y-1">
+                    {sections.map(s => (
+                      <label key={s.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5">
+                        <input type="checkbox"
+                          checked={addSectionIds.includes(s.id)}
+                          onChange={e => setAddSectionIds(prev =>
+                            e.target.checked ? [...prev, s.id] : prev.filter(id => id !== s.id)
+                          )}
+                          className="accent-primary"
+                        />
+                        <span className="text-sm">{s.full_name || s.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {addSectionIds.length > 0 && (
+                    <p className="mt-1 text-xs text-primary font-medium">
+                      {addSectionIds.length} section{addSectionIds.length > 1 ? "s" : ""} selected
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold mb-1">Section <span className="text-muted-foreground font-normal">(current: {sections.find(s => s.id === sectionId)?.name ?? "—"})</span></label>
+                  <p className="text-xs text-muted-foreground">Slot will be added to the currently selected section above.</p>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-semibold mb-1">Subject</label>
                 <select value={addSubjectId} onChange={e => setAddSubjectId(e.target.value)} required
@@ -283,13 +349,18 @@ function DosTimetablePage() {
                 <input value={addRoom} onChange={e => setAddRoom(e.target.value)}
                   className="w-full h-9 rounded-lg border border-border bg-background px-3 text-sm" placeholder="e.g. Lab 1" />
               </div>
+              {addMode === "combined" && addSectionIds.length > 0 && (
+                <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-primary">
+                  This will create {addSectionIds.length} slot{addSectionIds.length > 1 ? "s" : ""} — one per section — all taught by the same teacher in the same period. Perfect for S4A + S4B + S4C combined lessons.
+                </div>
+              )}
               <div className="flex justify-end gap-2 pt-1">
                 <button type="button" onClick={() => setShowAdd(false)}
                   className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
-                <button type="submit" disabled={saving}
+                <button type="submit" disabled={saving || (addMode === "combined" && addSectionIds.length === 0)}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 disabled:opacity-60">
                   {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {saving ? "Saving…" : "Add Slot"}
+                  {saving ? "Saving…" : addMode === "combined" ? `Add ${addSectionIds.length || ""}  Combined` : "Add Slot"}
                 </button>
               </div>
             </form>

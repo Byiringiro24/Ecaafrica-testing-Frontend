@@ -50,6 +50,7 @@ type Student = {
   className: string;
   classId?: string | null;
   residency: "Boarding" | "Day";
+  gender?: "male" | "female" | null;
   deviceUserId?: string | null;
   deviceSyncStatus?: string | null;
   lastDeviceSync?: string | null;
@@ -85,6 +86,7 @@ function DeviceStudentsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [classFilter, setClassFilter] = useState("All");
   const [residencyFilter, setResidencyFilter] = useState<"All" | "Boarding" | "Day">("All");
+  const [genderFilter, setGenderFilter] = useState<"All" | "male" | "female">("All");
   const [search, setSearch] = useState("");
   const [showAssignedOnly, setShowAssignedOnly] = useState(false);
   const [studentPage, setStudentPage] = useState(1);
@@ -131,6 +133,7 @@ function DeviceStudentsPage() {
           className: student.current_section?.full_name ?? student.current_section?.name ?? student.class ?? "—",
           classId: student.current_section?.class_id ?? null,
           residency: student.student_type === "boarding" ? "Boarding" : "Day",
+          gender: student.gender ?? null,
           deviceUserId: student.device_user_id ?? null,
           deviceSyncStatus: student.device_sync_status ?? null,
           lastDeviceSync: student.last_device_sync ?? null,
@@ -195,12 +198,13 @@ function DeviceStudentsPage() {
     return students.filter((student) => {
       const matchesClass = classFilter === "All" || student.classId === classFilter;
       const matchesResidency = residencyFilter === "All" || student.residency === residencyFilter;
+      const matchesGender = genderFilter === "All" || student.gender === genderFilter;
       const searchable = `${student.name} ${student.className} ${student.id} ${student.deviceUserId ?? ""}`.toLowerCase();
       const matchesSearch = normalizedSearch === "" || searchable.includes(normalizedSearch);
       const matchesAssigned = !showAssignedOnly || assignedIds.has(student.id);
-      return matchesClass && matchesResidency && matchesSearch && matchesAssigned;
+      return matchesClass && matchesResidency && matchesGender && matchesSearch && matchesAssigned;
     });
-  }, [assignedIds, classFilter, residencyFilter, search, showAssignedOnly, students]);
+  }, [assignedIds, classFilter, residencyFilter, genderFilter, search, showAssignedOnly, students]);
 
   const studentPageCount = Math.max(1, Math.ceil(filteredStudents.length / STUDENTS_PER_PAGE));
   const paginatedStudents = useMemo(() => {
@@ -210,7 +214,7 @@ function DeviceStudentsPage() {
 
   useEffect(() => {
     setStudentPage(1);
-  }, [classFilter, residencyFilter, search, showAssignedOnly, deviceId]);
+  }, [classFilter, residencyFilter, genderFilter, search, showAssignedOnly, deviceId]);
 
   useEffect(() => {
     setStudentPage((page) => Math.min(page, studentPageCount));
@@ -254,6 +258,7 @@ function DeviceStudentsPage() {
       className: student.current_section?.full_name ?? student.current_section?.name ?? student.class ?? "—",
       classId: student.current_section?.class_id ?? null,
       residency: student.student_type === "boarding" ? "Boarding" : "Day",
+      gender: student.gender ?? null,
       deviceUserId: student.device_user_id ?? null,
       deviceSyncStatus: student.device_sync_status ?? null,
       lastDeviceSync: student.last_device_sync ?? null,
@@ -291,11 +296,12 @@ function DeviceStudentsPage() {
 
     setBusyAction({ type: actionType, id: actionId });
     try {
+      const genderParam = genderFilter !== "All" ? { gender: genderFilter } : {};
       const body =
         actionType === "push-all"
-          ? JSON.stringify({ mode: "all" })
+          ? JSON.stringify({ mode: "all", ...genderParam })
           : actionType === "push-class"
-            ? JSON.stringify({ mode: "class", class_id: classFilter })
+            ? JSON.stringify({ mode: "class", class_id: classFilter, ...genderParam })
             : JSON.stringify({ mode: "selected", student_ids: studentIds });
       const result = await apiRequest<any>(`/devices/${deviceId}/push-students`, {
         method: "POST",
@@ -462,6 +468,15 @@ function DeviceStudentsPage() {
           <option value="Boarding">Boarding</option>
           <option value="Day">Day</option>
         </select>
+        <select
+          value={genderFilter}
+          onChange={(event) => setGenderFilter(event.target.value as "All" | "male" | "female")}
+          className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+        >
+          <option value="All">All Genders</option>
+          <option value="male">Boys</option>
+          <option value="female">Girls</option>
+        </select>
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <input
             type="checkbox"
@@ -536,6 +551,7 @@ function DeviceStudentsPage() {
                   <th className="text-left px-5 py-3">Class</th>
                   <th className="text-left px-5 py-3">Residency</th>
                   <th className="text-left px-5 py-3">Assignment</th>
+                  <th className="text-left px-5 py-3">Gender</th>
                   <th className="text-right px-5 py-3">Action</th>
                 </tr>
               </thead>
@@ -562,6 +578,11 @@ function DeviceStudentsPage() {
                       </td>
                       <td className="px-5 py-3">{student.className}</td>
                       <td className="px-5 py-3"><ResidencyBadge residency={student.residency} /></td>
+                      <td className="px-5 py-3">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${student.gender === "male" ? "bg-blue-100 text-blue-700" : student.gender === "female" ? "bg-pink-100 text-pink-700" : "bg-muted text-muted-foreground"}`}>
+                          {student.gender === "male" ? "Boy" : student.gender === "female" ? "Girl" : "—"}
+                        </span>
+                      </td>
                       <td className="px-5 py-3"><AssignmentBadge assigned={assigned} /></td>
                       <td className="px-5 py-3 text-right">
                         {assigned ? (
@@ -597,7 +618,7 @@ function DeviceStudentsPage() {
                 })}
                 {filteredStudents.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">No students match your filters.</td>
+                    <td colSpan={7} className="px-5 py-10 text-center text-muted-foreground">No students match your filters.</td>
                   </tr>
                 )}
               </tbody>

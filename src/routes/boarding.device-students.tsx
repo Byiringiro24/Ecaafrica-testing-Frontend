@@ -29,6 +29,15 @@ type Device = {
 type ClassRecord = {
   id: string;
   name: string;
+  full_name?: string | null;
+};
+
+type SectionRecord = {
+  id: string;
+  name: string;
+  full_name?: string | null;
+  class_id: string;
+  class_name?: string | null;
 };
 
 type DeviceStatus = {
@@ -49,6 +58,7 @@ type Student = {
   name: string;
   className: string;
   classId?: string | null;
+  sectionId?: string | null;     // individual section (S1A, S1B etc.)
   residency: "Boarding" | "Day";
   gender?: "male" | "female" | null;
   deviceUserId?: string | null;
@@ -81,10 +91,12 @@ const getDeviceSyncState = (status?: string | null) => {
 function DeviceStudentsPage() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [classes, setClasses] = useState<ClassRecord[]>([]);
+  const [sections, setSections] = useState<SectionRecord[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [deviceId, setDeviceId] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [classFilter, setClassFilter] = useState("All");
+  const [classFilter, setClassFilter] = useState("All");    // S1, S2, S3 …
+  const [sectionFilter, setSectionFilter] = useState("All"); // S1A, S1B, S2A …
   const [residencyFilter, setResidencyFilter] = useState<"All" | "Boarding" | "Day">("All");
   const [genderFilter, setGenderFilter] = useState<"All" | "male" | "female">("All");
   const [search, setSearch] = useState("");
@@ -107,9 +119,10 @@ function DeviceStudentsPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [deviceData, classData, studentsData] = await Promise.all([
+        const [deviceData, classData, sectionData, studentsData] = await Promise.all([
           apiRequest<any[]>("/devices?limit=500&sort=created_at&order=desc", { auth: "school" }),
           apiRequest<ClassRecord[]>("/classes?limit=500", { auth: "school" }),
+          apiRequest<any[]>("/sections?limit=2000", { auth: "school" }).catch(() => []),
           apiRequest<any[]>("/students?limit=5000&status=active", { auth: "school" }),
         ]);
 
@@ -132,6 +145,7 @@ function DeviceStudentsPage() {
           name: `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim(),
           className: student.current_section?.full_name ?? student.current_section?.name ?? student.class ?? "—",
           classId: student.current_section?.class_id ?? null,
+          sectionId: student.current_section?.id ?? null,
           residency: student.student_type === "boarding" ? "Boarding" : "Day",
           gender: student.gender ?? null,
           deviceUserId: student.device_user_id ?? null,
@@ -141,6 +155,13 @@ function DeviceStudentsPage() {
 
         setDevices(mappedDevices);
         setClasses((Array.isArray(classData) ? classData : []).map((item) => ({ id: item.id, name: item.name })));
+        setSections((Array.isArray(sectionData) ? sectionData : []).map((s) => ({
+          id: s.id,
+          name: s.name,
+          full_name: s.full_name ?? s.name,
+          class_id: String(s.class_id ?? ""),
+          class_name: s.class?.name ?? null,
+        })));
         setStudents(mappedStudents);
       } catch (error: any) {
         toast.error(error?.message ?? "Failed to load device student data");
@@ -187,6 +208,10 @@ function DeviceStudentsPage() {
     () => classes.slice().sort((left, right) => left.name.localeCompare(right.name)),
     [classes]
   );
+  const sectionOptions = useMemo(
+    () => sections.slice().sort((a, b) => (a.full_name ?? a.name).localeCompare(b.full_name ?? b.name)),
+    [sections]
+  );
   const assignedStudents = useMemo(
     () => students.filter((student) => student.deviceSyncStatus === "synced"),
     [students]
@@ -196,7 +221,10 @@ function DeviceStudentsPage() {
   const filteredStudents = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     return students.filter((student) => {
-      const matchesClass = classFilter === "All" || student.classId === classFilter;
+      // Section filter takes priority over class filter when a specific section is chosen
+      const matchesClass = sectionFilter !== "All"
+        ? student.sectionId === sectionFilter
+        : classFilter === "All" || student.classId === classFilter;
       const matchesResidency = residencyFilter === "All" || student.residency === residencyFilter;
       const matchesGender = genderFilter === "All" || student.gender === genderFilter;
       const searchable = `${student.name} ${student.className} ${student.id} ${student.deviceUserId ?? ""}`.toLowerCase();
@@ -204,7 +232,7 @@ function DeviceStudentsPage() {
       const matchesAssigned = !showAssignedOnly || assignedIds.has(student.id);
       return matchesClass && matchesResidency && matchesGender && matchesSearch && matchesAssigned;
     });
-  }, [assignedIds, classFilter, residencyFilter, genderFilter, search, showAssignedOnly, students]);
+  }, [assignedIds, classFilter, sectionFilter, residencyFilter, genderFilter, search, showAssignedOnly, students]);
 
   const studentPageCount = Math.max(1, Math.ceil(filteredStudents.length / STUDENTS_PER_PAGE));
   const paginatedStudents = useMemo(() => {
@@ -214,7 +242,7 @@ function DeviceStudentsPage() {
 
   useEffect(() => {
     setStudentPage(1);
-  }, [classFilter, residencyFilter, genderFilter, search, showAssignedOnly, deviceId]);
+  }, [classFilter, sectionFilter, residencyFilter, genderFilter, search, showAssignedOnly, deviceId]);
 
   useEffect(() => {
     setStudentPage((page) => Math.min(page, studentPageCount));
@@ -257,6 +285,7 @@ function DeviceStudentsPage() {
       name: `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim(),
       className: student.current_section?.full_name ?? student.current_section?.name ?? student.class ?? "—",
       classId: student.current_section?.class_id ?? null,
+      sectionId: student.current_section?.id ?? null,
       residency: student.student_type === "boarding" ? "Boarding" : "Day",
       gender: student.gender ?? null,
       deviceUserId: student.device_user_id ?? null,
@@ -297,11 +326,17 @@ function DeviceStudentsPage() {
     setBusyAction({ type: actionType, id: actionId });
     try {
       const genderParam = genderFilter !== "All" ? { gender: genderFilter } : {};
+      // Determine the correct target:
+      // - sectionFilter selected → push exact section (S1A, S1B etc.)
+      // - classFilter selected → push whole class (all sections of S1, S2 etc.)
+      // - both All → push all
       const body =
         actionType === "push-all"
           ? JSON.stringify({ mode: "all", ...genderParam })
           : actionType === "push-class"
-            ? JSON.stringify({ mode: "class", class_id: classFilter, ...genderParam })
+            ? sectionFilter !== "All"
+              ? JSON.stringify({ mode: "class", section_id: sectionFilter, ...genderParam })
+              : JSON.stringify({ mode: "class", class_id: classFilter, ...genderParam })
             : JSON.stringify({ mode: "selected", student_ids: studentIds });
       const result = await apiRequest<any>(`/devices/${deviceId}/push-students`, {
         method: "POST",
@@ -330,8 +365,8 @@ function DeviceStudentsPage() {
   };
 
   const pushCurrentClass = async () => {
-    if (classFilter === "All") {
-      toast.error("Choose a class first");
+    if (sectionFilter === "All" && classFilter === "All") {
+      toast.error("Choose a class or section first");
       return;
     }
     await pushStudents([], "push-class");
@@ -359,9 +394,12 @@ function DeviceStudentsPage() {
   };
 
   const removeCurrentClass = () => {
-    if (classFilter === "All") { toast.error("Choose a class first"); return; }
+    if (sectionFilter === "All" && classFilter === "All") { toast.error("Choose a class or section first"); return; }
     const cls = classOptions.find(c => c.id === classFilter);
-    setDeleteTarget({ mode: "class", className: cls?.name ?? classFilter, classId: classFilter });
+    const sec = sections.find(s => s.id === sectionFilter);
+    const label = sec ? (sec.full_name || sec.name) : (cls?.name ?? classFilter);
+    const mode = sectionFilter !== "All" ? "class" : "class";
+    setDeleteTarget({ mode, className: label, classId: sectionFilter !== "All" ? sectionFilter : classFilter });
     setDeleteStep(1);
   };
 
@@ -382,7 +420,11 @@ function DeviceStudentsPage() {
       } else if (deleteTarget.mode === "selected") {
         body = { mode: "selected", student_ids: deleteTarget.ids };
       } else if (deleteTarget.mode === "class") {
-        body = { mode: "class", class_id: deleteTarget.classId };
+        // classId here may be a section_id if a specific section was chosen
+        const isSection = sections.some(s => s.id === deleteTarget.classId);
+        body = isSection
+          ? { mode: "class", section_id: deleteTarget.classId }
+          : { mode: "class", class_id: deleteTarget.classId };
       } else {
         body = { mode: "all" };
       }
@@ -453,11 +495,25 @@ function DeviceStudentsPage() {
         </select>
         <select
           value={classFilter}
-          onChange={(event) => setClassFilter(event.target.value)}
+          onChange={(event) => { setClassFilter(event.target.value); setSectionFilter("All"); }}
           className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
         >
           <option value="All">All Classes</option>
           {classOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+        </select>
+        {/* Section filter — shows specific streams like S1A, S1B, S2A etc. */}
+        <select
+          value={sectionFilter}
+          onChange={(event) => setSectionFilter(event.target.value)}
+          className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+        >
+          <option value="All">All Sections</option>
+          {sections
+            .filter(s => classFilter === "All" || s.class_id === classFilter)
+            .sort((a, b) => (a.full_name ?? a.name).localeCompare(b.full_name ?? b.name))
+            .map(s => (
+              <option key={s.id} value={s.id}>{s.full_name || s.name}</option>
+            ))}
         </select>
         <select
           value={residencyFilter}
@@ -505,10 +561,15 @@ function DeviceStudentsPage() {
         <button
           type="button"
           onClick={pushCurrentClass}
-          disabled={!hasSelectedDevice || Boolean(busyAction) || classFilter === "All"}
+          disabled={!hasSelectedDevice || Boolean(busyAction) || (classFilter === "All" && sectionFilter === "All")}
           className="h-10 inline-flex items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold hover:bg-muted disabled:opacity-50"
         >
-          {busyAction?.type === "push-class" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />} Push Class
+          {busyAction?.type === "push-class" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
+          {sectionFilter !== "All"
+            ? `Push ${sections.find(s => s.id === sectionFilter)?.full_name ?? "Section"}`
+            : classFilter !== "All"
+              ? `Push ${classOptions.find(c => c.id === classFilter)?.name ?? "Class"}`
+              : "Push Class / Section"}
         </button>
         {/* ── Remove buttons ── */}
         {selectedIds.size > 0 && (
@@ -517,10 +578,13 @@ function DeviceStudentsPage() {
             <Trash2 className="h-4 w-4" /> Remove Selected ({selectedIds.size})
           </button>
         )}
-        {classFilter !== "All" && (
+        {(classFilter !== "All" || sectionFilter !== "All") && (
           <button type="button" onClick={removeCurrentClass} disabled={!hasSelectedDevice}
             className="h-10 inline-flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-4 text-sm font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50">
-            <Trash2 className="h-4 w-4" /> Remove Class
+            <Trash2 className="h-4 w-4" />
+            {sectionFilter !== "All"
+              ? `Remove ${sections.find(s => s.id === sectionFilter)?.full_name ?? "Section"}`
+              : `Remove ${classOptions.find(c => c.id === classFilter)?.name ?? "Class"}`}
           </button>
         )}
       </div>
@@ -550,8 +614,9 @@ function DeviceStudentsPage() {
                   <th className="text-left px-5 py-3">Student</th>
                   <th className="text-left px-5 py-3">Class</th>
                   <th className="text-left px-5 py-3">Residency</th>
-                  <th className="text-left px-5 py-3">Assignment</th>
                   <th className="text-left px-5 py-3">Gender</th>
+                  <th className="text-left px-5 py-3">Device ID</th>
+                  <th className="text-left px-5 py-3">Assignment</th>
                   <th className="text-right px-5 py-3">Action</th>
                 </tr>
               </thead>
@@ -581,6 +646,11 @@ function DeviceStudentsPage() {
                       <td className="px-5 py-3">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${student.gender === "male" ? "bg-blue-100 text-blue-700" : student.gender === "female" ? "bg-pink-100 text-pink-700" : "bg-muted text-muted-foreground"}`}>
                           {student.gender === "male" ? "Boy" : student.gender === "female" ? "Girl" : "—"}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="font-mono text-xs font-bold text-foreground">
+                          {student.deviceUserId ?? <span className="text-muted-foreground font-normal">—</span>}
                         </span>
                       </td>
                       <td className="px-5 py-3"><AssignmentBadge assigned={assigned} /></td>
@@ -618,7 +688,7 @@ function DeviceStudentsPage() {
                 })}
                 {filteredStudents.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-5 py-10 text-center text-muted-foreground">No students match your filters.</td>
+                    <td colSpan={8} className="px-5 py-10 text-center text-muted-foreground">No students match your filters.</td>
                   </tr>
                 )}
               </tbody>

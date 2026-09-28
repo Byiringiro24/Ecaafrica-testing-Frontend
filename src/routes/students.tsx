@@ -645,6 +645,13 @@ function StudentProfileSlideOver({
             <DetailSection title="Student Details">
               <DetailRow label="Gender" value={gender} />
               <DetailRow label="Date of Birth" value={dob} />
+              <DetailRow label="Student ID Number" value={studentIdNumber(student)} />
+              {student.device_user_id && (
+                <DetailRow label="Device User ID" value={student.device_user_id} />
+              )}
+              {student.device_sync_status && student.device_sync_status !== "not synced" && (
+                <DetailRow label="Device Sync" value={capitalize(student.device_sync_status)} />
+              )}
               {student.combination && <DetailRow label="Combination" value={student.combination} />}
               {student.blood_group && <DetailRow label="Blood Group" value={student.blood_group} />}
               {student.religion && <DetailRow label="Religion" value={student.religion} />}

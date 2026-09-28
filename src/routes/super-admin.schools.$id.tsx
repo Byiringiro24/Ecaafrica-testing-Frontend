@@ -362,8 +362,9 @@ function SchoolDetailPage() {
     const loadUsers = async () => {
       setUsersLoading(true);
       try {
+        // Fetch up to 500 users — schools rarely exceed this, avoids pagination complexity
         const resp = await apiRequest<{ data: SchoolUser[] }>(
-          `/platform/schools/${id}/users?page=1&limit=20`,
+          `/platform/schools/${id}/users?page=1&limit=500`,
           { returnMeta: true }
         );
         if (!active) return;

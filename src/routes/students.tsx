@@ -130,7 +130,7 @@ function StudentsPage() {
     return (
       (classFilter === "All" || sectionName === classFilter) &&
       (residencyFilter === "All" || residency === residencyFilter) &&
-      (search === "" || fullName.includes(search.toLowerCase()) || studentId.includes(search.toLowerCase()))
+      (search === "" || fullName.includes(search.toLowerCase()) || studentId.includes(search.toLowerCase()) || (s.device_user_id ?? "").includes(search.toLowerCase()))
     );
   }), [students, search, classFilter, residencyFilter]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -222,7 +222,7 @@ function StudentsPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by name or Student ID Number…"
+                placeholder="Search by name, Student ID or Device ID…"
                 className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm"
               />
             </div>
@@ -285,7 +285,10 @@ function StudentsPage() {
                       )}
                     </div>
                     <h3 className="font-display font-bold mt-3 truncate">{fullName}</h3>
-                    <p className="text-xs text-muted-foreground font-mono mt-0.5">Student ID Number: {studentIdNumber(s)}</p>
+                    <p className="text-xs text-muted-foreground font-mono mt-0.5">Student ID: {studentIdNumber(s)}</p>
+                    <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                      Device ID: <span className="text-foreground font-semibold">{s.device_user_id ?? "—"}</span>
+                    </p>
                     <div className="mt-3 flex items-center gap-2 flex-wrap">
                       {sectionName && (
                         <span className="inline-flex items-center rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold">
@@ -320,10 +323,11 @@ function StudentsPage() {
                   <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                     <tr>
                       <th className="text-left px-4 py-3">Name</th>
-                      <th className="text-left px-4 py-3">Student ID Number</th>
+                      <th className="text-left px-4 py-3">Student ID</th>
+                      <th className="text-left px-4 py-3">Device ID</th>
                       <th className="text-left px-4 py-3">Class</th>
                       <th className="text-left px-4 py-3">Residency</th>
-                      <th className="text-left px-4 py-3">Device</th>
+                      <th className="text-left px-4 py-3">Device Status</th>
                       <th className="text-left px-4 py-3">Parent</th>
                       <th className="text-left px-4 py-3">Phone</th>
                       <th className="text-left px-4 py-3"></th>
@@ -340,6 +344,7 @@ function StudentsPage() {
                         <tr key={s.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/30">
                           <td className="px-4 py-3 font-medium">{fullName}</td>
                           <td className="px-4 py-3 font-mono text-xs">{studentIdNumber(s)}</td>
+                          <td className="px-4 py-3 font-mono text-xs font-bold">{s.device_user_id ?? "—"}</td>
                           <td className="px-4 py-3">{sectionName}</td>
                           <td className="px-4 py-3">
                             <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-sm font-semibold ${residencyStyle(residency)}`}>
@@ -361,7 +366,7 @@ function StudentsPage() {
                     })}
                     {filtered.length === 0 && total > 0 && (
                       <tr>
-                        <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">No students match your search.</td>
+                        <td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">No students match your search.</td>
                       </tr>
                     )}
                   </tbody>
@@ -646,9 +651,7 @@ function StudentProfileSlideOver({
               <DetailRow label="Gender" value={gender} />
               <DetailRow label="Date of Birth" value={dob} />
               <DetailRow label="Student ID Number" value={studentIdNumber(student)} />
-              {student.device_user_id && (
-                <DetailRow label="Device User ID" value={student.device_user_id} />
-              )}
+              <DetailRow label="Device User ID (FK623)" value={student.device_user_id ?? "Auto-assigned"} />
               {student.device_sync_status && student.device_sync_status !== "not synced" && (
                 <DetailRow label="Device Sync" value={capitalize(student.device_sync_status)} />
               )}

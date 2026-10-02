@@ -31,6 +31,14 @@ type SectionRecord = {
   class_id: string;
 };
 
+type PeriodRecord = {
+  id: string;
+  name: string;
+  start_time?: string;
+  end_time?: string;
+  is_break?: boolean;
+};
+
 type ApiStudent = {
   id: string;
   student_school_id?: string | null;
@@ -46,6 +54,10 @@ type ApiSession = {
   section_id: string;
   session_date: string;
   session_type?: string | null;
+  teacher_id?: string | null;
+  period_id?: string | null;
+  teacher?: { id: string; name: string } | null;
+  period?: { id: string; name: string } | null;
 };
 
 type ApiRecord = {
@@ -68,6 +80,8 @@ type AttendanceRow = {
   status: UiStatus;
   sessionId: string;
   sectionId: string;
+  teacherName: string;
+  periodName: string;
   residency?: "Boarding" | "Day";
 };
 
@@ -179,6 +193,7 @@ function ManualAttendancePage() {
   const [tab, setTab] = useState<"records" | "manual">("records");
   const [classRecords, setClassRecords] = useState<ClassRecord[]>([]);
   const [sectionRecords, setSectionRecords] = useState<SectionRecord[]>([]);
+  const [periodRecords, setPeriodRecords] = useState<PeriodRecord[]>([]);
   const [studentsById, setStudentsById] = useState<Record<string, ApiStudent>>({});
   const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [records, setRecords] = useState<ApiRecord[]>([]);
@@ -192,6 +207,7 @@ function ManualAttendancePage() {
   const [recordsLoading, setRecordsLoading] = useState(false);
 
   const [manualSectionId, setManualSectionId] = useState("");
+  const [manualPeriodId, setManualPeriodId] = useState("");
   const [manualDate, setManualDate] = useState(todayValue);
   const [manualStudents, setManualStudents] = useState<ApiStudent[]>([]);
   const [manualMarks, setManualMarks] = useState<Record<string, ApiStatus>>({});
@@ -244,12 +260,14 @@ function ManualAttendancePage() {
   const loadClassData = async () => {
     setLoading(true);
     try {
-      const [classes, sections] = await Promise.all([
+      const [classes, sections, periods] = await Promise.all([
         apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }),
-        apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" })
+        apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" }),
+        apiRequest<PeriodRecord[]>("/timetable-periods?limit=100", { auth: "school" })
       ]);
       setClassRecords(classes);
       setSectionRecords(sections);
+      setPeriodRecords(periods);
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to load classes");
     } finally {
@@ -345,7 +363,7 @@ function ManualAttendancePage() {
           auth: "school"
         }),
         apiRequest<ApiSession[]>(
-          `/attendance/sessions?section_id=${manualSectionId}&date=${manualDate}&limit=1`,
+          `/attendance/sessions?section_id=${manualSectionId}&date=${manualDate}${manualPeriodId ? `&period_id=${manualPeriodId}` : ""}&limit=1`,
           { auth: "school" }
         )
       ]);
@@ -402,6 +420,7 @@ function ManualAttendancePage() {
           auth: "school",
           body: JSON.stringify({
             section_id: manualSectionId,
+            ...(manualPeriodId ? { period_id: manualPeriodId } : {}),
             session_date: manualDate,
             session_type: "class",
             started_at: new Date().toISOString()
@@ -451,6 +470,12 @@ function ManualAttendancePage() {
     }
   }, [classOptions, manualSectionId]);
 
+  useEffect(() => {
+    if (!manualPeriodId && periodRecords.length) {
+      setManualPeriodId(periodRecords.find((period) => !period.is_break)?.id ?? "");
+    }
+  }, [manualPeriodId, periodRecords]);
+
   const todayLabel = useMemo(() => formatLongDate(dateFilter), [dateFilter]);
 
   const sessionMap = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);
@@ -470,6 +495,8 @@ function ManualAttendancePage() {
         sectionId
           ? classLabelForSection(sectionId)
           : student?.current_section?.full_name ?? "—";
+      const teacherName = session?.teacher?.name ?? "Unknown teacher";
+      const periodName = session?.period?.name ?? "No period";
       const residency =
         student?.student_type === "boarding"
           ? "Boarding"
@@ -487,6 +514,8 @@ function ManualAttendancePage() {
         status,
         sessionId: record.session_id,
         sectionId,
+        teacherName,
+        periodName,
         residency
       };
     });
@@ -540,7 +569,7 @@ function ManualAttendancePage() {
 
   useEffect(() => {
     setManualPage(1);
-  }, [manualSearch, manualSectionId, manualDate, manualStudents]);
+  }, [manualSearch, manualSectionId, manualPeriodId, manualDate, manualStudents]);
 
   useEffect(() => {
     if (manualPage > manualTotalPages) setManualPage(manualTotalPages);
@@ -588,6 +617,8 @@ function ManualAttendancePage() {
         "Student",
         "Card ID",
         "Class",
+        "Teacher",
+        "Period",
         "Time In",
         "Status",
         "Residency"
@@ -602,6 +633,8 @@ function ManualAttendancePage() {
           row.studentName,
           row.cardId,
           row.className,
+          row.teacherName,
+          row.periodName,
           row.timeIn,
           row.status,
           row.residency ?? ""
@@ -613,15 +646,17 @@ function ManualAttendancePage() {
         { width: 28 },
         { width: 14 },
         { width: 18 },
+        { width: 24 },
+        { width: 14 },
         { width: 12 },
         { width: 12 },
         { width: 12 }
       ];
 
-      sheet.getCell("I2").value = "Status";
-      sheet.getCell("J2").value = "Count";
-      sheet.getCell("I2").font = { bold: true };
-      sheet.getCell("J2").font = { bold: true };
+      sheet.getCell("K2").value = "Status";
+      sheet.getCell("L2").value = "Count";
+      sheet.getCell("K2").font = { bold: true };
+      sheet.getCell("L2").font = { bold: true };
 
       const summaryRows: Array<[UiStatus, number]> = [
         ["Present", exportCounts.Present],
@@ -631,8 +666,8 @@ function ManualAttendancePage() {
       ];
 
       summaryRows.forEach((row, idx) => {
-        sheet.getCell(`I${idx + 3}`).value = row[0];
-        sheet.getCell(`J${idx + 3}`).value = row[1];
+        sheet.getCell(`K${idx + 3}`).value = row[0];
+        sheet.getCell(`L${idx + 3}`).value = row[1];
       });
 
       const imageId = workbook.addImage({
@@ -641,7 +676,7 @@ function ManualAttendancePage() {
       });
 
       sheet.addImage(imageId, {
-        tl: { col: 8, row: 6 },
+        tl: { col: 10, row: 6 },
         ext: { width: 640, height: 340 }
       });
 
@@ -748,13 +783,15 @@ function ManualAttendancePage() {
                     <th className="text-left px-5 py-3">Student</th>
                     <th className="text-left px-5 py-3">Card ID</th>
                     <th className="text-left px-5 py-3">Class</th>
+                    <th className="text-left px-5 py-3">Teacher</th>
+                    <th className="text-left px-5 py-3">Period</th>
                     <th className="text-left px-5 py-3">Time In</th>
                     <th className="text-left px-5 py-3">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {recordsLoading && (
-                    <tr><td colSpan={6} className="px-5 py-6"><Skeleton className="h-6 w-full" /></td></tr>
+                    <tr><td colSpan={8} className="px-5 py-6"><Skeleton className="h-6 w-full" /></td></tr>
                   )}
                   {!recordsLoading && pageItems.map((row, i) => (
                     <tr key={row.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/40 transition-colors">
@@ -767,12 +804,14 @@ function ManualAttendancePage() {
                       </td>
                       <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{row.cardId}</td>
                       <td className="px-5 py-3">{row.className}</td>
+                      <td className="px-5 py-3">{row.teacherName}</td>
+                      <td className="px-5 py-3">{row.periodName}</td>
                       <td className="px-5 py-3">{row.timeIn}</td>
                       <td className="px-5 py-3"><StatusBadge status={row.status} /></td>
                     </tr>
                   ))}
                   {!recordsLoading && pageItems.length === 0 && (
-                    <tr><td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">No records match your filters.</td></tr>
+                    <tr><td colSpan={8} className="px-5 py-10 text-center text-muted-foreground">No records match your filters.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -811,6 +850,19 @@ function ManualAttendancePage() {
                 onChange={(e) => setManualDate(clampManualDate(e.target.value))}
                 className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm block"
               />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">Period</label>
+              <select
+                value={manualPeriodId}
+                onChange={(e) => { setManualPeriodId(e.target.value); setManualLoaded(false); }}
+                className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm block"
+              >
+                <option value="">No period</option>
+                {periodRecords.filter((period) => !period.is_break).map((period) => (
+                  <option key={period.id} value={period.id}>{period.name}</option>
+                ))}
+              </select>
             </div>
             <button onClick={loadManualStudents} disabled={manualLoading || loading} className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-50">Load Students</button>
             <button

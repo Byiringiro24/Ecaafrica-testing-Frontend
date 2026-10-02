@@ -35,6 +35,14 @@ type SectionRecord = {
   class_teacher_id?: string | null;
 };
 
+type PeriodRecord = {
+  id: string;
+  name: string;
+  start_time?: string;
+  end_time?: string;
+  is_break?: boolean;
+};
+
 type ApiStudent = {
   id: string;
   student_school_id?: string | null;
@@ -51,6 +59,10 @@ type ApiSession = {
   session_date: string;
   session_type?: string | null;
   submitted_at?: string | null;
+  teacher_id?: string | null;
+  period_id?: string | null;
+  teacher?: { id: string; name: string } | null;
+  period?: { id: string; name: string } | null;
 };
 
 type ApiRecord = {
@@ -177,6 +189,7 @@ function TeacherAttendance() {
   const [tab, setTab] = useState<"history" | "manual">("history");
   const [classRecords, setClassRecords] = useState<ClassRecord[]>([]);
   const [sectionRecords, setSectionRecords] = useState<SectionRecord[]>([]);
+  const [periodRecords, setPeriodRecords] = useState<PeriodRecord[]>([]);
   const [studentsById, setStudentsById] = useState<Record<string, ApiStudent>>({});
   const [sectionFilter, setSectionFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -186,6 +199,7 @@ function TeacherAttendance() {
   const [loading, setLoading] = useState(false);
 
   const [manualSectionId, setManualSectionId] = useState("");
+  const [manualPeriodId, setManualPeriodId] = useState("");
   const [manualDate, setManualDate] = useState(todayValue);
   const [manualStudents, setManualStudents] = useState<ApiStudent[]>([]);
   const [manualMarks, setManualMarks] = useState<Record<string, ApiStatus>>({});
@@ -248,13 +262,14 @@ function TeacherAttendance() {
     
     setLoading(true);
     try {
-      const [allClasses, allSections, teacherAssignments] = await Promise.all([
+      const [allClasses, allSections, teacherAssignments, periods] = await Promise.all([
         apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }),
         apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" }),
         apiRequest<TeacherSectionSubject[]>(
           `/teacher-section-subjects?teacher_id=${teacherId}&limit=500`,
           { auth: "school" }
-        )
+        ),
+        apiRequest<PeriodRecord[]>("/timetable-periods?limit=100", { auth: "school" })
       ]);
 
       setClassRecords(allClasses);
@@ -270,6 +285,7 @@ function TeacherAttendance() {
       );
 
       setSectionRecords(teacherSections);
+      setPeriodRecords(periods);
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to load classes");
     } finally {
@@ -375,7 +391,7 @@ function TeacherAttendance() {
           auth: "school"
         }),
         apiRequest<ApiSession[]>(
-          `/attendance/sessions?section_id=${manualSectionId}&date=${manualDate}&limit=1`,
+          `/attendance/sessions?section_id=${manualSectionId}&date=${manualDate}${manualPeriodId ? `&period_id=${manualPeriodId}` : ""}&limit=1`,
           { auth: "school" }
         )
       ]);
@@ -433,6 +449,7 @@ function TeacherAttendance() {
           auth: "school",
           body: JSON.stringify({
             section_id: manualSectionId,
+            ...(manualPeriodId ? { period_id: manualPeriodId } : {}),
             session_date: manualDate,
             session_type: "class",
             started_at: new Date().toISOString()
@@ -484,12 +501,15 @@ function TeacherAttendance() {
     if (!manualSectionId && classOptions.length) {
       setManualSectionId(classOptions[0].id);
     }
-  }, [classOptions, sectionFilter, manualSectionId]);
+    if (!manualPeriodId && periodRecords.length) {
+      setManualPeriodId(periodRecords.find((period) => !period.is_break)?.id ?? "");
+    }
+  }, [classOptions, sectionFilter, manualSectionId, manualPeriodId, periodRecords]);
 
   useEffect(() => {
     setManualSessionId(null);
     setManualLoaded(false);
-  }, [manualSectionId, manualDate]);
+  }, [manualSectionId, manualPeriodId, manualDate]);
 
   const historyRows = useMemo<AttendanceRow[]>(() => {
     return historyRecords.map((record) => {
@@ -824,6 +844,22 @@ function TeacherAttendance() {
                 onChange={(event) => setManualDate(clampManualDate(event.target.value))}
                 className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
               />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">Period</label>
+              <select
+                value={manualPeriodId}
+                onChange={(event) => {
+                  setManualPeriodId(event.target.value);
+                  setManualLoaded(false);
+                }}
+                className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">No period</option>
+                {periodRecords.filter((period) => !period.is_break).map((period) => (
+                  <option key={period.id} value={period.id}>{period.name}</option>
+                ))}
+              </select>
             </div>
             <button
               onClick={loadManualStudents}

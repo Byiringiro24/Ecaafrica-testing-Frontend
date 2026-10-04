@@ -16,6 +16,7 @@ import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 import logo from "@/assets/logo.png";
+import { RoleSwitcher } from "@/components/RoleSwitcher";
 
 const NAV = [
   {
@@ -146,6 +147,7 @@ export function GateKeeperLayout({
               <h1 className="font-display text-xl md:text-2xl font-bold truncate">{title}</h1>
               {subtitle && <p className="text-xs md:text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
             </div>
+            <div className="hidden md:block"><RoleSwitcher compact /></div>
             <div className="hidden sm:flex items-center gap-3 rounded-lg px-2 py-1.5">
               <div className="text-right leading-tight">
                 <div className="text-sm font-semibold">{displayName}</div>

@@ -8,6 +8,7 @@ import { directorOfStudiesRouteGuard } from "@/lib/schoolAuth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { exportToExcel } from "@/lib/exportExcel";
+import { attendanceDate, formatAttendanceDateTime, formatAttendanceTime } from "@/lib/attendanceTime";
 
 export const Route = createFileRoute("/dos/attendance")({
   beforeLoad: ({ location }) => directorOfStudiesRouteGuard(location),
@@ -17,13 +18,15 @@ export const Route = createFileRoute("/dos/attendance")({
 type AttSession = {
   id: string; session_date: string; session_type: string;
   submitted_at?: string | null; started_at?: string | null;
+  teacher?: { id: string; name: string } | null;
+  period?: { id: string; name: string } | null;
   section?: { id: string; name: string; full_name?: string | null } | null;
 };
 
 function DosAttendancePage() {
   const [sessions, setSessions] = useState<AttSession[]>([]);
   const [loading, setLoading] = useState(true);
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(attendanceDate());
   const [query, setQuery] = useState("");
 
   useEffect(() => {
@@ -59,8 +62,8 @@ function DosAttendancePage() {
         filtered.map(s => ({
           section: s.section?.full_name ?? s.section?.name ?? "—",
           type: s.session_type,
-          started: s.started_at ? new Date(s.started_at).toLocaleTimeString() : "—",
-          submitted: s.submitted_at ? new Date(s.submitted_at).toLocaleTimeString() : "Pending",
+          started: formatAttendanceTime(s.started_at),
+          submitted: s.submitted_at ? formatAttendanceDateTime(s.submitted_at) : "Pending",
           status: s.submitted_at ? "Submitted" : "Pending",
         })),
         `Class Attendance — ${date}`
@@ -95,22 +98,24 @@ function DosAttendancePage() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
               <tr>
-                {["Class / Section", "Type", "Started", "Submitted", "Status"].map(h => (
+                {["Class / Section", "Teacher", "Period", "Type", "Started", "Submitted", "Status"].map(h => (
                   <th key={h} className="text-left px-4 py-3">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Loading…</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No attendance sessions found for {date}.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No attendance sessions found for {date}.</td></tr>
               ) : filtered.map(s => (
                 <tr key={s.id} className="border-t border-border hover:bg-muted/20">
                   <td className="px-4 py-3 font-medium">{s.section?.full_name ?? s.section?.name ?? "—"}</td>
+                  <td className="px-4 py-3">{s.teacher?.name ?? "Unknown teacher"}</td>
+                  <td className="px-4 py-3">{s.period?.name ?? "No period"}</td>
                   <td className="px-4 py-3 text-xs capitalize">{s.session_type.replace(/_/g, " ")}</td>
-                  <td className="px-4 py-3 text-xs">{s.started_at ? new Date(s.started_at).toLocaleTimeString() : "—"}</td>
-                  <td className="px-4 py-3 text-xs">{s.submitted_at ? new Date(s.submitted_at).toLocaleTimeString() : "—"}</td>
+                  <td className="px-4 py-3 text-xs">{formatAttendanceTime(s.started_at)}</td>
+                  <td className="px-4 py-3 text-xs">{s.submitted_at ? formatAttendanceDateTime(s.submitted_at) : "—"}</td>
                   <td className="px-4 py-3">
                     {s.submitted_at ? (
                       <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-semibold">

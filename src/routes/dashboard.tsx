@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Users, CheckCircle2, XCircle, Clock, Wifi, WifiOff, MapPin } from "lucide-react";
+import {
+  Users,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Wifi,
+  WifiOff,
+  MapPin,
+  GraduationCap,
+  ClipboardCheck,
+  ClipboardX,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -38,6 +49,8 @@ type ApiSession = {
   id: string;
   section_id: string;
   session_date: string;
+  session_type?: "class" | "gate" | "boarding_morning" | "boarding_evening";
+  teacher_id?: string | null;
 };
 
 type ApiStudent = {
@@ -135,7 +148,7 @@ const summarizeDeviceAttendance = (logs: DeviceLog[], totalStudents: number) => 
     const status = (log.status ?? "").toLowerCase();
     if (status === "late") late += 1;
     else if (status === "absent") explicitAbsent += 1;
-    else present += 1;
+    else if (status === "present" || status === "excused") present += 1;
   });
 
   return {
@@ -162,15 +175,21 @@ const formatDateKey = (value: Date) => {
   return `${value.getFullYear()}-${month}-${day}`;
 };
 
-const getLastDates = (days: number) => {
-  const result: string[] = [];
-  const base = new Date();
-  for (let i = days - 1; i >= 0; i -= 1) {
-    const next = new Date(base);
-    next.setDate(base.getDate() - i);
-    result.push(formatDateKey(next));
-  }
-  return result;
+const isSchoolDayDate = (value: string) => {
+  const day = new Date(`${value}T12:00:00`).getDay();
+  return day >= 1 && day <= 5;
+};
+
+const getCurrentSchoolWeekDates = (value: string) => {
+  const base = new Date(`${value}T12:00:00`);
+  const mondayOffset = base.getDay() === 0 ? -6 : 1 - base.getDay();
+  base.setDate(base.getDate() + mondayOffset);
+
+  return Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(base);
+    date.setDate(base.getDate() + index);
+    return formatDateKey(date);
+  });
 };
 
 const classLabelForSection = (
@@ -205,6 +224,7 @@ const fetchStudentsForSections = async (sectionIds: string[]) => {
 function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [counts, setCounts] = useState({ total: 0, present: 0, absent: 0, late: 0 });
+  const [classAttendance, setClassAttendance] = useState({ teachers: 0, present: 0, absent: 0 });
   const [weekAttendance, setWeekAttendance] = useState<
     Array<{ day: string; Present: number; Absent: number; Late: number }>
   >([]);
@@ -257,17 +277,45 @@ function DashboardPage() {
 
         setDevices(Array.isArray(deviceList) ? deviceList : []);
 
+        const isSchoolDay = isSchoolDayDate(today);
+        const todayDeviceLogData = isSchoolDay ? todayDeviceLogs.data : [];
+
         const classMap = new Map(classes.map((item) => [item.id, item]));
         const sectionMap = new Map(sections.map((item) => [item.id, item]));
-        const sessionMap = new Map(sessions.map((item) => [item.id, item.section_id]));
+        // Class attendance is separate from gate/boarding sessions. Keep these
+        // cards based only on sessions teachers use to mark class attendance.
+        const classSessions = sessions.filter((session) => !session.session_type || session.session_type === "class");
+        const classSessionIds = new Set(classSessions.map((session) => session.id));
+        const classRecords = isSchoolDay
+          ? records.filter((record) => classSessionIds.has(record.session_id))
+          : [];
+        const schoolDaySessions = isSchoolDay ? classSessions : [];
+        const teacherIds = new Set(
+          schoolDaySessions.map((session) => session.teacher_id).filter((teacherId): teacherId is string => Boolean(teacherId))
+        );
+        setClassAttendance({
+          teachers: teacherIds.size,
+          present: classRecords.filter((record) => record.status === "present").length,
+          absent: classRecords.filter((record) => record.status === "absent").length,
+        });
+
+        const sessionMap = new Map(classSessions.map((item) => [item.id, item.section_id]));
 
         const totalStudents = studentMeta.meta?.total || records.length;
-        setCounts(summarizeDeviceAttendance(todayDeviceLogs.data, totalStudents));
+        setCounts(
+          isSchoolDay
+            ? summarizeDeviceAttendance(todayDeviceLogData, totalStudents)
+            : { total: totalStudents, present: 0, absent: 0, late: 0 }
+        );
 
-        const weekDates = getLastDates(5);
+        const weekDates = getCurrentSchoolWeekDates(today);
         const weekDeviceLogs = await Promise.all(
           weekDates.map((date) =>
-            date === today ? Promise.resolve(todayDeviceLogs.data) : fetchAllDeviceLogsForDate(date).catch(() => [])
+            date > today
+              ? Promise.resolve([] as DeviceLog[])
+              : date === today
+                ? Promise.resolve(todayDeviceLogData)
+                : fetchAllDeviceLogsForDate(date).catch(() => [])
           )
         );
 
@@ -275,6 +323,9 @@ function DashboardPage() {
 
         setWeekAttendance(
           weekDates.map((date, idx) => {
+            if (date > today) {
+              return { day: formatDayLabel(date), Present: 0, Absent: 0, Late: 0 };
+            }
             const daySummary = summarizeDeviceAttendance(weekDeviceLogs[idx], totalStudents);
             return {
               day: formatDayLabel(date),
@@ -288,7 +339,7 @@ function DashboardPage() {
         // Device logs include the class/section captured at scan time. Count each
         // student once so repeated scans do not inflate the class breakdown.
         const studentsByClass = new Map<string, Set<string>>();
-        todayDeviceLogs.data.forEach((log) => {
+        todayDeviceLogData.forEach((log) => {
           if ((log.status ?? "").toLowerCase() === "absent") return;
           const className = log.className || log.section || "Unknown class";
           const students = studentsByClass.get(className) ?? new Set<string>();
@@ -301,7 +352,7 @@ function DashboardPage() {
         );
 
         setRecentCheckins(
-          todayDeviceLogs.data.slice(0, 6).map((log) => {
+          todayDeviceLogData.slice(0, 6).map((log) => {
             return {
               id: log.id,
               name: log.studentName || "Unknown student",
@@ -313,7 +364,7 @@ function DashboardPage() {
         );
 
         const deviceAbsenceAlerts = Array.from(
-          todayDeviceLogs.data
+          todayDeviceLogData
             .filter((log) => (log.status ?? "").toLowerCase() === "absent")
             .reduce((alerts, log) => {
               alerts.set(deviceStudentKey(log), {
@@ -330,10 +381,10 @@ function DashboardPage() {
         if (deviceAbsenceAlerts.length) {
           setAbsenceAlerts(deviceAbsenceAlerts.slice(0, 5));
         } else {
-          const sectionIds = Array.from(new Set(sessions.map((item) => item.section_id)));
+          const sectionIds = Array.from(new Set(schoolDaySessions.map((item) => item.section_id)));
           const studentsById = await fetchStudentsForSections(sectionIds);
           setAbsenceAlerts(
-            records
+              classRecords
               .filter((record) => record.status === "absent")
               .slice(0, 5)
               .map((record) => {
@@ -377,6 +428,10 @@ function DashboardPage() {
             <StatCard label="Present Today" value={counts.present} icon={<CheckCircle2 className="h-5 w-5" />} trend={`${pct(counts.present)}% of total`} tone="success" />
             <StatCard label="Absent Today" value={counts.absent} icon={<XCircle className="h-5 w-5" />} trend={`${pct(counts.absent)}% of total`} tone="destructive" />
             <StatCard label="Late Arrivals" value={counts.late} icon={<Clock className="h-5 w-5" />} trend={`${pct(counts.late)}% of total`} tone="warning" />
+            <StatCard label="Total Present Students" value={counts.present} icon={<CheckCircle2 className="h-5 w-5" />} trend="Morning device attendance" tone="success" />
+            <StatCard label="Teachers Taking Attendance" value={classAttendance.teachers} icon={<GraduationCap className="h-5 w-5" />} trend="Class attendance today" tone="primary" />
+            <StatCard label="Class Present Attendance" value={classAttendance.present} icon={<ClipboardCheck className="h-5 w-5" />} trend="Student records marked present" tone="success" />
+            <StatCard label="Class Absent Attendance" value={classAttendance.absent} icon={<ClipboardX className="h-5 w-5" />} trend="Student records marked absent" tone="destructive" />
           </div>
 
           <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 mt-6">
@@ -515,7 +570,7 @@ function DashboardSkeleton() {
   return (
     <>
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
+        {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="rounded-xl border border-border bg-card p-5 shadow-sm">
             <Skeleton className="h-3 w-24" />
             <Skeleton className="mt-3 h-8 w-16" />

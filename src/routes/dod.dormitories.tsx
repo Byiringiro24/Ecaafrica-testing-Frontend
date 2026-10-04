@@ -22,7 +22,15 @@ type Dormitory = {
   hostel_name?: string | null; block_name?: string | null;
   building?: string | null; capacity?: number; is_active?: boolean;
 };
-type Room = { id: string; dormitory_id: string; room_number: string; capacity?: number; bed_count?: number };
+type Room = {
+  id: string;
+  dormitory_id: string;
+  room_number: string;
+  capacity?: number;
+  bed_count?: number;
+  occupied?: number;
+  remaining_capacity?: number;
+};
 
 function DodDormitoriesPage() {
   const [dormitories, setDormitories] = useState<Dormitory[]>([]);
@@ -200,7 +208,7 @@ function DodDormitoriesPage() {
                   <div className="mb-3 flex flex-wrap gap-1.5">
                     {dormRooms.slice(0, 8).map(r => (
                       <span key={r.id} className="rounded-md border border-border bg-muted px-2 py-0.5 text-xs font-mono">
-                        {r.room_number}
+                         {r.room_number} · {r.occupied ?? 0}/{r.capacity ?? 0} used · {r.remaining_capacity ?? Math.max((r.capacity ?? 0) - (r.occupied ?? 0), 0)} left
                       </span>
                     ))}
                     {dormRooms.length > 8 && <span className="text-xs text-muted-foreground">+{dormRooms.length - 8} more</span>}

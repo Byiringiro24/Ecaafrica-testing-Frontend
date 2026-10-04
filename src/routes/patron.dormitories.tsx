@@ -18,7 +18,14 @@ export const Route = createFileRoute("/patron/dormitories")({
 
 type Student = { id: string; first_name: string; last_name: string; student_id_number?: string | null; photo_url?: string | null; gender?: string | null; boarding_status?: string | null };
 type Assignment = { id: string; student_id: string; dormitory_id: string; room_id?: string | null; bed_number?: string | null; room?: { id: string; room_number: string } | null };
-type Room = { id: string; room_number: string; capacity?: number | null; dormitory_id: string };
+type Room = {
+  id: string;
+  room_number: string;
+  capacity?: number | null;
+  dormitory_id: string;
+  occupied?: number;
+  remaining_capacity?: number;
+};
 
 const STATUS_COLOR: Record<string, string> = {
   in_school: "bg-emerald-100 text-emerald-700",
@@ -266,7 +273,9 @@ function RoomAssignModal({
               className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm">
               <option value="">— No room assigned —</option>
               {dormRooms.map(r => (
-                <option key={r.id} value={r.id}>Room {r.room_number}{r.capacity ? ` (cap. ${r.capacity})` : ""}</option>
+                <option key={r.id} value={r.id}>
+                  Room {r.room_number}{r.capacity ? ` (${r.occupied ?? 0}/${r.capacity} used · ${r.remaining_capacity ?? Math.max(r.capacity - (r.occupied ?? 0), 0)} left)` : ""}
+                </option>
               ))}
             </select>
             {dormRooms.length === 0 && (

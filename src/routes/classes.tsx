@@ -13,6 +13,9 @@ import {
   type ClassInfo,
 } from "@/lib/mockData";
 import { apiRequest } from "@/lib/api";
+import { localDateInputValue } from "@/lib/dateInput";
+import { fetchTodayAttendance } from "@/lib/device-logs-api";
+import type { DeviceLog } from "@/lib/device-logs-types";
 import { studentIdNumber } from "@/lib/studentIdentity";
 import {
   downloadStudentImportTemplate,
@@ -36,7 +39,9 @@ type ClassRecord = {
   level_label?: string | null;
   description?: string | null;
   academic_year_id?: string | null;
+  combinations?: { id: string; code: string; name: string }[];
 };
+type CombinationRecord = { id: string; code: string; name: string; subjects?: { id: string; name: string; code?: string | null }[] };
 
 type LevelRecord = {
   id: string;
@@ -74,6 +79,7 @@ type ClassFormPayload = {
   room?: string | null;
   capacity: number;
   academicYearId?: string | null;
+  combinationIds?: string[];
 };
 
 type StudentCountResponse = {
@@ -97,6 +103,8 @@ type ApiSession = {
   session_date: string;
 };
 
+type ApiStudent = { id: string; student_id_number?: string | null };
+
 const normalizeSectionKey = (value: string) => value.toLowerCase().replace(/\s+/g, "");
 const MAX_CAPACITY = 32767;
 const parseLevelNumber = (value: string) => {
@@ -104,7 +112,11 @@ const parseLevelNumber = (value: string) => {
   return match ? Number(match[0]) : 1;
 };
 const toClassName = (levelNumber: number) => `S${levelNumber}`;
-const isPresentStatus = (status: ApiStatus) => status !== "absent";
+const isPresentStatus = (status: ApiStatus) => status === "present" || status === "late" || status === "excused";
+const isMorningDeviceLog = (log: DeviceLog) => {
+  const label = `${log.sessionName ?? ""} ${log.statusLabel ?? ""}`.toLowerCase();
+  return !label.includes("evening") && !label.includes("night");
+};
 const formatDayLabel = (value: string) =>
   new Date(value).toLocaleDateString("en-US", { weekday: "short" });
 const getLastDates = (days: number) => {
@@ -126,6 +138,7 @@ function ClassesPage() {
   const [academicYears, setAcademicYears] = useState<AcademicYearRecord[]>([]);
   const [currentYear, setCurrentYear] = useState<AcademicYearRecord | null>(null);
   const [teachers, setTeachers] = useState<TeacherRecord[]>([]);
+  const [combinations, setCombinations] = useState<CombinationRecord[]>([]);
   const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
   const [todayAttendance, setTodayAttendance] = useState<Record<string, { present: number; total: number }>>({});
   const [loading, setLoading] = useState(false);
@@ -176,7 +189,9 @@ function ClassesPage() {
         studentCount: studentCountLookup[section.id] ?? 0,
         classId: cls.id,
         sectionId: section.id,
-        academicYearId: cls.academic_year_id ?? null
+        academicYearId: cls.academic_year_id ?? null,
+        combinationIds: (cls.combinations ?? []).map((combination) => combination.id),
+        combinations: cls.combinations ?? []
       });
 
       return acc;
@@ -272,6 +287,7 @@ function ClassesPage() {
     loadClassData();
     loadAcademicYears();
     loadTeachers();
+    apiRequest<CombinationRecord[]>("/combinations?limit=200", { auth: "school" }).then(setCombinations).catch(() => setCombinations([]));
   }, []);
 
   useEffect(() => {
@@ -282,29 +298,31 @@ function ClassesPage() {
 
     let active = true;
     const loadAttendance = async () => {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = localDateInputValue();
       try {
-        const [sessions, records] = await Promise.all([
-          apiRequest<ApiSession[]>(`/attendance/sessions?date=${today}&limit=500`, {
-            auth: "school"
-          }).catch(() => []),
-          apiRequest<ApiRecord[]>(`/attendance/records?date=${today}&limit=5000`, {
-            auth: "school"
-          }).catch(() => [])
+        const [deviceResponse, rosterBatches] = await Promise.all([
+          fetchTodayAttendance().catch(() => ({ data: [] as DeviceLog[] })),
+          Promise.all(sectionRecords.map((section) => apiRequest<ApiStudent[]>(`/students?section_id=${section.id}&limit=1000`, { auth: "school" }).catch(() => [])))
         ]);
 
         if (!active) return;
 
-        const sessionMap = new Map(sessions.map((item) => [item.id, item.section_id]));
         const next: Record<string, { present: number; total: number }> = {};
-        records.forEach((record) => {
-          const sectionId = sessionMap.get(record.session_id);
-          if (!sectionId) return;
-          const current = next[sectionId] ?? { present: 0, total: 0 };
-          current.total += 1;
-          if (isPresentStatus(record.status)) current.present += 1;
+        const studentSection = new Map<string, string>();
+        rosterBatches.forEach((students, index) => students.forEach((student) => {
+          studentSection.set(student.id, sectionRecords[index].id);
+          if (student.student_id_number) studentSection.set(student.student_id_number, sectionRecords[index].id);
+        }));
+        const seen = new Set<string>();
+        deviceResponse.data.filter(isMorningDeviceLog).forEach((log) => {
+          const sectionId = studentSection.get(String(log.studentId));
+          if (!sectionId || seen.has(`${sectionId}:${log.studentId}`)) return;
+          seen.add(`${sectionId}:${log.studentId}`);
+          const current = next[sectionId] ?? { present: 0, total: studentCounts[sectionId] ?? 0 };
+          if (isPresentStatus((log.status || "present").toLowerCase() as ApiStatus)) current.present += 1;
           next[sectionId] = current;
         });
+        sectionRecords.forEach((section) => { if (!next[section.id]) next[section.id] = { present: 0, total: studentCounts[section.id] ?? 0 }; });
         setTodayAttendance(next);
       } catch (error: any) {
         if (active) toast.error(error?.message ?? "Failed to load attendance");
@@ -315,7 +333,7 @@ function ClassesPage() {
     return () => {
       active = false;
     };
-  }, [sectionRecords]);
+  }, [sectionRecords, studentCounts]);
 
   useEffect(() => {
     setList(buildClassList(classRecords, sectionRecords, teacherMap, studentCounts));
@@ -376,6 +394,7 @@ function ClassesPage() {
         if (normalizedYearId) {
           classPayload.academic_year_id = normalizedYearId;
         }
+        if (payload.combinationIds?.length) classPayload.combination_ids = payload.combinationIds;
 
         classRecord = await apiRequest<ClassRecord>("/classes", {
           method: "POST",
@@ -559,6 +578,7 @@ function ClassesPage() {
           levels={levels}
           teachers={teachers}
           academicYears={academicYears}
+          combinations={combinations}
           defaultAcademicYearId={currentYear?.id ?? null}
           saving={saving}
           onClose={() => setAddOpen(false)}
@@ -574,6 +594,7 @@ function ClassesPage() {
           cls={editing}
           teachers={teachers}
           academicYears={academicYears}
+          combinations={combinations}
           defaultAcademicYearId={currentYear?.id ?? null}
           saving={saving}
           onClose={() => setEditing(null)}
@@ -863,6 +884,7 @@ function ClassFormModal({
   levels,
   teachers,
   academicYears,
+  combinations,
   defaultAcademicYearId,
   saving,
   onClose,
@@ -873,6 +895,7 @@ function ClassFormModal({
   levels: LevelRecord[];
   teachers: TeacherRecord[];
   academicYears: AcademicYearRecord[];
+  combinations: CombinationRecord[];
   defaultAcademicYearId?: string | null;
   saving: boolean;
   onClose: () => void;
@@ -888,6 +911,7 @@ function ClassFormModal({
   const [academicYearId, setAcademicYearId] = useState<string>(
     cls?.academicYearId ?? defaultAcademicYearId ?? ""
   );
+  const [combinationIds, setCombinationIds] = useState<string[]>(cls?.combinationIds ?? []);
 
   useEffect(() => {
     if (!cls && !academicYearId && defaultAcademicYearId) {
@@ -909,6 +933,7 @@ function ClassFormModal({
       room,
       capacity,
       academicYearId
+      , combinationIds
     });
   };
 
@@ -959,6 +984,9 @@ function ClassFormModal({
           </Field>
           <Field label="Room (optional)"><input value={room} onChange={e => setRoom(e.target.value)} className={inp} /></Field>
           <Field label="Capacity"><input type="number" min={1} max={MAX_CAPACITY} step={1} value={capacity} onChange={e => setCapacity(+e.target.value)} className={inp} /></Field>
+          <Field label="Subject combinations" full>
+            {combinations.length === 0 ? <p className="text-xs text-muted-foreground">No combinations created yet. Create MCB, PCB, or another combination from the subject management page.</p> : <div className="max-h-24 space-y-1 overflow-y-auto rounded-lg border border-border p-2">{combinations.map((combination) => <label key={combination.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={combinationIds.includes(combination.id)} onChange={(event) => setCombinationIds((current) => event.target.checked ? [...current, combination.id] : current.filter((id) => id !== combination.id))} /><span><b>{combination.code}</b> — {combination.name}</span></label>)}</div>}
+          </Field>
         </div>
         <div className="flex justify-between gap-2 px-6 py-4 border-t border-border">
           {cls && onDelete ? (

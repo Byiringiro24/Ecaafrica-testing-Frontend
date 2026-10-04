@@ -190,10 +190,6 @@ export function AppSidebar({ open, onClose }: Props) {
               <LogOut className="h-4 w-4" />
             </button>
           </div>
-          {/* Role switcher — visible when user has multiple roles */}
-          <div className="mt-2">
-            <RoleSwitcher />
-          </div>
         </div>
       </aside>
     </>

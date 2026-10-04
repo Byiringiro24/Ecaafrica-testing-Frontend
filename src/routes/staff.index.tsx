@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { Search, Plus, Grid3X3, List, X, Phone, Mail, Calendar, MoreVertical } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Search, Plus, Grid3X3, List, X, Phone, Mail, Calendar, MoreVertical, KeyRound, Loader2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { SaPhoneInput } from "@/components/super-admin/ui";
@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { syncTeacherAssignments } from "@/lib/teacher-assignments";
 import { useSchoolCountryName } from "@/hooks/useSchoolCountry";
+import { getSchoolAuth, isSchoolAdminRole } from "@/lib/schoolAuth";
 
 export const Route = createFileRoute("/staff/")({ component: StaffPage });
 
@@ -243,6 +244,9 @@ function StaffPage() {
   const [departments, setDepartments] = useState<string[]>(DEFAULT_DEPARTMENTS);
   const [loading, setLoading] = useState(false);
   const [accountBusyId, setAccountBusyId] = useState<string | null>(null);
+  const canResetPassword = isSchoolAdminRole(getSchoolAuth()?.user?.role);
+  const canManageRoles = ["school_admin", "director_of_discipline", "director_of_studies"]
+    .includes(getSchoolAuth()?.user?.role?.toLowerCase() ?? "");
 
   const staffRows = useMemo(
     () => buildStaffRows(staffProfiles, users, sections, classes, teacherSectionSubjects, subjectCatalog),
@@ -391,6 +395,14 @@ function StaffPage() {
           </button>
         ))}
         <div className="ml-auto pb-2">
+          {canManageRoles && (
+            <Link
+              to="/staff/roles"
+              className="mr-2 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-muted"
+            >
+              <ShieldCheck className="h-4 w-4" /> Role Management
+            </Link>
+          )}
           <button onClick={() => setRegisterOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-sm font-semibold hover:bg-primary/90">
             <Plus className="h-4 w-4" /> Register Staff
           </button>
@@ -507,6 +519,7 @@ function StaffPage() {
         <StaffProfileSlideOver
           staff={profile}
           onClose={() => setProfile(null)}
+          canResetPassword={canResetPassword}
         />
       )}
       {editProfile && (
@@ -649,7 +662,8 @@ function DepartmentsTab({
   );
 }
 
-function StaffProfileSlideOver({ staff, onClose }: { staff: StaffRow; onClose: () => void }) {
+function StaffProfileSlideOver({ staff, onClose, canResetPassword }: { staff: StaffRow; onClose: () => void; canResetPassword: boolean }) {
+  const [resettingPassword, setResettingPassword] = useState(false);
   const initials = staff.name !== EMPTY_VALUE
     ? staff.name.split(" ").map(p => p[0]).join("").slice(0, 2)
     : "--";
@@ -669,6 +683,32 @@ function StaffProfileSlideOver({ staff, onClose }: { staff: StaffRow; onClose: (
               <StatusPill v={staff.status} />
             </div>
           </div>
+          {canResetPassword && staff.userId && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <div className="text-sm font-semibold text-amber-900">Account security</div>
+              <p className="mt-1 text-xs text-amber-800">Send this staff member a secure password-reset link by email.</p>
+              <button
+                type="button"
+                disabled={resettingPassword || !staff.email || staff.email === EMPTY_VALUE}
+                onClick={async () => {
+                  if (!window.confirm(`Send a password reset link to ${staff.email}?`)) return;
+                  setResettingPassword(true);
+                  try {
+                    await apiRequest(`/users/${staff.userId}/reset-password`, { method: "POST", auth: "school" });
+                    toast.success("Password reset link sent to the staff member.");
+                  } catch (error: any) {
+                    toast.error(error?.message ?? "Failed to send password reset link");
+                  } finally {
+                    setResettingPassword(false);
+                  }
+                }}
+                className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-amber-300 bg-background px-3 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {resettingPassword ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <KeyRound className="h-3.5 w-3.5" />}
+                {resettingPassword ? "Sending link..." : "Reset password"}
+              </button>
+            </div>
+          )}
           <Section title="Personal & Contact">
             <Row k="Staff ID" v={staff.staffId} />
             <Row k="Gender" v={staff.gender} />
@@ -738,6 +778,7 @@ function RegisterStaffModal({
     joinDate: "",
     address: "",
     role: roleOptions[0].value,
+    secondaryRoles: [] as string[],
   });
 
   const department = ROLE_DEPARTMENTS[data.role as typeof STAFF_ROLES[number]];
@@ -768,6 +809,7 @@ function RegisterStaffModal({
           email: data.email.trim() || null,
           phone: data.phone.trim() || null,
           role: data.role,
+          roles: data.secondaryRoles.filter((role) => role !== data.role),
           status: "active",
           password,
         })
@@ -831,6 +873,7 @@ function RegisterStaffModal({
     { label: "Email", value: data.email },
     { label: "Address", value: data.address },
     { label: "Role", value: roleOptions.find((o) => o.value === data.role)?.label ?? data.role },
+    { label: "Additional roles", value: data.secondaryRoles.map((role) => roleOptions.find((o) => o.value === role)?.label ?? role).join(", ") },
     { label: "Department", value: department },
     { label: "Join Date", value: data.joinDate },
   ];
@@ -872,6 +915,23 @@ function RegisterStaffModal({
               <Field label="Join Date" type="date" value={data.joinDate} onChange={(v: any) => update("joinDate", v)} max={todayValue} />
               <Field label="Address" value={data.address} onChange={(v: any) => update("address", v)} className="md:col-span-2" />
               <Field label="Role" type="select" value={data.role} onChange={(v: any) => update("role", v)} options={roleOptions.map((o) => o.value)} optionLabels={roleOptions.reduce((acc, o) => ({ ...acc, [o.value]: o.label }), {} as Record<string, string>)} />
+              <div>
+                <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Additional roles</label>
+                <div className="max-h-28 space-y-1 overflow-y-auto rounded-lg border border-border p-2">
+                  {roleOptions.filter((option) => option.value !== data.role).map((option) => (
+                    <label key={option.value} className="flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={data.secondaryRoles.includes(option.value)}
+                        onChange={(event) => update("secondaryRoles", event.target.checked
+                          ? [...data.secondaryRoles, option.value]
+                          : data.secondaryRoles.filter((role) => role !== option.value))}
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <div>
                 <label className="block text-xs font-semibold text-muted-foreground mb-1.5">Department</label>
                 <div className="flex h-10 w-full items-center rounded-lg border border-border bg-muted px-3 text-sm">{department}</div>

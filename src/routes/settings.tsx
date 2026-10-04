@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Building2, LockKeyhole, Plus, Upload } from "lucide-react";
+import { Building2, LockKeyhole, Plus, Upload, Save } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest, API_BASE_URL } from "@/lib/api";
@@ -13,6 +13,8 @@ export const Route = createFileRoute("/settings")({
 });
 
 type TabId = "school" | "reset-password";
+
+type StudentIdSetting = { prefix: string; padding: number };
 
 type AcademicYearApi = {
   id: string;
@@ -92,6 +94,8 @@ function SchoolTab() {
   const [yearStart, setYearStart] = useState("");
   const [yearEnd, setYearEnd] = useState("");
   const [yearCurrent, setYearCurrent] = useState(true);
+  const [studentIdSetting, setStudentIdSetting] = useState<StudentIdSetting>({ prefix: "", padding: 0 });
+  const [savingStudentIdSetting, setSavingStudentIdSetting] = useState(false);
   const todayValue = new Date().toISOString().split("T")[0];
 
   const schoolName = schoolProfile?.school_name ?? "";
@@ -137,6 +141,12 @@ function SchoolTab() {
 
         setSchoolProfile(profile);
         setAcademicYears(years.map(normalizeAcademicYear));
+        try {
+          const setting = await apiRequest<{ parsed_value?: Partial<StudentIdSetting> }>("/system-settings/key/student_id_generation", { auth: "school" });
+          setStudentIdSetting({ prefix: setting.parsed_value?.prefix ?? "", padding: Number(setting.parsed_value?.padding ?? 0) });
+        } catch {
+          // The setting is optional; the backend safely falls back to school ID + sequence.
+        }
       } catch (error: any) {
         toast.error(error?.message ?? 'Failed to load settings data');
       }
@@ -144,6 +154,24 @@ function SchoolTab() {
 
     void loadData();
   }, []);
+
+  const saveStudentIdSetting = async () => {
+    setSavingStudentIdSetting(true);
+    try {
+      const body = { value: { prefix: studentIdSetting.prefix.trim(), padding: Math.max(0, Math.min(12, Number(studentIdSetting.padding) || 0)) }, type: "json" };
+      try {
+        await apiRequest("/system-settings/key/student_id_generation", { method: "PATCH", body: JSON.stringify(body), auth: "school" });
+      } catch (error: any) {
+        if (!String(error?.message ?? "").toLowerCase().includes("not found")) throw error;
+        await apiRequest("/system-settings", { method: "POST", body: JSON.stringify({ key_name: "student_id_generation", ...body }), auth: "school" });
+      }
+      toast.success("Student ID settings saved");
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to save student ID settings");
+    } finally {
+      setSavingStudentIdSetting(false);
+    }
+  };
 
   const handleLogoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -401,6 +429,18 @@ function SchoolTab() {
           <Plus className="h-4 w-4" />
           {editingYearId ? "Update academic year" : "Add academic year"}
         </button>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-background p-5">
+        <div className="mb-4">
+          <h3 className="font-display text-lg font-bold">Student ID generation</h3>
+          <p className="mt-1 text-sm text-muted-foreground">New students without an ID receive the next school-specific number. Leave the prefix blank to use the school ID.</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="ID prefix"><input value={studentIdSetting.prefix} onChange={(e) => setStudentIdSetting((v) => ({ ...v, prefix: e.target.value }))} className={inputClass} placeholder="e.g. ABC-" /></Field>
+          <Field label="Sequence padding"><input type="number" min={0} max={12} value={studentIdSetting.padding} onChange={(e) => setStudentIdSetting((v) => ({ ...v, padding: Number(e.target.value) }))} className={inputClass} /></Field>
+        </div>
+        <button type="button" onClick={saveStudentIdSetting} disabled={savingStudentIdSetting} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"><Save className="h-4 w-4" />{savingStudentIdSetting ? "Saving…" : "Save student ID settings"}</button>
       </section>
     </div>
   );

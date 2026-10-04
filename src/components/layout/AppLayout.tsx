@@ -2,15 +2,22 @@
 import { SuspendedBanner } from "@/components/layout/SuspendedBanner";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
-import { getSchoolAuth, isDirectorOfStudiesRole, isSchoolAdminRole, roleHome } from "@/lib/schoolAuth";
+import {
+  getSchoolAuth,
+  isDirectorOfDisciplineRole,
+  isDirectorOfStudiesRole,
+  isSchoolAdminRole,
+  roleHome,
+} from "@/lib/schoolAuth";
 
 interface Props {
   title: string;
   subtitle?: string;
   children: ReactNode;
+  allowDirectorOfDiscipline?: boolean;
 }
 
-export function AppLayout({ title, subtitle, children }: Props) {
+export function AppLayout({ title, subtitle, children, allowDirectorOfDiscipline = false }: Props) {
   const [open, setOpen] = useState(false);
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
 
@@ -22,14 +29,19 @@ export function AppLayout({ title, subtitle, children }: Props) {
       return;
     }
 
-    if (!isSchoolAdminRole(auth.user?.role) && !isDirectorOfStudiesRole(auth.user?.role)) {
+    const canAccess =
+      isSchoolAdminRole() ||
+      isDirectorOfStudiesRole() ||
+      (allowDirectorOfDiscipline && isDirectorOfDisciplineRole());
+
+    if (!canAccess) {
       window.location.replace(roleHome(auth.user?.role));
       setIsAuthed(false);
       return;
     }
 
     setIsAuthed(true);
-  }, []);
+  }, [allowDirectorOfDiscipline]);
 
   if (isAuthed !== true) {
     return null;

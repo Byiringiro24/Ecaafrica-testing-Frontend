@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   STAFF_ME, LEAVE_REQUESTS, ABSENCE_ALERTS_STAFF, STAFF_ROLE_DISABLED,
 } from "@/lib/teacherStaffData";
+import { RoleSwitcher } from "@/components/RoleSwitcher";
 
 type NavItem = {
   to: string;
@@ -175,6 +176,7 @@ export function StaffLayout({ title, subtitle, children }: { title: string; subt
               <h1 className="font-display text-xl md:text-2xl font-bold truncate">{title}</h1>
               {subtitle && <p className="text-xs md:text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
             </div>
+            <div className="hidden md:block"><RoleSwitcher compact /></div>
             <div className="hidden md:block text-right">
               <div className="font-mono text-base font-bold text-primary">{now.toLocaleTimeString()}</div>
               <div className="text-[11px] text-muted-foreground">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, X, Pencil, Trash2, Loader2, BookOpen, Users, GraduationCap } from "lucide-react";
+import { Plus, X, Pencil, Trash2, Loader2, BookOpen, Users, GraduationCap, Printer, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest } from "@/lib/api";
@@ -14,6 +14,7 @@ type Subject = { id: string; name: string; code?: string | null };
 type Teacher = { id: string; name: string; email?: string | null };
 type Term = { id: string; name: string; is_current?: boolean | null };
 type SectionAssignment = { id: string; teacher_id: string; subject_id: string; section_id: string; term_id?: string | null };
+type CopyLegacyResult = { source_count: number; created_count: number; skipped_count: number; conflicts: string[] };
 
 const DAYS = [
   { label: "Mon", value: 1 },
@@ -52,26 +53,37 @@ function TimetablePage() {
   const [sections, setSections] = useState<Section[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [terms, setTerms] = useState<Term[]>([]);
   const [sectionAssignments, setSectionAssignments] = useState<SectionAssignment[]>([]);
   const [sectionId, setSectionId] = useState("");
+  const [termId, setTermId] = useState("");
   const [loading, setLoading] = useState(true);
   const [periodModal, setPeriodModal] = useState(false);
   const [slotModal, setSlotModal] = useState<{ period_id: string; day_of_week: number } | null>(null);
   const [editingSlot, setEditingSlot] = useState<Slot | null>(null);
+  const [combinedModal, setCombinedModal] = useState(false);
+  const [copyingLegacy, setCopyingLegacy] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const [periodData, sectionData, subjectData, teacherData] = await Promise.all([
+        const [periodData, sectionData, subjectData, teacherData, termData] = await Promise.all([
           apiRequest<Period[]>("/timetable-periods?limit=50", AUTH),
           apiRequest<Section[]>("/sections?limit=200", AUTH),
           apiRequest<Subject[]>("/subjects?limit=200", AUTH),
-          apiRequest<Teacher[]>("/users?role=teacher&limit=200", AUTH),
+          // Any school user may be assigned as the teacher of a timetable slot.
+          // Do not filter by the user's primary role here; role management is
+          // independent from timetable responsibility.
+          apiRequest<Teacher[]>("/users?limit=5000", AUTH),
+          apiRequest<Term[]>("/terms?limit=100", AUTH).catch(() => []),
         ]);
         setPeriods((periodData ?? []).sort((a, b) => a.sort_order - b.sort_order));
         setSections(sectionData ?? []);
         setSubjects(subjectData ?? []);
-        setTeachers((teacherData ?? []).filter((u) => u.role === "teacher"));
+        setTeachers(teacherData ?? []);
+        setTerms(termData ?? []);
+        const currentTerm = (termData ?? []).find((term) => term.is_current);
+        if (currentTerm) setTermId(currentTerm.id);
       } catch (error: any) {
         toast.error(error?.message ?? "Failed to load timetable data");
       } finally {
@@ -86,7 +98,7 @@ function TimetablePage() {
       try {
         const [slotData, assignmentData] = await Promise.all([
           apiRequest<Slot[]>(
-            `/timetable-slots?section_id=${sectionId}&limit=200`,
+            `/timetable-slots?section_id=${sectionId}&limit=200${termId ? `&term_id=${termId}` : "&term_id=legacy"}`,
             AUTH
           ),
           apiRequest<SectionAssignment[]>(
@@ -98,7 +110,7 @@ function TimetablePage() {
         setSectionAssignments(assignmentData ?? []);
       } catch { setSlots([]); setSectionAssignments([]); }
     })();
-  }, [sectionId]);
+  }, [sectionId, termId]);
 
   /** subject_id → teacher_id for the selected class (first teacher assigned to that subject) */
   const subjectTeacherMap = useMemo(() => {
@@ -116,6 +128,7 @@ function TimetablePage() {
   }, [slots]);
 
   const section = sections.find((s) => s.id === sectionId);
+  const term = terms.find((item) => item.id === termId);
 
   const handleDeleteSlot = async (slot: Slot) => {
     try {
@@ -131,7 +144,7 @@ function TimetablePage() {
     try {
       const created = await apiRequest<Slot>("/timetable-slots", {
         method: "POST",
-        body: JSON.stringify({ section_id: sectionId, period_id, day_of_week, ...data }),
+        body: JSON.stringify({ section_id: sectionId, period_id, day_of_week, ...data, ...(termId ? { term_id: termId } : {}) }),
         ...AUTH,
       });
       setSlots((prev) => [...prev.filter((s) => s.period_id !== period_id || s.day_of_week !== day_of_week), created]);
@@ -139,6 +152,55 @@ function TimetablePage() {
       toast.success("Slot assigned");
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to assign slot");
+    }
+  };
+
+  const handleSaveCombined = async (data: { section_ids: string[]; subject_id: string; teacher_id: string; period_id: string; day_of_week: number; room?: string }) => {
+    try {
+      await apiRequest("/timetable-slots/bulk", {
+        method: "POST",
+        body: JSON.stringify({ ...data, term_id: termId }),
+        ...AUTH,
+      });
+      setCombinedModal(false);
+      toast.success(`Combined lesson assigned to ${data.section_ids.length} classes`);
+      if (sectionId) {
+        const refreshed = await apiRequest<Slot[]>(`/timetable-slots?section_id=${sectionId}&limit=200${termId ? `&term_id=${termId}` : "&term_id=legacy"}`, AUTH);
+        setSlots(refreshed ?? []);
+      }
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to assign combined lesson");
+    }
+  };
+
+  const handleCopyLegacy = async () => {
+    if (!termId) {
+      toast.error("Select a destination term first");
+      return;
+    }
+    const destinationTerm = terms.find((item) => item.id === termId);
+    if (!window.confirm(`Copy the legacy timetable into ${destinationTerm?.name ?? "this term"}? The legacy timetable will remain unchanged.`)) return;
+    setCopyingLegacy(true);
+    try {
+      const result = await apiRequest<CopyLegacyResult>("/timetable-slots/copy-legacy", {
+        method: "POST",
+        body: JSON.stringify({ term_id: termId }),
+        ...AUTH,
+      });
+      if (result.source_count === 0) {
+        toast.info("No legacy timetable slots were found to copy");
+      } else {
+        const conflictText = result.conflicts.length ? ` ${result.conflicts.length} conflict${result.conflicts.length === 1 ? "" : "s"} skipped.` : "";
+        toast.success(`Copied ${result.created_count} of ${result.source_count} legacy timetable slots.${conflictText}`);
+      }
+      if (sectionId) {
+        const refreshed = await apiRequest<Slot[]>(`/timetable-slots?section_id=${sectionId}&limit=200&term_id=${termId}`, AUTH);
+        setSlots(refreshed ?? []);
+      }
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to copy the legacy timetable");
+    } finally {
+      setCopyingLegacy(false);
     }
   };
 
@@ -189,9 +251,46 @@ function TimetablePage() {
         >
           <Plus className="h-4 w-4" /> Manage Periods
         </button>
+        <select value={termId} onChange={(event) => setTermId(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm">
+          <option value="">Legacy timetable (no term)</option>
+          {terms.map((term) => <option key={term.id} value={term.id}>{term.name}{term.is_current ? " (current)" : ""}</option>)}
+        </select>
+        <button
+          onClick={() => void handleCopyLegacy()}
+          disabled={!termId || copyingLegacy || periods.length === 0}
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 text-sm font-semibold text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+          title={!termId ? "Select a destination term first" : "Copy the legacy timetable into the selected term"}
+        >
+          {copyingLegacy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+          {copyingLegacy ? "Copying…" : "Copy legacy to term"}
+        </button>
+        <button
+          onClick={() => window.print()}
+          disabled={!sectionId}
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-border px-4 text-sm font-semibold hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          title={!sectionId ? "Select a class before printing" : "Print this class timetable"}
+        >
+          <Printer className="h-4 w-4" /> Print
+        </button>
+        <button
+          onClick={() => setCombinedModal(true)}
+          disabled={!termId || !terms.length || periods.length === 0}
+          className="inline-flex h-10 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-4 text-sm font-semibold text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+          title={!terms.length || !termId ? "Select an academic term before assigning combined classes" : "Assign one teacher to multiple classes"}
+        >
+          <Users className="h-4 w-4" /> Combined Class
+        </button>
       </div>
 
       {/* Timetable Grid */}
+      <div className="print-area timetable-print">
+        <div className="hidden print:block mb-4">
+          <h1 className="text-xl font-bold">Timetable</h1>
+          <p className="text-sm text-gray-600">
+            {section?.full_name ?? ""}{term ? ` · ${term.name}` : ""}
+          </p>
+        </div>
+
       {sectionId && periods.length > 0 ? (
         <div className="rounded-xl border border-border bg-card overflow-x-auto shadow-sm">
           <table className="w-full text-sm">
@@ -235,7 +334,7 @@ function TimetablePage() {
                             {slot.room && (
                               <div className="text-[10px] text-muted-foreground">Room: {slot.room}</div>
                             )}
-                            <div className="mt-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="no-print mt-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
                                 onClick={() => setEditingSlot(slot)}
                                 className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/10"
@@ -252,8 +351,8 @@ function TimetablePage() {
                           </div>
                         ) : (
                           <button
+                            className="no-print flex h-full min-h-[60px] w-full items-center justify-center rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:bg-primary/5 hover:text-primary transition-colors"
                             onClick={() => setSlotModal({ period_id: period.id, day_of_week: day.value })}
-                            className="flex h-full min-h-[60px] w-full items-center justify-center rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:bg-primary/5 hover:text-primary transition-colors"
                           >
                             <Plus className="h-4 w-4" />
                           </button>
@@ -277,6 +376,7 @@ function TimetablePage() {
           Select a class above to view and edit its timetable.
         </div>
       ) : null}
+      </div>
 
       {/* Slot assignment modal */}
       {(slotModal || editingSlot) && (
@@ -305,6 +405,17 @@ function TimetablePage() {
           periods={periods}
           onClose={() => setPeriodModal(false)}
           onPeriodsChange={setPeriods}
+        />
+      )}
+      {combinedModal && (
+        <CombinedSlotModal
+          sections={sections}
+          subjects={subjects}
+          teachers={teachers}
+          periods={periods}
+          term={terms.find((term) => term.id === termId)}
+          onSave={handleSaveCombined}
+          onClose={() => setCombinedModal(false)}
         />
       )}
     </AppLayout>
@@ -385,6 +496,51 @@ function SlotModal({
 }
 
 /* ─── Period Management Modal ─── */
+function CombinedSlotModal({
+  sections, subjects, teachers, periods, term, onSave, onClose,
+}: {
+  sections: Section[]; subjects: Subject[]; teachers: Teacher[]; periods: Period[]; term?: Term;
+  onSave: (data: { section_ids: string[]; subject_id: string; teacher_id: string; period_id: string; day_of_week: number; room?: string }) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [sectionIds, setSectionIds] = useState<string[]>([]);
+  const [subjectId, setSubjectId] = useState("");
+  const [teacherId, setTeacherId] = useState("");
+  const [periodId, setPeriodId] = useState(periods.find((period) => !period.is_break)?.id ?? "");
+  const [day, setDay] = useState(1);
+  const [room, setRoom] = useState("");
+  const [saving, setSaving] = useState(false);
+  const toggleSection = (id: string) => setSectionIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!term) { toast.error("Select an academic term before assigning a combined class"); return; }
+    if (sectionIds.length < 2) { toast.error("Select at least two classes"); return; }
+    if (!subjectId || !teacherId || !periodId) { toast.error("Select subject, teacher, and period"); return; }
+    setSaving(true);
+    try { await onSave({ section_ids: sectionIds, subject_id: subjectId, teacher_id: teacherId, period_id: periodId, day_of_week: day, room: room.trim() || undefined }); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4"><div><h3 className="font-display font-bold">Assign Combined Class</h3><p className="text-xs text-muted-foreground">One teacher, subject, room, and period for multiple classes.</p></div><button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-4 w-4" /></button></div>
+        <form onSubmit={submit} className="space-y-4 px-6 py-5">
+          <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-primary">Term: <b>{term?.name ?? "Not selected"}</b>. Combined classes must be term-scoped.</div>
+          <label className="block"><span className="mb-1 block text-xs font-semibold">Classes (select at least two)</span><div className="max-h-32 space-y-1 overflow-y-auto rounded-lg border border-border p-2">{sections.map((section) => <label key={section.id} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 hover:bg-muted/40"><input type="checkbox" checked={sectionIds.includes(section.id)} onChange={() => toggleSection(section.id)} /><span className="text-sm">{section.full_name || section.name}</span></label>)}</div></label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block"><span className="mb-1 block text-xs font-semibold">Day</span><select value={day} onChange={(event) => setDay(Number(event.target.value))} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm">{DAYS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+            <label className="block"><span className="mb-1 block text-xs font-semibold">Period</span><select value={periodId} onChange={(event) => setPeriodId(event.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm">{periods.filter((period) => !period.is_break).map((period) => <option key={period.id} value={period.id}>{period.name}</option>)}</select></label>
+            <label className="block"><span className="mb-1 block text-xs font-semibold">Subject</span><select value={subjectId} onChange={(event) => setSubjectId(event.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"><option value="">Select subject</option>{subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}{subject.code ? ` (${subject.code})` : ""}</option>)}</select></label>
+            <label className="block"><span className="mb-1 block text-xs font-semibold">Teacher</span><select value={teacherId} onChange={(event) => setTeacherId(event.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm"><option value="">Select teacher</option>{teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}</select></label>
+          </div>
+          <label className="block"><span className="mb-1 block text-xs font-semibold">Shared room (optional)</span><input value={room} onChange={(event) => setRoom(event.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" placeholder="e.g. Room 4" /></label>
+          <div className="flex justify-end gap-2 border-t border-border pt-4"><button type="button" onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button><button type="submit" disabled={saving} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">{saving ? "Assigning…" : "Assign combined class"}</button></div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function PeriodModal({
   periods, onClose, onPeriodsChange,
 }: {

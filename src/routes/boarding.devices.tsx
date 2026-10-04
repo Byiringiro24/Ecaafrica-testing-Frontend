@@ -1719,6 +1719,7 @@ function ServerCommandCenter() {
                 <MetricBox label="Present" value={logs.filter((log) => log.attendance_status === "present").length} color="emerald" />
                 <MetricBox label="Late" value={logs.filter((log) => log.attendance_status === "late").length} color="amber" />
                 <MetricBox label="Absent" value={logs.filter((log) => log.attendance_status === "absent").length} color="rose" />
+                <MetricBox label="Not scheduled" value={logs.filter((log) => log.status_label === "Not scheduled").length} color="blue" />
               </div>
             </Panel>
           </motion.section>
@@ -2006,7 +2007,7 @@ function LogTable({ logs }: { logs: AttendanceLog[] }) {
               <td>{log.scan_method ?? "-"}</td>
               <td>{log.event_type ?? "-"}</td>
               <td>{log.session_name ?? "-"}</td>
-              <td><StatusPill value={log.attendance_status ?? "synced"} /></td>
+              <td><StatusPill value={log.status_label === "Not scheduled" ? "Not scheduled" : log.attendance_status ?? "synced"} /></td>
               <td>{log.scanned_at ? new Date(log.scanned_at).toLocaleString() : "-"}</td>
             </tr>
           ))}

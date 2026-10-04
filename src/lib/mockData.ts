@@ -156,6 +156,8 @@ export interface ClassInfo {
   classId?: string;
   sectionId?: string;
   academicYearId?: string | null;
+  combinationIds?: string[];
+  combinations?: { id: string; code: string; name: string }[];
 }
 
 export const CLASS_LIST: ClassInfo[] = CLASSES.map((c, i) => {

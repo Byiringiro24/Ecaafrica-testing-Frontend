@@ -1,9 +1,9 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { SuspendedBanner } from "@/components/layout/SuspendedBanner";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, BookOpen, ClipboardCheck, GraduationCap, TrendingUp,
-  Calendar, User, LogOut, Menu, X, MessageSquare,
+  Calendar, User, LogOut, Menu, X, MessageSquare, Users,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
@@ -11,12 +11,14 @@ import { TEACHER_ME } from "@/lib/teacherStaffData";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 import logo from "@/assets/logo.png";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
+import { apiRequest } from "@/lib/api";
 
 const NAV = [
   { section: "Main", items: [
     { to: "/teacher/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { to: "/teacher/classes", label: "My Classes", icon: BookOpen },
     { to: "/teacher/attendance", label: "Attendance", icon: ClipboardCheck },
+    { to: "/teacher/combined-attendance", label: "Combined Class", icon: Users },
     { to: "/teacher/exams", label: "Record Marks", icon: BookOpen },
     { to: "/teacher/schedule", label: "My Timetable", icon: Calendar },
     { to: "/teacher/profile", label: "My Profile", icon: User },
@@ -33,6 +35,9 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
   const initials = currentUser?.name ? getInitials(currentUser.name) : TEACHER_ME.initials;
   const displayName = currentUser?.name ?? TEACHER_ME.name;
   const displayRole = currentUser?.role ? formatRole(currentUser.role) : "Teacher";
+  const [hasDiningDuty, setHasDiningDuty] = useState(false);
+  useEffect(() => { void apiRequest<any>(`/boarding/dining/assignments?date=${new Date().toISOString().slice(0, 10)}`, { auth: "school" }).then(v => setHasDiningDuty((Array.isArray(v) ? v : v?.data ?? []).length > 0)).catch(() => setHasDiningDuty(false)); }, []);
+  const navItems = hasDiningDuty ? [...NAV[0].items, { to: "/teacher/dining-attendance", label: "Dining Attendance", icon: ClipboardCheck }] : NAV[0].items;
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -53,7 +58,7 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
-          {NAV.map((sec) => (
+          {[{ ...NAV[0], items: navItems }].map((sec) => (
             <div key={sec.section}>
               <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold text-sidebar-foreground/50">{sec.section}</div>
               <div className="space-y-0.5 mt-1">
@@ -97,10 +102,6 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
             >
               <LogOut className="h-4 w-4" />
             </button>
-          {/* Role switcher — visible when user has multiple roles */}
-          <div className="mt-2">
-            <RoleSwitcher />
-          </div>
           </div>
         </div>
       </aside>
@@ -113,6 +114,7 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
               <h1 className="font-display text-xl md:text-2xl font-bold truncate">{title}</h1>
               {subtitle && <p className="text-xs md:text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
             </div>
+            <div className="hidden md:block"><RoleSwitcher compact /></div>
             <div className="relative">
               <button
                 type="button"

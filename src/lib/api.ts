@@ -1,5 +1,5 @@
 import { getPlatformToken, getPlatformAuth, setPlatformAuth, clearPlatformAuth } from "./platformAuth";
-import { getSchoolToken, getSchoolAuth, setSchoolAuth, clearSchoolAuth } from "./schoolAuth";
+import { getSchoolToken, getSchoolAuth, setSchoolAuth, clearSchoolAuth, getActiveRole } from "./schoolAuth";
 
 const defaultApiBaseUrl = import.meta.env.DEV
   ? "http://localhost:5500/api/v1"
@@ -43,7 +43,8 @@ async function attemptTokenRefresh(authMode: "school" | "platform"): Promise<str
     const updated = {
       accessToken: payload.data.accessToken as string,
       refreshToken: (payload.data.refreshToken as string | null | undefined) ?? auth.refreshToken,
-      user: auth.user,
+      user: payload.data.user ?? auth.user,
+      activeRole: auth.activeRole,
     };
 
     if (authMode === "school") setSchoolAuth(updated);
@@ -71,6 +72,8 @@ export async function apiRequest<T>(
   if (authMode === "school") {
     const token = getSchoolToken();
     if (token) headers.set("Authorization", `Bearer ${token}`);
+    const activeRole = getActiveRole();
+    if (activeRole) headers.set("X-Active-Role", activeRole);
   }
 
   if (!headers.has("Content-Type") && options.body && !(options.body instanceof FormData)) {

@@ -9,17 +9,20 @@ import { directorOfStudiesRouteGuard } from "@/lib/schoolAuth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { exportToExcel } from "@/lib/exportExcel";
+import { attendanceDate, formatAttendanceDateTime } from "@/lib/attendanceTime";
 
 export const Route = createFileRoute("/dos/reports")({
   beforeLoad: ({ location }) => directorOfStudiesRouteGuard(location),
   component: DosReportsPage,
 });
 
-const today = new Date().toISOString().slice(0, 10);
-const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+const today = attendanceDate();
+const tomorrow = attendanceDate(new Date(Date.now() + 86400000));
+const weekAgo = attendanceDate(new Date(Date.now() - 7 * 86400000));
 
 type Section  = { id: string; name: string; full_name?: string | null };
 type Session  = { id: string; section_id: string; session_date: string; submitted_at?: string | null; started_at?: string | null };
+type AttendanceSummary = { total: number; present: number; absent: number; late: number; teachers: number; classes: number; sessions: number; details: Array<{ className: string; teacherName: string; periodName: string; total: number; present: number; late: number; absent: number; submittedAt?: string | null; sessionDate?: string; sessionId?: string }> };
 type Exam     = { id: string; name: string; status: string; class?: { name?: string | null } | null };
 type Subject  = { id: string; name: string };
 type StaffUser= { id: string; name: string; role: string };
@@ -30,18 +33,20 @@ function DosReportsPage() {
   const [exams, setExams]         = useState<Exam[]>([]);
   const [subjects, setSubjects]   = useState<Subject[]>([]);
   const [staff, setStaff]         = useState<StaffUser[]>([]);
+  const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary | null>(null);
   const [loading, setLoading]     = useState(true);
   const [tab, setTab]             = useState<"Attendance" | "Exams" | "Structure">("Attendance");
 
   const load = async () => {
     setLoading(true);
     try {
-      const [secRes, sessRes, examRes, subRes, staffRes] = await Promise.all([
+      const [secRes, sessRes, examRes, subRes, staffRes, summaryRes] = await Promise.all([
         apiRequest<Section[]>("/sections?limit=200", { auth: "school" }).catch(() => []),
         apiRequest<Session[]>(`/attendance/sessions?date=${weekAgo}&limit=1000`, { auth: "school" }).catch(() => []),
         apiRequest<Exam[]>("/exams?limit=500", { auth: "school" }).catch(() => []),
         apiRequest<Subject[]>("/subjects?limit=200", { auth: "school" }).catch(() => []),
         apiRequest<StaffUser[]>("/users?role=teacher&limit=200", { auth: "school" }).catch(() => []),
+        apiRequest<AttendanceSummary>(`/attendance/records/summary?start_date=${weekAgo}&end_date=${tomorrow}`, { auth: "school" }).catch(() => null),
       ]);
       setSections(Array.isArray(secRes) ? secRes : []);
       setSessions(Array.isArray(sessRes) ? sessRes : []);
@@ -49,6 +54,7 @@ function DosReportsPage() {
       setSubjects(Array.isArray(subRes) ? subRes : []);
       const s = Array.isArray(staffRes) ? staffRes : (staffRes as any)?.data ?? [];
       setStaff(Array.isArray(s) ? s : []);
+      setAttendanceSummary(summaryRes);
     } catch (e: any) {
       toast.error(e?.message ?? "Failed to load reports");
     } finally {
@@ -155,6 +161,22 @@ function DosReportsPage() {
                   </div>
                 ))}
               </div>
+
+              {attendanceSummary && (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                    {[['Teachers', attendanceSummary.teachers], ['Classes', attendanceSummary.classes], ['Students', attendanceSummary.total], ['Present', attendanceSummary.present], ['Late', attendanceSummary.late], ['Absent', attendanceSummary.absent]].map(([label, value]) => (
+                      <div key={String(label)} className="rounded-xl border border-border bg-card p-4"><div className="text-2xl font-bold">{value}</div><div className="text-xs text-muted-foreground">{label}</div></div>
+                    ))}
+                  </div>
+                  <div className="rounded-xl border border-border bg-card overflow-x-auto">
+                    <div className="px-5 py-3 border-b border-border font-semibold text-sm">Class attendance details</div>
+                    <table className="w-full text-sm"><thead className="bg-muted/40 text-xs uppercase"><tr>{['Class', 'Date', 'Teacher', 'Period', 'Submission', 'Total', 'Present', 'Late', 'Absent'].map((heading) => <th key={heading} className="text-left px-4 py-3">{heading}</th>)}</tr></thead>
+                      <tbody>{attendanceSummary.details.map((row, index) => <tr key={`${row.sessionId ?? row.className}-${row.periodName}-${index}`} className="border-t border-border"><td className="px-4 py-3 font-medium">{row.className}</td><td className="px-4 py-3 text-xs">{row.sessionDate?.slice(0, 10) ?? "—"}</td><td className="px-4 py-3">{row.teacherName}</td><td className="px-4 py-3">{row.periodName}</td><td className="px-4 py-3 text-xs">{formatAttendanceDateTime(row.submittedAt)}</td><td className="px-4 py-3">{row.total}</td><td className="px-4 py-3">{row.present}</td><td className="px-4 py-3">{row.late}</td><td className="px-4 py-3">{row.absent}</td></tr>)}</tbody>
+                    </table>
+                  </div>
+                </>
+              )}
 
               {/* Bar chart */}
               {attendanceChart.length > 0 ? (

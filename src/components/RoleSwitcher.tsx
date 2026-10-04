@@ -48,7 +48,7 @@ function roleColor(slug: string) {
   return ROLE_COLORS[slug] ?? "bg-muted text-muted-foreground";
 }
 
-export function RoleSwitcher() {
+export function RoleSwitcher({ compact = false }: { compact?: boolean }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -72,7 +72,7 @@ export function RoleSwitcher() {
     <div className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm hover:bg-muted transition w-full"
+        className={`flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-sm hover:bg-muted transition ${compact ? "w-auto" : "w-full"}`}
       >
         <RefreshCw className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${roleColor(active ?? "")}`}>
@@ -82,7 +82,7 @@ export function RoleSwitcher() {
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-xl border border-border bg-card shadow-lg py-1">
+        <div className={`absolute z-50 mt-1 rounded-xl border border-border bg-card shadow-lg py-1 ${compact ? "right-0 w-56" : "w-full"}`}>
           <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Switch Role
           </p>

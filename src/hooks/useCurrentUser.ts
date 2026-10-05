@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
-import { getSchoolAuth } from "@/lib/schoolAuth";
+import { getActiveRole, getSchoolAuth } from "@/lib/schoolAuth";
 
 export type CurrentUser = {
   id: string;
@@ -23,6 +23,7 @@ export type CurrentUser = {
   school_principal_email?: string | null;
   school_phone?: string | null;
   school_email?: string | null;
+  roles?: { id?: string; name?: string; slug: string }[];
   school_status?: string | null;
 };
 
@@ -46,10 +47,11 @@ function fromCache(): CurrentUser | null {
     name: cached.name,
     email: cached.email ?? null,
     phone: null,
-    role: cached.role ?? "",
+    role: getActiveRole() ?? cached.role ?? "",
     status: "active",
     avatar_url: null,
     school_country: cached.school_country ?? null,
+    roles: cached.roles,
   };
 }
 
@@ -58,7 +60,7 @@ export function useCurrentUser(): CurrentUser | null {
 
   useEffect(() => {
     apiRequest<CurrentUser>("/auth/me", { auth: "school" })
-      .then((data) => setUser(data))
+      .then((data) => setUser({ ...data, role: getActiveRole() ?? data.role }))
       .catch(() => {
         const fallback = fromCache();
         if (fallback) setUser(fallback);

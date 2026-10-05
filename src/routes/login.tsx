@@ -10,10 +10,10 @@ import logo from "@/assets/netrack-logo.png";
 import { toast } from "sonner";
 import { apiRequest } from "@/lib/api";
 import { setPlatformAuth } from "@/lib/platformAuth";
-import { setSchoolAuth } from "@/lib/schoolAuth";
+import { getAvailableRoles, setSchoolAuth } from "@/lib/schoolAuth";
 
 type LoginResponse = {
-  user: { id: string; name?: string | null; email?: string | null; role?: string | null };
+  user: { id: string; name?: string | null; email?: string | null; role?: string | null; roles?: { slug: string }[] };
   accessToken: string;
   refreshToken?: string | null;
 };
@@ -90,7 +90,11 @@ function LoginPage() {
         ? "/staff/dashboard"
         : "/dashboard";
 
-      const destination = isPlatform ? (redirect || fallbackRoute) : (redirect || fallbackRoute);
+      const destination = isPlatform
+        ? (redirect || fallbackRoute)
+        : getAvailableRoles().length > 1
+          ? `/select-role?redirect=${encodeURIComponent(redirect || "")}`
+          : (redirect || fallbackRoute);
       // Use window.location for reliable navigation (avoids TanStack Router type issues)
       window.location.href = destination;
     } catch (err) {

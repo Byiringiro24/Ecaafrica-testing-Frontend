@@ -8,17 +8,21 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { CheckCircle2, Search, Send, Users, Utensils } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Search, Send, Users, Utensils } from "lucide-react";
 import { toast } from "sonner";
 import { apiRequest } from "@/lib/api";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Link } from "@tanstack/react-router";
+import { diningAttendanceReviewRouteGuard } from "@/lib/schoolAuth";
 
 export const Route = createFileRoute("/attendance/dining-hall")({
+  beforeLoad: ({ location }) => diningAttendanceReviewRouteGuard(location),
   component: DiningHallAttendancePage,
 });
 
 type Dormitory    = { id: string; name: string; hostel_name?: string | null };
+type SchoolClass = { id: string; name: string };
 type MealType     = "breakfast" | "lunch" | "dinner";
 type AttStatus    = "present" | "absent" | "on_leave";
 
@@ -60,7 +64,9 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 function DiningHallAttendancePage() {
   const [dormitories, setDormitories] = useState<Dormitory[]>([]);
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [dormId,      setDormId]      = useState("");
+  const [classId,     setClassId]     = useState("");
   const [mealType,    setMealType]    = useState<MealType>("breakfast");
   const [date,        setDate]        = useState(today());
   const [session,     setSession]     = useState<DiningSession | null>(null);
@@ -69,6 +75,8 @@ function DiningHallAttendancePage() {
   const [search,      setSearch]      = useState("");
   const [loading,     setLoading]     = useState(true);
   const [saving,      setSaving]      = useState(false);
+  const [page,        setPage]        = useState(0);
+  const pageSize = 10;
 
   // Load dormitories once
   useEffect(() => {
@@ -82,11 +90,18 @@ function DiningHallAttendancePage() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    apiRequest<any>("/classes?limit=500", { auth: "school" })
+      .then(res => setClasses(Array.isArray(res) ? res : (res as any)?.data ?? []))
+      .catch(() => setClasses([]));
+  }, []);
+
   // Reload session + roster when filters change
   useEffect(() => {
-    if (!dormId) return;
+    if (!dormId && !classId) return;
+    setPage(0);
     void loadSession();
-  }, [dormId, mealType, date]);
+  }, [dormId, classId, mealType, date]);
 
   const loadSession = async () => {
     setLoading(true);
@@ -94,7 +109,7 @@ function DiningHallAttendancePage() {
     try {
       // List existing sessions for this dorm + meal + date
       const sessRes = await apiRequest<any>(
-        `/boarding/dining/sessions?dormitory_id=${dormId}&meal_type=${mealType}&session_date=${date}&limit=5`,
+        `/boarding/dining/sessions?${dormId ? `dormitory_id=${dormId}&` : ""}${classId ? `class_id=${classId}&` : ""}meal_type=${mealType}&session_date=${date}&limit=5`,
         { auth: "school" }
       );
       const sessions: DiningSession[] = Array.isArray(sessRes) ? sessRes : (sessRes as any)?.data ?? [];
@@ -109,13 +124,13 @@ function DiningHallAttendancePage() {
         entries.forEach(e => {
           if (e.attendance_status) initialMarks[e.student.id] = e.attendance_status;
           else if (e.is_on_leave)   initialMarks[e.student.id] = "on_leave";
-          else                      initialMarks[e.student.id] = "present";
+          else                      initialMarks[e.student.id] = "absent";
         });
         setMarks(initialMarks);
       } else {
         // No session yet — still load roster preview from boarding assignments
         const assignRes = await apiRequest<any>(
-          `/boarding/assignments?dormitory_id=${dormId}&is_active=true&limit=2000`,
+          `/boarding/assignments?${dormId ? `dormitory_id=${dormId}&` : ""}${classId ? `class_id=${classId}&` : ""}is_active=true&limit=2000`,
           { auth: "school" }
         );
         const assignments: any[] = Array.isArray(assignRes) ? assignRes : (assignRes as any)?.data ?? [];
@@ -124,7 +139,7 @@ function DiningHallAttendancePage() {
             id: a.student?.id ?? a.student_id,
             first_name: a.student?.first_name ?? "",
             last_name:  a.student?.last_name  ?? "",
-            full_name:  `${a.student?.first_name ?? ""} ${a.student?.last_name ?? ""}`.trim(),
+            full_name: a.student?.full_name ?? `${a.student?.first_name ?? ""} ${a.student?.last_name ?? ""}`.trim(),
             student_id_number: a.student?.student_id_number ?? null,
             photo_url: a.student?.photo_url ?? null,
           },
@@ -133,7 +148,7 @@ function DiningHallAttendancePage() {
         }));
         setRoster(preview);
         const initialMarks: Record<string, AttStatus> = {};
-        preview.forEach(e => { initialMarks[e.student.id] = "present"; });
+        preview.forEach(e => { initialMarks[e.student.id] = "absent"; });
         setMarks(initialMarks);
       }
     } catch (err: any) {
@@ -144,7 +159,7 @@ function DiningHallAttendancePage() {
   };
 
   const openAndSave = async (submit = false) => {
-    if (!dormId) { toast.error("Select a dormitory first"); return; }
+    if (!dormId && !classId) { toast.error("Select a class or dormitory first"); return; }
     setSaving(true);
     try {
       let activeSession = session;
@@ -154,7 +169,7 @@ function DiningHallAttendancePage() {
         activeSession = await apiRequest<DiningSession>("/boarding/dining/sessions", {
           method: "POST",
           auth: "school",
-          body: JSON.stringify({ dormitory_id: dormId, meal_type: mealType, session_date: date }),
+          body: JSON.stringify({ dormitory_id: dormId || undefined, class_id: classId || undefined, meal_type: mealType, session_date: date }),
         });
         setSession(activeSession);
       }
@@ -194,6 +209,9 @@ function DiningHallAttendancePage() {
     );
   }, [roster, search]);
 
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const visibleRoster = filtered.slice(page * pageSize, (page + 1) * pageSize);
+
   const counts = useMemo(() => ({
     present:  Object.values(marks).filter(v => v === "present").length,
     absent:   Object.values(marks).filter(v => v === "absent").length,
@@ -207,16 +225,25 @@ function DiningHallAttendancePage() {
     <div className="space-y-5">
       {/* Header info */}
       <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-        <div className="flex items-start gap-3">
-          <Utensils className="mt-1 h-5 w-5 text-primary shrink-0" />
-          <div>
-            <h2 className="font-display text-lg font-bold">Dining Hall Attendance</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Record which boarding students were present for each meal.
-              Biometric scans from a device assigned to the dining hall are recorded automatically —
-              this page allows manual entry and correction.
-            </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Utensils className="mt-1 h-5 w-5 text-primary shrink-0" />
+            <div>
+              <h2 className="font-display text-lg font-bold">Dining Hall Attendance</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Record which boarding students were present for each meal.
+                Biometric scans from a device assigned to the dining hall are recorded automatically —
+                this page allows manual entry and correction.
+              </p>
+            </div>
           </div>
+          <Link
+            to="/attendance/dining-reports"
+            className="inline-flex shrink-0 items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-semibold hover:bg-muted"
+          >
+            <ClipboardList className="h-4 w-4" />
+            Submitted reports
+          </Link>
         </div>
       </div>
 
@@ -226,12 +253,20 @@ function DiningHallAttendancePage() {
           <label className="text-xs font-semibold text-muted-foreground">Dormitory</label>
           <select value={dormId} onChange={e => setDormId(e.target.value)}
             className="mt-1 block h-9 min-w-44 rounded-md border border-input bg-background px-3 text-sm">
-            <option value="">Select dormitory</option>
+            <option value="">All dormitories</option>
             {dormitories.map(d => (
               <option key={d.id} value={d.id}>
                 {d.hostel_name ? `${d.hostel_name} — ` : ""}{d.name}
               </option>
             ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-muted-foreground">Class</label>
+          <select value={classId} onChange={e => { setClassId(e.target.value); if (e.target.value) setDormId(""); }}
+            className="mt-1 block h-9 min-w-44 rounded-md border border-input bg-background px-3 text-sm">
+            <option value="">All classes</option>
+            {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
         <div>
@@ -267,17 +302,26 @@ function DiningHallAttendancePage() {
         )}
         {!isClosed && (
           <>
-            <button disabled={saving || !dormId || roster.length === 0}
+            <button disabled={saving || (!dormId && !classId) || roster.length === 0}
               onClick={() => void openAndSave(false)}
               className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-4 text-sm font-semibold hover:bg-muted disabled:opacity-50">
               {saving ? "Saving…" : "Save draft"}
             </button>
-            <button disabled={saving || !dormId || roster.length === 0}
+            <button disabled={saving || (!dormId && !classId) || roster.length === 0}
               onClick={() => void openAndSave(true)}
               className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50">
               <Send className="h-4 w-4" /> {saving ? "Saving…" : "Submit meal"}
             </button>
           </>
+        )}
+        {filtered.length > pageSize && (
+          <div className="flex items-center justify-between border-t border-border px-5 py-3">
+            <span className="text-xs text-muted-foreground">Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, filtered.length)} of {filtered.length}</span>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs disabled:opacity-40"><ChevronLeft className="h-3.5 w-3.5" />Previous</button>
+              <button type="button" onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} disabled={page >= pageCount - 1} className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs disabled:opacity-40">Next<ChevronRight className="h-3.5 w-3.5" /></button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -342,9 +386,9 @@ function DiningHallAttendancePage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(entry => {
+                {visibleRoster.map(entry => {
                   const s = entry.student;
-                  const current = marks[s.id] ?? (entry.is_on_leave ? "on_leave" : "present");
+                  const current = marks[s.id] ?? (entry.is_on_leave ? "on_leave" : "absent");
                   const statusInfo = STATUS_OPTS.find(o => o.value === current) ?? STATUS_OPTS[0];
 
                   return (

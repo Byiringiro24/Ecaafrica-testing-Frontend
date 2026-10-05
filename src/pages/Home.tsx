@@ -46,9 +46,7 @@ export default function Home() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <span className="inline-block bg-[#42A5F5] text-white text-xs font-semibold px-3 py-1 rounded-full mb-6 shadow-sm">
-              Multi-Tenant SaaS · Built for Schools
-            </span>
+            
             <h1 className="font-display text-4xl md:text-5xl font-bold leading-tight text-white">
               The complete <span className="text-[#42A5F5]">Education Care System</span> Africa.
             </h1>

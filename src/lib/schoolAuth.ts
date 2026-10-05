@@ -105,23 +105,23 @@ const hasAnyRole = (...roles: string[]): boolean => {
 export const isSchoolAdminRole = (role?: string | null) => {
   if (role) {
     const r = role.trim().toLowerCase();
-    return r === "school_admin" || r === "school admin";
+    return r === "school_admin" || r === "school admin" || hasAnyRole("school_admin");
   }
   return hasAnyRole("school_admin");
 };
 
 export const isTeacherRole = (role?: string | null) => {
-  if (role) return role.trim().toLowerCase() === "teacher";
+  if (role) return role.trim().toLowerCase() === "teacher" || hasAnyRole("teacher");
   return hasAnyRole("teacher");
 };
 
 export const isGateKeeperRole = (role?: string | null) => {
-  if (role) return role.trim().toLowerCase() === "gate_keeper";
+  if (role) return role.trim().toLowerCase() === "gate_keeper" || hasAnyRole("gate_keeper");
   return hasAnyRole("gate_keeper");
 };
 
 export const isDirectorOfDisciplineRole = (role?: string | null) => {
-  if (role) return role.trim().toLowerCase() === "director_of_discipline";
+  if (role) return role.trim().toLowerCase() === "director_of_discipline" || hasAnyRole("director_of_discipline");
   return hasAnyRole("director_of_discipline");
 };
 
@@ -129,22 +129,22 @@ export const isDirectorOfDisciplineRole = (role?: string | null) => {
 export const isDodRole = isDirectorOfDisciplineRole;
 
 export const isDirectorOfStudiesRole = (role?: string | null) => {
-  if (role) return role.trim().toLowerCase() === "director_of_studies";
+  if (role) return role.trim().toLowerCase() === "director_of_studies" || hasAnyRole("director_of_studies");
   return hasAnyRole("director_of_studies");
 };
 
 export const isPatronRole = (role?: string | null) => {
-  if (role) return ["patron", "matron"].includes(role.trim().toLowerCase());
+  if (role) return ["patron", "matron"].includes(role.trim().toLowerCase()) || hasAnyRole("patron", "matron");
   return hasAnyRole("patron", "matron");
 };
 
 export const isFinanceOfficerRole = (role?: string | null) => {
-  if (role) return role.trim().toLowerCase() === "finance_officer";
+  if (role) return role.trim().toLowerCase() === "finance_officer" || hasAnyRole("finance_officer");
   return hasAnyRole("finance_officer");
 };
 
 export const isStaffRole = (role?: string | null) => {
-  if (role) return role.trim().toLowerCase() === "staff";
+  if (role) return role.trim().toLowerCase() === "staff" || hasAnyRole("staff");
   return hasAnyRole("staff");
 };
 
@@ -152,7 +152,8 @@ export const isStaffRole = (role?: string | null) => {
 export const isBoardingRole = (role?: string | null) => {
   if (role) {
     const r = role.trim().toLowerCase();
-    return ["director_of_discipline", "patron", "matron", "school_admin"].includes(r);
+    return ["director_of_discipline", "patron", "matron", "school_admin"].includes(r)
+      || hasAnyRole("director_of_discipline", "patron", "matron", "school_admin");
   }
   return hasAnyRole("director_of_discipline", "patron", "matron", "school_admin");
 };
@@ -213,6 +214,16 @@ export const dodRouteGuard = makeGuard(() => isDirectorOfDisciplineRole());
 export const directorOfDisciplineRouteGuard = dodRouteGuard;
 
 export const directorOfStudiesRouteGuard = makeGuard(() => isDirectorOfStudiesRole());
+
+/** Academic configuration is available to school administrators and DOS. */
+export const academicManagementRouteGuard = makeGuard(
+  () => isSchoolAdminRole() || isDirectorOfStudiesRole(),
+);
+
+/** Dining attendance review is available to school administrators and DOD. */
+export const diningAttendanceReviewRouteGuard = makeGuard(
+  () => isSchoolAdminRole() || isDirectorOfDisciplineRole(),
+);
 
 export const patronRouteGuard = makeGuard(() => isPatronRole());
 

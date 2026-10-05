@@ -8,7 +8,11 @@ export const Route = createFileRoute("/attendance")({
 
 function AttendanceLayout() {
   return (
-    <AppLayout title="Attendance" subtitle="Review and manage attendance records">
+    <AppLayout
+      title="Attendance"
+      subtitle="Review and manage attendance records"
+      allowDirectorOfDiscipline
+    >
       <AttendanceNav />
       <Outlet />
     </AppLayout>

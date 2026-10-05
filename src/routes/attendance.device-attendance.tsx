@@ -29,6 +29,7 @@ const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "late", label: "Late" },
   { value: "absent", label: "Absent" },
   { value: "excused", label: "Excused" },
+  { value: "not_scheduled", label: "Not scheduled" },
 ];
 
 const formatTime = (value?: string | null) => {
@@ -46,6 +47,8 @@ const statusClasses = (status: string) => {
       return "bg-destructive/15 text-destructive";
     case "Late":
       return "bg-amber-100 text-amber-700";
+    case "Not scheduled":
+      return "bg-muted text-muted-foreground";
     default:
       return "bg-blue-100 text-blue-700";
   }

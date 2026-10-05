@@ -21,6 +21,7 @@ import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser"
 import { useAcademicSession } from "@/hooks/useAcademicSession";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import logo from "@/assets/logo.png";
+import { RoleSwitcher } from "@/components/RoleSwitcher";
 
 type NavItem = { to: string; label: string; icon: typeof LayoutDashboard };
 
@@ -195,6 +196,7 @@ export function FinanceLayout({
                 <p className="text-xs md:text-sm text-muted-foreground mt-0.5">{subtitle}</p>
               )}
             </div>
+            <div className="hidden md:block"><RoleSwitcher compact /></div>
             <button
               type="button"
               className="relative grid h-10 w-10 place-items-center rounded-lg border border-border bg-card hover:bg-muted"

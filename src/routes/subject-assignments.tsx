@@ -18,6 +18,7 @@ export const Route = createFileRoute("/subject-assignments")({
 type TeacherRecord = { id: string; name: string; email?: string | null; role: string };
 type SectionRecord = { id: string; name: string; full_name: string };
 type SubjectRecord = { id: string; name: string; code?: string | null; is_active: boolean };
+type CombinationRecord = { id: string; code: string; name: string; subjects?: { id: string; name: string; code?: string | null }[] };
 
 const selectClass =
   "h-9 w-full rounded-md border border-input bg-background px-3 text-sm";
@@ -26,6 +27,7 @@ function SubjectAssignmentsPage() {
   const [teachers, setTeachers] = useState<TeacherRecord[]>([]);
   const [sections, setSections] = useState<SectionRecord[]>([]);
   const [subjects, setSubjects] = useState<SubjectRecord[]>([]);
+  const [combinations, setCombinations] = useState<CombinationRecord[]>([]);
 
   const [teacherId, setTeacherId] = useState("");
   const [saved, setSaved] = useState<TeacherAssignmentRecord[]>([]);
@@ -41,18 +43,23 @@ function SubjectAssignmentsPage() {
   const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null);
   const [editingSubjectName, setEditingSubjectName] = useState("");
   const [subjectUpdating, setSubjectUpdating] = useState(false);
+  const [creatingCombination, setCreatingCombination] = useState(false);
+  const [combinationForm, setCombinationForm] = useState({ code: "", name: "", subject_ids: [] as string[] });
+  const [combinationSubmitting, setCombinationSubmitting] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const [userList, sectionList, subjectList] = await Promise.all([
+        const [userList, sectionList, subjectList, combinationList] = await Promise.all([
           apiRequest<TeacherRecord[]>("/users?role=teacher&limit=500", { auth: "school" }),
           apiRequest<SectionRecord[]>("/sections?limit=500", { auth: "school" }),
           apiRequest<SubjectRecord[]>("/subjects?limit=500", { auth: "school" }),
+          apiRequest<CombinationRecord[]>("/combinations?limit=500", { auth: "school" }),
         ]);
         setTeachers((userList ?? []).filter((user) => user.role === "teacher"));
         setSections(sectionList ?? []);
         setSubjects(subjectList ?? []);
+        setCombinations(combinationList ?? []);
       } catch (error: any) {
         toast.error(error?.message ?? "Failed to load assignment options");
       } finally {
@@ -106,6 +113,20 @@ function SubjectAssignmentsPage() {
     } finally {
       setSubjectSubmitting(false);
     }
+  };
+
+  const handleCreateCombination = async () => {
+    if (!combinationForm.code.trim() || !combinationForm.name.trim()) { toast.error("Combination code and name are required"); return; }
+    if (!combinationForm.subject_ids.length) { toast.error("Select at least one subject"); return; }
+    setCombinationSubmitting(true);
+    try {
+      const created = await apiRequest<CombinationRecord>("/combinations", { auth: "school", method: "POST", body: JSON.stringify({ code: combinationForm.code.trim().toUpperCase(), name: combinationForm.name.trim(), subject_ids: combinationForm.subject_ids }) });
+      setCombinations((current) => [...current, created]);
+      setCombinationForm({ code: "", name: "", subject_ids: [] });
+      setCreatingCombination(false);
+      toast.success(`Combination "${created.code}" created`);
+    } catch (error: any) { toast.error(error?.message ?? "Failed to create combination"); }
+    finally { setCombinationSubmitting(false); }
   };
 
   const toggleSubject = async (subject: SubjectRecord) => {
@@ -311,6 +332,12 @@ function SubjectAssignmentsPage() {
                 ))}
           </div>
         )}
+      </div>
+
+      <div className="mb-5 rounded-xl border border-border bg-card p-4">
+        <div className="flex items-center justify-between mb-3"><div><h3 className="text-sm font-semibold">Subject combinations</h3><p className="text-xs text-muted-foreground">Create combinations such as MCB and choose their subjects.</p></div><button type="button" onClick={() => setCreatingCombination((value) => !value)} className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-semibold hover:bg-muted"><Plus className="h-3.5 w-3.5" /> New Combination</button></div>
+        {creatingCombination && <div className="grid gap-2 border-t border-border pt-3 md:grid-cols-[8rem_1fr_2fr_auto]"><input value={combinationForm.code} onChange={(event) => setCombinationForm((current) => ({ ...current, code: event.target.value }))} placeholder="Code e.g. MCB" className="h-9 rounded-md border border-input bg-background px-3 text-sm" /><input value={combinationForm.name} onChange={(event) => setCombinationForm((current) => ({ ...current, name: event.target.value }))} placeholder="Combination name" className="h-9 rounded-md border border-input bg-background px-3 text-sm" /><div className="flex flex-wrap items-center gap-2 rounded-md border border-input px-2 py-1">{subjects.map((subject) => <label key={subject.id} className="inline-flex items-center gap-1 text-xs"><input type="checkbox" checked={combinationForm.subject_ids.includes(subject.id)} onChange={(event) => setCombinationForm((current) => ({ ...current, subject_ids: event.target.checked ? [...current.subject_ids, subject.id] : current.subject_ids.filter((id) => id !== subject.id) }))} />{subject.code || subject.name}</label>)}</div><button type="button" onClick={() => void handleCreateCombination()} disabled={combinationSubmitting} className="h-9 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-50">{combinationSubmitting ? "Saving…" : "Create"}</button></div>}
+        <div className="mt-3 flex flex-wrap gap-2">{combinations.length ? combinations.map((combination) => <span key={combination.id} className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary"><b>{combination.code}</b> — {combination.name} · {(combination.subjects ?? []).map((subject) => subject.code || subject.name).join(", ")}</span>) : <span className="text-xs text-muted-foreground">No combinations yet.</span>}</div>
       </div>
 
       {!teacherId ? (

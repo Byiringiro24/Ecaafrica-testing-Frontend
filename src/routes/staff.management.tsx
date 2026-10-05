@@ -4,9 +4,9 @@
  * Assign patron/matron to dormitories from the same page.
  * DOD can only manage boarding-related roles.
  */
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { FormEvent, useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, RefreshCw, Users, Save, X, Home } from "lucide-react";
+import { Plus, Pencil, Trash2, RefreshCw, Users, Save, X, Home, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest } from "@/lib/api";
@@ -235,6 +235,12 @@ function StaffManagementPage() {
           className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50">
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
         </button>
+        <Link
+          to="/staff/roles"
+          className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold hover:bg-muted"
+        >
+          <ShieldCheck className="h-4 w-4" /> Role Management
+        </Link>
         <button onClick={() => { setEditId(null); setForm({ ...emptyForm, role: availableRoles[0]?.value ?? "teacher" }); setShowForm(true); }}
           className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
           <Plus className="h-4 w-4" /> Create User

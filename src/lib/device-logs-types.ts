@@ -10,7 +10,7 @@ export type BiometricMethod = 'Fingerprint' | 'Password/PIN' | 'RFID Card' | 'Fa
 export type Direction = 'In' | 'Out' | 'Unknown';
 
 // Attendance status
-export type AttendanceStatus = 'Present' | 'Late' | 'Absent' | 'Excused';
+export type AttendanceStatus = 'Present' | 'Late' | 'Absent' | 'Excused' | 'Not scheduled';
 
 // Sync state
 export type SyncState = 'Synced' | 'Queued' | 'Failed';

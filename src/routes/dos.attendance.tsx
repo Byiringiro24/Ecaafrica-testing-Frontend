@@ -16,32 +16,59 @@ export const Route = createFileRoute("/dos/attendance")({
 });
 
 type AttSession = {
-  id: string; session_date: string; session_type: string;
-  submitted_at?: string | null; started_at?: string | null;
+  id: string;
+  session_date: string;
+  session_type: string;
+  submitted_at?: string | null;
+  started_at?: string | null;
   teacher?: { id: string; name: string } | null;
   period?: { id: string; name: string } | null;
-  section?: { id: string; name: string; full_name?: string | null } | null;
+  section?: {
+    id: string;
+    name: string;
+    full_name?: string | null;
+    class?: { id?: string; name?: string } | null;
+  } | null;
 };
+
+type ClassOption = { id: string; name: string; level?: number | null };
 
 function DosAttendancePage() {
   const [sessions, setSessions] = useState<AttSession[]>([]);
+  const [classes, setClasses] = useState<ClassOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [date, setDate] = useState(attendanceDate());
   const [query, setQuery] = useState("");
+  const [selectedClassId, setSelectedClassId] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "submitted" | "pending">("all");
 
   useEffect(() => {
     setLoading(true);
-    apiRequest<AttSession[]>(`/attendance/sessions?date=${date}&limit=500&session_type=class`, { auth: "school" })
+    const queryParams = new URLSearchParams({ date, limit: "500", session_type: "class" });
+    if (selectedClassId !== "all") queryParams.set("class_id", selectedClassId);
+
+    apiRequest<AttSession[]>(`/attendance/sessions?${queryParams.toString()}`, { auth: "school" })
       .then(d => setSessions(Array.isArray(d) ? d : []))
       .catch(e => toast.error(e?.message ?? "Failed to load"))
       .finally(() => setLoading(false));
-  }, [date]);
+  }, [date, selectedClassId]);
+
+  useEffect(() => {
+    apiRequest<ClassOption[]>("/classes?limit=500", { auth: "school" })
+      .then((data) => setClasses(Array.isArray(data) ? data : []))
+      .catch(() => setClasses([]));
+  }, []);
 
   const filtered = sessions.filter(s => {
-    if (!query.trim()) return true;
-    const q = query.toLowerCase();
-    return (s.section?.name ?? "").toLowerCase().includes(q) ||
-           (s.section?.full_name ?? "").toLowerCase().includes(q);
+    const q = query.trim().toLowerCase();
+    const matchesText = !q || (s.section?.name ?? "").toLowerCase().includes(q) ||
+      (s.section?.full_name ?? "").toLowerCase().includes(q);
+    const matchesStatus = statusFilter === "all"
+      ? true
+      : statusFilter === "submitted"
+        ? Boolean(s.submitted_at)
+        : !s.submitted_at;
+    return matchesText && matchesStatus;
   });
 
   const submitted = filtered.filter(s => s.submitted_at).length;
@@ -78,6 +105,19 @@ function DosAttendancePage() {
       <div className="flex flex-wrap gap-3 items-center mb-5">
         <input type="date" value={date} onChange={e => setDate(e.target.value)}
           className="h-10 rounded-lg border border-border bg-background px-3 text-sm" />
+        <select value={selectedClassId} onChange={e => setSelectedClassId(e.target.value)}
+          className="h-10 rounded-lg border border-border bg-background px-3 text-sm">
+          <option value="all">All classes</option>
+          {classes.map((cls) => (
+            <option key={cls.id} value={cls.id}>{cls.name}</option>
+          ))}
+        </select>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as "all" | "submitted" | "pending")}
+          className="h-10 rounded-lg border border-border bg-background px-3 text-sm">
+          <option value="all">All sessions</option>
+          <option value="submitted">Submitted only</option>
+          <option value="pending">Pending only</option>
+        </select>
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search class…"

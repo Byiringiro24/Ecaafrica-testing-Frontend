@@ -11,6 +11,7 @@ import {
   GraduationCap,
   ClipboardCheck,
   ClipboardX,
+  Moon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -148,7 +149,7 @@ const summarizeDeviceAttendance = (logs: DeviceLog[], totalStudents: number) => 
     const status = (log.status ?? "").toLowerCase();
     if (status === "late") late += 1;
     else if (status === "absent") explicitAbsent += 1;
-    else if (status === "present" || status === "excused") present += 1;
+    else if (status === "present" || status === "excused" || status === "still at school") present += 1;
   });
 
   return {
@@ -158,6 +159,9 @@ const summarizeDeviceAttendance = (logs: DeviceLog[], totalStudents: number) => 
     absent: Math.max(explicitAbsent, totalStudents - present - late),
   };
 };
+
+const isEveningDeviceLog = (log: DeviceLog) =>
+  /evening|night/i.test(`${log.sessionName ?? ""} ${log.statusLabel ?? ""}`);
 
 const formatTime = (value?: string | null) => {
   if (!value) return "--";
@@ -223,7 +227,7 @@ const fetchStudentsForSections = async (sectionIds: string[]) => {
 
 function DashboardPage() {
   const [loading, setLoading] = useState(true);
-  const [counts, setCounts] = useState({ total: 0, present: 0, absent: 0, late: 0 });
+  const [counts, setCounts] = useState({ total: 0, present: 0, eveningPresent: 0, absent: 0, late: 0 });
   const [classAttendance, setClassAttendance] = useState({ teachers: 0, present: 0, absent: 0 });
   const [weekAttendance, setWeekAttendance] = useState<
     Array<{ day: string; Present: number; Absent: number; Late: number }>
@@ -302,10 +306,12 @@ function DashboardPage() {
         const sessionMap = new Map(classSessions.map((item) => [item.id, item.section_id]));
 
         const totalStudents = studentMeta.meta?.total || records.length;
+        const eveningDeviceLogs = todayDeviceLogData.filter(isEveningDeviceLog);
+        const eveningSummary = summarizeDeviceAttendance(eveningDeviceLogs, totalStudents);
         setCounts(
           isSchoolDay
-            ? summarizeDeviceAttendance(todayDeviceLogData, totalStudents)
-            : { total: totalStudents, present: 0, absent: 0, late: 0 }
+            ? { ...summarizeDeviceAttendance(todayDeviceLogData, totalStudents), eveningPresent: eveningSummary.present }
+            : { total: totalStudents, present: 0, eveningPresent: 0, absent: 0, late: 0 }
         );
 
         const weekDates = getCurrentSchoolWeekDates(today);
@@ -429,6 +435,7 @@ function DashboardPage() {
             <StatCard label="Absent Today" value={counts.absent} icon={<XCircle className="h-5 w-5" />} trend={`${pct(counts.absent)}% of total`} tone="destructive" />
             <StatCard label="Late Arrivals" value={counts.late} icon={<Clock className="h-5 w-5" />} trend={`${pct(counts.late)}% of total`} tone="warning" />
             <StatCard label="Total Present Students" value={counts.present} icon={<CheckCircle2 className="h-5 w-5" />} trend="Morning device attendance" tone="success" />
+            <StatCard label="Total Present Students" value={counts.eveningPresent} icon={<Moon className="h-5 w-5" />} trend="Evening device attendance" tone="primary" />
             <StatCard label="Teachers Taking Attendance" value={classAttendance.teachers} icon={<GraduationCap className="h-5 w-5" />} trend="Class attendance today" tone="primary" />
             <StatCard label="Class Present Attendance" value={classAttendance.present} icon={<ClipboardCheck className="h-5 w-5" />} trend="Student records marked present" tone="success" />
             <StatCard label="Class Absent Attendance" value={classAttendance.absent} icon={<ClipboardX className="h-5 w-5" />} trend="Student records marked absent" tone="destructive" />
@@ -570,7 +577,7 @@ function DashboardSkeleton() {
   return (
     <>
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, i) => (
+        {Array.from({ length: 9 }).map((_, i) => (
           <div key={i} className="rounded-xl border border-border bg-card p-5 shadow-sm">
             <Skeleton className="h-3 w-24" />
             <Skeleton className="mt-3 h-8 w-16" />

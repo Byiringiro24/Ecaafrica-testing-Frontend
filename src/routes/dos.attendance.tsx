@@ -15,15 +15,19 @@ export const Route = createFileRoute("/dos/attendance")({
 });
 
 type AttSession = {
-  id: string; session_date: string; session_type: string;
-  submitted_at?: string | null; started_at?: string | null;
-<<<<<<< Updated upstream
-  section?: { id: string; name: string; full_name?: string | null } | null;
-=======
+  id: string;
+  session_date: string;
+  session_type: string;
+  submitted_at?: string | null;
+  started_at?: string | null;
   teacher?: { id: string; name: string } | null;
   period?: { id: string; name: string } | null;
-  section?: { id: string; name: string; full_name?: string | null; class?: { id?: string; name?: string } | null } | null;
->>>>>>> Stashed changes
+  section?: {
+    id: string;
+    name: string;
+    full_name?: string | null;
+    class?: { id?: string; name?: string } | null;
+  } | null;
 };
 
 type ClassOption = { id: string; name: string; level?: number | null };

@@ -5,7 +5,7 @@
  */
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Users, UserCheck, UserX, CalendarDays, Utensils, AlertTriangle, Clock, ArrowRight } from "lucide-react";
+import { Users, UserCheck, UserX, CalendarDays, Utensils, AlertTriangle, Clock, ArrowRight, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { PatronLayout } from "@/components/layout/PatronLayout";
 import { patronRouteGuard } from "@/lib/schoolAuth";
@@ -29,7 +29,7 @@ export function PatronDashboard() {
   const [studentAssignments, setStudentAssignments] = useState<Assignment[]>([]);
   const [dormStats, setDormStats] = useState<{
     id: string; name: string; total: number; onLeave: number; missing: number;
-    lateReturn: number; diningMissing: number;
+    lateReturn: number; diningMissing: number; pendingLeaves: number; approvedLeaves: number;
   }[]>([]);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -64,8 +64,12 @@ export function PatronDashboard() {
         const myLeaves = (Array.isArray(allLeaves) ? allLeaves : []).filter(l => myStudentIds.has(l.student_id));
         setLeaves(myLeaves);
 
-        const onLeaveIds = new Set(myLeaves.filter(l =>
-          l.leave_state === "outside_school" || (l.status === "approved" && !l.returned_at && l.start_date <= today && l.end_date >= today)
+        const pendingLeaveStates = new Set(["requested", "pending_dod_approval"]);
+        const approvedLeaveStates = new Set(["awaiting_physical_exit", "outside_school", "returned", "closed"]);
+        const approvedLeaves = myLeaves.filter(l => l.status === "approved" && approvedLeaveStates.has(l.leave_state));
+        const onLeaveIds = new Set(approvedLeaves.filter(l =>
+          l.leave_state === "outside_school" ||
+          (l.start_date <= today && l.end_date >= today && !l.returned_at)
         ).map(l => l.student_id));
 
         const lateReturnIds = new Set(myLeaves.filter(l => l.late_return_flagged && l.leave_state === "outside_school").map(l => l.student_id));
@@ -75,7 +79,8 @@ export function PatronDashboard() {
           const dormStudents = myStudentAssignments.filter(a => a.dormitory_id === d.dormitory_id).map(a => a.student_id);
           const onLeave = dormStudents.filter(id => onLeaveIds.has(id)).length;
           const lateReturn = dormStudents.filter(id => lateReturnIds.has(id)).length;
-          const present = dormStudents.length - onLeave; // simplified — real value comes from attendance sessions
+          const pendingLeaves = myLeaves.filter(l => dormStudents.includes(l.student_id) && pendingLeaveStates.has(l.leave_state)).length;
+          const approvedLeavesForDorm = approvedLeaves.filter(l => dormStudents.includes(l.student_id)).length;
           return {
             id: d.dormitory_id,
             name: d.dormitory?.name ?? d.dormitory_id,
@@ -84,6 +89,8 @@ export function PatronDashboard() {
             missing: 0, // will be populated from boarding attendance sessions when available
             lateReturn,
             diningMissing: 0,
+            pendingLeaves,
+            approvedLeaves: approvedLeavesForDorm,
           };
         });
         setDormStats(stats);
@@ -101,9 +108,11 @@ export function PatronDashboard() {
     onLeave: acc.onLeave + d.onLeave,
     missing: acc.missing + d.missing,
     lateReturn: acc.lateReturn + d.lateReturn,
-  }), { total: 0, onLeave: 0, missing: 0, lateReturn: 0 });
+    pendingLeaves: acc.pendingLeaves + d.pendingLeaves,
+    approvedLeaves: acc.approvedLeaves + d.approvedLeaves,
+  }), { total: 0, onLeave: 0, missing: 0, lateReturn: 0, pendingLeaves: 0, approvedLeaves: 0 });
 
-  const pendingLeaves = leaves.filter(l => l.status === "pending" || l.leave_state === "requested");
+  const pendingLeaves = leaves.filter(l => ["requested", "pending_dod_approval"].includes(l.leave_state));
 
   return (
     <PatronLayout title={`${greeting}, ${displayName}`} subtitle={dateLabel}>
@@ -117,13 +126,15 @@ export function PatronDashboard() {
       {/* Overall stats */}
       {dormAssignments.length > 0 && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
             {loading ? (
-              Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)
+              Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-28" />)
             ) : (
               <>
                 <StatBox label="My Boarding Students" value={totals.total} icon={<Users className="h-5 w-5" />} color="blue" />
                 <StatBox label="On Leave" value={totals.onLeave} icon={<CalendarDays className="h-5 w-5" />} color="amber" />
+                <StatBox label="Pending Leaves" value={totals.pendingLeaves} icon={<Clock className="h-5 w-5" />} color="amber" />
+                <StatBox label="Approved Leaves" value={totals.approvedLeaves} icon={<CheckCircle2 className="h-5 w-5" />} color="green" />
                 <StatBox label="Missing Attendance" value={totals.missing} icon={<UserX className="h-5 w-5" />} color="red" />
                 <StatBox label="Late Returns" value={totals.lateReturn} icon={<Clock className="h-5 w-5" />} color="red" />
               </>
@@ -179,6 +190,8 @@ export function PatronDashboard() {
                       <div className="flex gap-3 text-xs">
                         <span className="text-emerald-600">{d.total - d.onLeave} Inside</span>
                         <span className="text-amber-600">{d.onLeave} On Leave</span>
+                        {d.pendingLeaves > 0 && <span className="text-amber-700 font-semibold">{d.pendingLeaves} Pending</span>}
+                        {d.approvedLeaves > 0 && <span className="text-emerald-700 font-semibold">{d.approvedLeaves} Approved</span>}
                         {d.missing > 0 && <span className="text-destructive font-bold">{d.missing} Missing</span>}
                         {d.lateReturn > 0 && <span className="text-destructive font-bold">{d.lateReturn} Late Return</span>}
                       </div>

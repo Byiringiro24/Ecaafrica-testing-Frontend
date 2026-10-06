@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { CalendarDays, Loader2, Pencil, Plus, X } from "lucide-react";
 import { toast } from "sonner";
-import { schoolAdminRouteGuard } from "@/lib/schoolAuth";
+import { academicManagementRouteGuard } from "@/lib/schoolAuth";
 import {
   createTerm,
   listAcademicYears,
@@ -13,7 +13,7 @@ import {
 } from "@/lib/report-cards-api";
 
 export const Route = createFileRoute("/exams/terms")({
-  beforeLoad: ({ location }) => schoolAdminRouteGuard(location),
+  beforeLoad: ({ location }) => academicManagementRouteGuard(location),
   component: TermsPage,
 });
 

@@ -70,7 +70,9 @@ function DosTimetablePage() {
           apiRequest<Period[]>("/timetable-periods?limit=100", AUTH).catch(() => []),
           apiRequest<Section[]>("/sections?limit=200", AUTH).catch(() => []),
           apiRequest<Subject[]>("/subjects?limit=200", AUTH).catch(() => []),
-          apiRequest<Teacher[]>("/users?role=teacher&limit=200", AUTH).catch(() => []),
+          // Timetable responsibility is not restricted to the user's primary
+          // role; any school user can be selected for a slot or combined class.
+          apiRequest<Teacher[]>("/users?limit=5000", AUTH).catch(() => []),
           apiRequest<Term[]>("/terms?limit=20", AUTH).catch(() => []),
         ]);
         const ps = Array.isArray(pRes) ? pRes : [];
@@ -132,7 +134,7 @@ function DosTimetablePage() {
             teacher_id: addTeacherId,
             day_of_week: addDay,
             room: addRoom || null,
-            term_id: termId || null,
+            ...(termId ? { term_id: termId } : {}),
           }),
         });
         toast.success(`Combined slot created for ${addSectionIds.length} sections`);
@@ -143,7 +145,7 @@ function DosTimetablePage() {
           body: JSON.stringify({
             section_id: sectionId, period_id: addPeriodId,
             subject_id: addSubjectId, teacher_id: addTeacherId,
-            day_of_week: addDay, room: addRoom || null, term_id: termId || null,
+            day_of_week: addDay, room: addRoom || null, ...(termId ? { term_id: termId } : {}),
           }),
         });
         toast.success("Slot added");

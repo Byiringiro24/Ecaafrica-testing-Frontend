@@ -4,9 +4,9 @@
  * Assign patron/matron to dormitories from the same page.
  * DOD can only manage boarding-related roles.
  */
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { FormEvent, useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, RefreshCw, Users, Save, X, Home } from "lucide-react";
+import { Plus, Pencil, Trash2, RefreshCw, Users, Save, X, Home, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest } from "@/lib/api";
@@ -30,7 +30,7 @@ export const Route = createFileRoute("/staff/management")({
 
 type StaffUser = {
   id: string; name: string; email: string | null; phone: string | null;
-  role: string; status: string; created_at: string;
+  role: string; status: string; created_at: string; roles?: { slug: string }[];
 };
 type Dormitory = { id: string; name: string; block_name?: string | null; hostel_name?: string | null; gender: string };
 
@@ -66,7 +66,7 @@ const ROLE_COLOR: Record<string, string> = {
   school_admin:           "bg-rose-100 text-rose-700",
 };
 
-const emptyForm = { name: "", email: "", phone: "", role: "teacher", password: "", status: "active" };
+const emptyForm = { name: "", email: "", phone: "", role: "teacher", secondaryRoles: [] as string[], password: "", status: "active" };
 
 function StaffManagementPage() {
   const user = useCurrentUser();
@@ -89,6 +89,17 @@ function StaffManagementPage() {
   const [showForm,  setShowForm]  = useState(false);
   const [editId,    setEditId]    = useState<string | null>(null);
   const [form,      setForm]      = useState({ ...emptyForm });
+
+  const toggleSecondaryRole = (role: string) => {
+    setForm((prev) => {
+      const current = prev.secondaryRoles ?? [];
+      const exists = current.includes(role);
+      return {
+        ...prev,
+        secondaryRoles: exists ? current.filter((item) => item !== role) : [...current, role]
+      };
+    });
+  };
 
   // Dorm assignment modal
   const [assignUserId,   setAssignUserId]   = useState<string | null>(null);
@@ -117,14 +128,24 @@ function StaffManagementPage() {
     setSaving(true);
     try {
       if (editId) {
-        const body: any = { name: form.name, role: form.role, status: form.status };
+        const body: any = {
+          name: form.name,
+          role: form.role,
+          roles: (form.secondaryRoles ?? []).filter((role) => role !== form.role),
+          status: form.status
+        };
         if (form.email) body.email = form.email;
         if (form.phone) body.phone = form.phone;
         if (form.password) body.password = form.password;
         await apiRequest(`/users/${editId}`, { method: "PATCH", auth: "school", body: JSON.stringify(body) });
         toast.success("User updated");
       } else {
-        const body: any = { name: form.name, role: form.role, password: form.password };
+        const body: any = {
+          name: form.name,
+          role: form.role,
+          roles: (form.secondaryRoles ?? []).filter((role) => role !== form.role),
+          password: form.password
+        };
         if (form.email) body.email = form.email;
         if (form.phone) body.phone = form.phone;
         await apiRequest("/users", { method: "POST", auth: "school", body: JSON.stringify(body) });
@@ -150,7 +171,8 @@ function StaffManagementPage() {
 
   const startEdit = (u: StaffUser) => {
     setEditId(u.id);
-    setForm({ name: u.name, email: u.email ?? "", phone: u.phone ?? "", role: u.role, password: "", status: u.status });
+    const secondaryRoles = (u.roles ?? []).map((role) => role.slug).filter((slug) => slug && slug !== u.role);
+    setForm({ name: u.name, email: u.email ?? "", phone: u.phone ?? "", role: u.role, secondaryRoles, password: "", status: u.status });
     setShowForm(true);
   };
 
@@ -213,6 +235,12 @@ function StaffManagementPage() {
           className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50">
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
         </button>
+        <Link
+          to="/staff/roles"
+          className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold hover:bg-muted"
+        >
+          <ShieldCheck className="h-4 w-4" /> Role Management
+        </Link>
         <button onClick={() => { setEditId(null); setForm({ ...emptyForm, role: availableRoles[0]?.value ?? "teacher" }); setShowForm(true); }}
           className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
           <Plus className="h-4 w-4" /> Create User
@@ -301,7 +329,7 @@ function StaffManagementPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1.5 block text-sm font-semibold">Role *</label>
+                  <label className="mb-1.5 block text-sm font-semibold">Primary Role *</label>
                   <select value={form.role} onChange={e => setForm(f => ({...f, role: e.target.value}))} required
                     className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm">
                     {availableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -318,6 +346,30 @@ function StaffManagementPage() {
                     </select>
                   </div>
                 )}
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold">Additional Roles</label>
+                <div className="flex flex-wrap gap-2 rounded-xl border border-border bg-background p-2">
+                  {availableRoles
+                    .filter((role) => role.value !== form.role)
+                    .map((role) => {
+                      const checked = (form.secondaryRoles ?? []).includes(role.value);
+                      return (
+                        <button
+                          key={role.value}
+                          type="button"
+                          onClick={() => toggleSecondaryRole(role.value)}
+                          className={cn(
+                            "rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                            checked ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted-foreground"
+                          )}
+                        >
+                          {role.label}
+                        </button>
+                      );
+                    })}
+                </div>
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-semibold">{editId ? "New Password (leave blank to keep current)" : "Password *"}</label>

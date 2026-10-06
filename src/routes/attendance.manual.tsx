@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { localDateInputValue } from "@/lib/dateInput";
 import { studentSearchText, studentIdNumber } from "@/lib/studentIdentity";
+import { formatAttendanceDateTime, formatAttendanceTime } from "@/lib/attendanceTime";
 
 export const Route = createFileRoute("/attendance/manual")({
   component: ManualAttendancePage,
@@ -31,6 +32,15 @@ type SectionRecord = {
   class_id: string;
 };
 
+type PeriodRecord = {
+  id: string;
+  name: string;
+  start_time?: string;
+  end_time?: string;
+  is_break?: boolean;
+};
+type TeacherRecord = { id: string; name: string };
+
 type ApiStudent = {
   id: string;
   student_school_id?: string | null;
@@ -46,6 +56,11 @@ type ApiSession = {
   section_id: string;
   session_date: string;
   session_type?: string | null;
+  teacher_id?: string | null;
+  period_id?: string | null;
+  teacher?: { id: string; name: string } | null;
+  period?: { id: string; name: string } | null;
+  submitted_at?: string | null;
 };
 
 type ApiRecord = {
@@ -68,7 +83,15 @@ type AttendanceRow = {
   status: UiStatus;
   sessionId: string;
   sectionId: string;
+  teacherName: string;
+  periodName: string;
+  submittedAt: string;
   residency?: "Boarding" | "Day";
+};
+type AttendanceSummary = {
+  total: number; present: number; absent: number; late: number; excused: number;
+  teachers: number; classes: number; sessions: number;
+  details: Array<{ className: string; teacherName: string; periodName: string; total: number; present: number; late: number; absent: number; submittedAt?: string | null }>;
 };
 
 const PAGE_SIZE = 20;
@@ -110,7 +133,7 @@ const formatTime = (value?: string | null, status?: ApiStatus) => {
   if (!value || status === "absent") return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  return formatAttendanceTime(value);
 };
 
 const buildAttendanceChartImage = (counts: Record<UiStatus, number>) => {
@@ -176,9 +199,11 @@ const nextManualStatus = (current?: ApiStatus) => {
 
 function ManualAttendancePage() {
   const todayValue = localDateInputValue();
-  const [tab, setTab] = useState<"records" | "manual">("records");
+  const [tab, setTab] = useState<"records" | "manual" | "summary">("records");
   const [classRecords, setClassRecords] = useState<ClassRecord[]>([]);
   const [sectionRecords, setSectionRecords] = useState<SectionRecord[]>([]);
+  const [periodRecords, setPeriodRecords] = useState<PeriodRecord[]>([]);
+  const [teacherRecords, setTeacherRecords] = useState<TeacherRecord[]>([]);
   const [studentsById, setStudentsById] = useState<Record<string, ApiStudent>>({});
   const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [records, setRecords] = useState<ApiRecord[]>([]);
@@ -186,12 +211,17 @@ function ManualAttendancePage() {
   const [classFilter, setClassFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState<"All" | UiStatus>("All");
   const [residencyFilter, setResidencyFilter] = useState<"All" | "Boarding" | "Day">("All");
+  const [teacherFilter, setTeacherFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [recordsLoading, setRecordsLoading] = useState(false);
+  const [summaryPeriod, setSummaryPeriod] = useState<"daily" | "weekly" | "monthly" | "termly">("daily");
+  const [summaryReport, setSummaryReport] = useState<AttendanceSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   const [manualSectionId, setManualSectionId] = useState("");
+  const [manualPeriodId, setManualPeriodId] = useState("");
   const [manualDate, setManualDate] = useState(todayValue);
   const [manualStudents, setManualStudents] = useState<ApiStudent[]>([]);
   const [manualMarks, setManualMarks] = useState<Record<string, ApiStatus>>({});
@@ -244,12 +274,16 @@ function ManualAttendancePage() {
   const loadClassData = async () => {
     setLoading(true);
     try {
-      const [classes, sections] = await Promise.all([
+      const [classes, sections, periods, teachers] = await Promise.all([
         apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }),
-        apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" })
+        apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" }),
+        apiRequest<PeriodRecord[]>("/timetable-periods?limit=100", { auth: "school" }),
+        apiRequest<TeacherRecord[]>("/users?role=teacher&limit=500", { auth: "school" })
       ]);
       setClassRecords(classes);
       setSectionRecords(sections);
+      setPeriodRecords(periods);
+      setTeacherRecords(teachers);
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to load classes");
     } finally {
@@ -294,6 +328,25 @@ function ManualAttendancePage() {
       toast.error(error?.message ?? "Failed to load attendance records");
     } finally {
       setRecordsLoading(false);
+    }
+  };
+
+  const loadSummaryReport = async () => {
+    const end = new Date(`${dateFilter}T00:00:00`);
+    const days = summaryPeriod === "daily" ? 0 : summaryPeriod === "weekly" ? 6 : summaryPeriod === "monthly" ? 29 : 89;
+    const start = new Date(end);
+    start.setDate(start.getDate() - days);
+    setSummaryLoading(true);
+    try {
+      const report = await apiRequest<AttendanceSummary>(
+        `/attendance/records/summary?start_date=${start.toISOString().slice(0, 10)}&end_date=${new Date(end.getTime() + 86400000).toISOString().slice(0, 10)}`,
+        { auth: "school" }
+      );
+      setSummaryReport(report);
+    } catch (error: any) {
+      toast.error(error?.message ?? "Failed to load attendance summary");
+    } finally {
+      setSummaryLoading(false);
     }
   };
 
@@ -345,7 +398,7 @@ function ManualAttendancePage() {
           auth: "school"
         }),
         apiRequest<ApiSession[]>(
-          `/attendance/sessions?section_id=${manualSectionId}&date=${manualDate}&limit=1`,
+          `/attendance/sessions?section_id=${manualSectionId}&date=${manualDate}${manualPeriodId ? `&period_id=${manualPeriodId}` : ""}&limit=1`,
           { auth: "school" }
         )
       ]);
@@ -402,6 +455,7 @@ function ManualAttendancePage() {
           auth: "school",
           body: JSON.stringify({
             section_id: manualSectionId,
+            ...(manualPeriodId ? { period_id: manualPeriodId } : {}),
             session_date: manualDate,
             session_type: "class",
             started_at: new Date().toISOString()
@@ -451,6 +505,12 @@ function ManualAttendancePage() {
     }
   }, [classOptions, manualSectionId]);
 
+  useEffect(() => {
+    if (!manualPeriodId && periodRecords.length) {
+      setManualPeriodId(periodRecords.find((period) => !period.is_break)?.id ?? "");
+    }
+  }, [manualPeriodId, periodRecords]);
+
   const todayLabel = useMemo(() => formatLongDate(dateFilter), [dateFilter]);
 
   const sessionMap = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);
@@ -470,6 +530,11 @@ function ManualAttendancePage() {
         sectionId
           ? classLabelForSection(sectionId)
           : student?.current_section?.full_name ?? "—";
+      const teacherName = session?.teacher?.name ?? "Unknown teacher";
+      const periodName = session?.period?.name ?? "No period";
+      const submittedAt = session?.submitted_at
+        ? formatAttendanceDateTime(session.submitted_at)
+        : "Not submitted";
       const residency =
         student?.student_type === "boarding"
           ? "Boarding"
@@ -487,6 +552,9 @@ function ManualAttendancePage() {
         status,
         sessionId: record.session_id,
         sectionId,
+        teacherName,
+        periodName,
+        submittedAt,
         residency
       };
     });
@@ -511,11 +579,12 @@ function ManualAttendancePage() {
       const matchesClass = classFilter === "All" || row.sectionId === classFilter;
       const matchesStatus = statusFilter === "All" || row.status === statusFilter;
       const matchesResidency = residencyFilter === "All" || row.residency === residencyFilter;
+      const matchesTeacher = teacherFilter === "All" || sessionMap.get(row.sessionId)?.teacher_id === teacherFilter;
       const target = `${row.studentName} ${row.cardId}`.toLowerCase();
       const matchesSearch = search === "" || target.includes(search.toLowerCase());
-      return matchesClass && matchesStatus && matchesResidency && matchesSearch;
+      return matchesClass && matchesStatus && matchesResidency && matchesTeacher && matchesSearch;
     });
-  }, [rows, classFilter, statusFilter, residencyFilter, search]);
+  }, [rows, classFilter, statusFilter, residencyFilter, teacherFilter, search, sessionMap]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -540,7 +609,7 @@ function ManualAttendancePage() {
 
   useEffect(() => {
     setManualPage(1);
-  }, [manualSearch, manualSectionId, manualDate, manualStudents]);
+  }, [manualSearch, manualSectionId, manualPeriodId, manualDate, manualStudents]);
 
   useEffect(() => {
     if (manualPage > manualTotalPages) setManualPage(manualTotalPages);
@@ -588,6 +657,9 @@ function ManualAttendancePage() {
         "Student",
         "Card ID",
         "Class",
+        "Teacher",
+        "Period",
+        "Submission Time",
         "Time In",
         "Status",
         "Residency"
@@ -602,6 +674,9 @@ function ManualAttendancePage() {
           row.studentName,
           row.cardId,
           row.className,
+          row.teacherName,
+          row.periodName,
+          row.submittedAt,
           row.timeIn,
           row.status,
           row.residency ?? ""
@@ -613,15 +688,18 @@ function ManualAttendancePage() {
         { width: 28 },
         { width: 14 },
         { width: 18 },
+        { width: 24 },
+        { width: 14 },
+        { width: 20 },
         { width: 12 },
         { width: 12 },
         { width: 12 }
       ];
 
-      sheet.getCell("I2").value = "Status";
-      sheet.getCell("J2").value = "Count";
-      sheet.getCell("I2").font = { bold: true };
-      sheet.getCell("J2").font = { bold: true };
+      sheet.getCell("K2").value = "Status";
+      sheet.getCell("L2").value = "Count";
+      sheet.getCell("K2").font = { bold: true };
+      sheet.getCell("L2").font = { bold: true };
 
       const summaryRows: Array<[UiStatus, number]> = [
         ["Present", exportCounts.Present],
@@ -631,8 +709,8 @@ function ManualAttendancePage() {
       ];
 
       summaryRows.forEach((row, idx) => {
-        sheet.getCell(`I${idx + 3}`).value = row[0];
-        sheet.getCell(`J${idx + 3}`).value = row[1];
+        sheet.getCell(`K${idx + 3}`).value = row[0];
+        sheet.getCell(`L${idx + 3}`).value = row[1];
       });
 
       const imageId = workbook.addImage({
@@ -641,7 +719,7 @@ function ManualAttendancePage() {
       });
 
       sheet.addImage(imageId, {
-        tl: { col: 8, row: 6 },
+        tl: { col: 10, row: 6 },
         ext: { width: 640, height: 340 }
       });
 
@@ -664,7 +742,7 @@ function ManualAttendancePage() {
   return (
     <>
       <div className="flex gap-1 border-b border-border mb-5">
-        {(["records", "manual"] as const).map((item) => (
+        {(["records", "manual", "summary"] as const).map((item) => (
           <button
             key={item}
             onClick={() => setTab(item)}
@@ -674,7 +752,7 @@ function ManualAttendancePage() {
                 : "border-transparent text-muted-foreground"
             }`}
           >
-            {item === "records" ? "Today's Records" : "Make Attendance"}
+            {item === "records" ? "Today's Records" : item === "manual" ? "Make Attendance" : "Summary Report"}
           </button>
         ))}
       </div>
@@ -713,6 +791,14 @@ function ManualAttendancePage() {
               <option value="Day">Day School</option>
               <option value="Boarding">Boarding</option>
             </select>
+            <select
+              value={teacherFilter}
+              onChange={(e) => { setTeacherFilter(e.target.value); setPage(1); }}
+              className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+            >
+              <option value="All">All Teachers</option>
+              {teacherRecords.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
+            </select>
             <div className="relative flex-1 min-w-50">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -748,13 +834,16 @@ function ManualAttendancePage() {
                     <th className="text-left px-5 py-3">Student</th>
                     <th className="text-left px-5 py-3">Card ID</th>
                     <th className="text-left px-5 py-3">Class</th>
+                    <th className="text-left px-5 py-3">Teacher</th>
+                    <th className="text-left px-5 py-3">Period</th>
+                    <th className="text-left px-5 py-3">Submitted</th>
                     <th className="text-left px-5 py-3">Time In</th>
                     <th className="text-left px-5 py-3">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {recordsLoading && (
-                    <tr><td colSpan={6} className="px-5 py-6"><Skeleton className="h-6 w-full" /></td></tr>
+                    <tr><td colSpan={9} className="px-5 py-6"><Skeleton className="h-6 w-full" /></td></tr>
                   )}
                   {!recordsLoading && pageItems.map((row, i) => (
                     <tr key={row.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/40 transition-colors">
@@ -767,12 +856,15 @@ function ManualAttendancePage() {
                       </td>
                       <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{row.cardId}</td>
                       <td className="px-5 py-3">{row.className}</td>
+                      <td className="px-5 py-3">{row.teacherName}</td>
+                      <td className="px-5 py-3">{row.periodName}</td>
+                      <td className="px-5 py-3 text-xs">{row.submittedAt}</td>
                       <td className="px-5 py-3">{row.timeIn}</td>
                       <td className="px-5 py-3"><StatusBadge status={row.status} /></td>
                     </tr>
                   ))}
                   {!recordsLoading && pageItems.length === 0 && (
-                    <tr><td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">No records match your filters.</td></tr>
+                    <tr><td colSpan={9} className="px-5 py-10 text-center text-muted-foreground">No records match your filters.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -786,6 +878,33 @@ function ManualAttendancePage() {
             </div>
           </div>
         </>
+      )}
+
+      {tab === "summary" && (
+        <div className="space-y-5">
+          <div className="rounded-xl border border-border bg-card p-4 flex flex-wrap items-center gap-3">
+            <span className="text-sm font-semibold">Summary period</span>
+            <select value={summaryPeriod} onChange={(e) => setSummaryPeriod(e.target.value as typeof summaryPeriod)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm">
+              <option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="termly">Termly</option>
+            </select>
+            <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm" />
+            <button onClick={loadSummaryReport} disabled={summaryLoading} className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60">{summaryLoading ? "Loading…" : "Generate Summary"}</button>
+          </div>
+          {summaryReport && (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                {[['Teachers', summaryReport.teachers], ['Classes', summaryReport.classes], ['Sessions', summaryReport.sessions], ['Present', summaryReport.present], ['Late', summaryReport.late], ['Absent', summaryReport.absent]].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-xl border border-border bg-card p-4"><div className="text-2xl font-bold">{value}</div><div className="text-xs text-muted-foreground">{label}</div></div>
+                ))}
+              </div>
+              <div className="rounded-xl border border-border bg-card overflow-x-auto">
+                <table className="w-full text-sm"><thead className="bg-muted/40 text-xs uppercase"><tr>{['Class', 'Teacher', 'Period', 'Submission', 'Total', 'Present', 'Late', 'Absent'].map((heading) => <th key={heading} className="text-left px-4 py-3">{heading}</th>)}</tr></thead>
+                  <tbody>{summaryReport.details.map((row, index) => <tr key={`${row.className}-${row.periodName}-${index}`} className="border-t border-border"><td className="px-4 py-3 font-medium">{row.className}</td><td className="px-4 py-3">{row.teacherName}</td><td className="px-4 py-3">{row.periodName}</td><td className="px-4 py-3 text-xs">{formatAttendanceDateTime(row.submittedAt)}</td><td className="px-4 py-3">{row.total}</td><td className="px-4 py-3">{row.present}</td><td className="px-4 py-3">{row.late}</td><td className="px-4 py-3">{row.absent}</td></tr>)}</tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       {tab === "manual" && (
@@ -811,6 +930,19 @@ function ManualAttendancePage() {
                 onChange={(e) => setManualDate(clampManualDate(e.target.value))}
                 className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm block"
               />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">Period</label>
+              <select
+                value={manualPeriodId}
+                onChange={(e) => { setManualPeriodId(e.target.value); setManualLoaded(false); }}
+                className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm block"
+              >
+                <option value="">No period</option>
+                {periodRecords.filter((period) => !period.is_break).map((period) => (
+                  <option key={period.id} value={period.id}>{period.name}</option>
+                ))}
+              </select>
             </div>
             <button onClick={loadManualStudents} disabled={manualLoading || loading} className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-50">Load Students</button>
             <button

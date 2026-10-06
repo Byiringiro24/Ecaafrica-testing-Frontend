@@ -15,28 +15,45 @@ export const Route = createFileRoute("/dos/classes")({
 
 type ClassRecord = { id: string; name: string; level?: number; sections?: { id: string; name: string; full_name?: string }[] };
 type SubjectRecord = { id: string; name: string; code?: string; is_active?: boolean };
+type CombinationRecord = { id: string; code: string; name: string; subjects?: { id: string; name: string; code?: string | null }[] };
 
-const TABS = ["Classes", "Subjects"] as const;
+const TABS = ["Classes", "Subjects", "Combinations"] as const;
 
 function DosClassesPage() {
   const [tab, setTab] = useState<typeof TABS[number]>("Classes");
   const [classes, setClasses] = useState<ClassRecord[]>([]);
   const [subjects, setSubjects] = useState<SubjectRecord[]>([]);
+  const [combinations, setCombinations] = useState<CombinationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [classForm, setClassForm] = useState({ name: "", level: "" });
+  const [classCombinationIds, setClassCombinationIds] = useState<string[]>([]);
   const [subjectForm, setSubjectForm] = useState({ name: "", code: "" });
+  const [combinationForm, setCombinationForm] = useState({ code: "", name: "", subject_ids: [] as string[] });
 
   const load = () => {
     setLoading(true);
     Promise.all([
       apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }).catch(() => []),
       apiRequest<SubjectRecord[]>("/subjects?limit=200", { auth: "school" }).catch(() => []),
-    ]).then(([c, s]) => {
+      apiRequest<CombinationRecord[]>("/combinations?limit=200", { auth: "school" }).catch(() => []),
+    ]).then(([c, s, combos]) => {
       setClasses(Array.isArray(c) ? c : []);
       setSubjects(Array.isArray(s) ? s : []);
+      setCombinations(Array.isArray(combos) ? combos : []);
     }).catch(e => toast.error(e?.message ?? "Failed to load")).finally(() => setLoading(false));
+  };
+
+  const handleCreateCombination = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!combinationForm.code.trim() || !combinationForm.name.trim()) { toast.error("Combination code and name are required"); return; }
+    if (combinationForm.subject_ids.length === 0) { toast.error("Select at least one subject for the combination"); return; }
+    setSaving(true);
+    try {
+      await apiRequest("/combinations", { method: "POST", auth: "school", body: JSON.stringify({ code: combinationForm.code.trim().toUpperCase(), name: combinationForm.name.trim(), subject_ids: combinationForm.subject_ids }) });
+      toast.success("Combination created"); setShowCreate(false); setCombinationForm({ code: "", name: "", subject_ids: [] }); load();
+    } catch (e: any) { toast.error(e?.message ?? "Failed to create combination"); } finally { setSaving(false); }
   };
 
   useEffect(() => { load(); }, []);
@@ -46,8 +63,8 @@ function DosClassesPage() {
     if (!classForm.name.trim()) { toast.error("Class name required"); return; }
     setSaving(true);
     try {
-      await apiRequest("/classes", { method: "POST", auth: "school", body: JSON.stringify({ name: classForm.name.trim(), level: classForm.level ? Number(classForm.level) : undefined }) });
-      toast.success("Class created"); setShowCreate(false); setClassForm({ name: "", level: "" }); load();
+      await apiRequest("/classes", { method: "POST", auth: "school", body: JSON.stringify({ name: classForm.name.trim(), level: classForm.level ? Number(classForm.level) : undefined, combination_ids: classCombinationIds }) });
+      toast.success("Class created"); setShowCreate(false); setClassForm({ name: "", level: "" }); setClassCombinationIds([]); load();
     } catch (e: any) { toast.error(e?.message ?? "Failed"); } finally { setSaving(false); }
   };
 
@@ -74,7 +91,7 @@ function DosClassesPage() {
         </div>
         <button onClick={() => setShowCreate(true)}
           className="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90">
-          <Plus className="h-4 w-4" /> {tab === "Classes" ? "Add Class" : "Add Subject"}
+          <Plus className="h-4 w-4" /> {tab === "Classes" ? "Add Class" : tab === "Subjects" ? "Add Subject" : "Add Combination"}
         </button>
       </div>
       <div className="mt-5">
@@ -123,6 +140,12 @@ function DosClassesPage() {
               </table>
             </div>
           )}
+          {tab === "Combinations" && (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {combinations.map((combination) => <div key={combination.id} className="rounded-xl border border-border bg-card p-4"><div className="font-semibold">{combination.code} — {combination.name}</div><div className="mt-2 flex flex-wrap gap-1">{(combination.subjects ?? []).map((subject) => <span key={subject.id} className="rounded-md bg-primary/10 px-2 py-0.5 text-xs text-primary">{subject.code || subject.name}</span>)}</div></div>)}
+              {combinations.length === 0 && <p className="text-sm text-muted-foreground">No subject combinations found.</p>}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -132,7 +155,7 @@ function DosClassesPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-display font-bold">{tab === "Classes" ? "Add Class" : "Add Subject"}</h3>
+              <h3 className="font-display font-bold">{tab === "Classes" ? "Add Class" : tab === "Subjects" ? "Add Subject" : "Add Combination"}</h3>
               <button onClick={() => setShowCreate(false)}><X className="h-4 w-4" /></button>
             </div>
             {tab === "Classes" ? (
@@ -147,12 +170,13 @@ function DosClassesPage() {
                   <input value={classForm.level} onChange={e => setClassForm(f => ({ ...f, level: e.target.value }))} type="number" min="1"
                     className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm" placeholder="e.g. 1" />
                 </div>
+                <div><label className="block text-xs font-semibold mb-1">Subject combination (optional)</label><div className="max-h-24 space-y-1 overflow-y-auto rounded-lg border border-border p-2">{combinations.map(combination => <label key={combination.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={classCombinationIds.includes(combination.id)} onChange={e => setClassCombinationIds(current => e.target.checked ? [...current, combination.id] : current.filter(id => id !== combination.id))} /><b>{combination.code}</b> — {combination.name}</label>)}</div></div>
                 <div className="flex justify-end gap-2 pt-2">
                   <button type="button" onClick={() => setShowCreate(false)} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
                   <button type="submit" disabled={saving} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 disabled:opacity-60">{saving ? "Saving…" : "Create"}</button>
                 </div>
               </form>
-            ) : (
+            ) : tab === "Subjects" ? (
               <form onSubmit={handleCreateSubject} className="space-y-3">
                 <div>
                   <label className="block text-xs font-semibold mb-1">Subject Name *</label>
@@ -168,6 +192,13 @@ function DosClassesPage() {
                   <button type="button" onClick={() => setShowCreate(false)} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
                   <button type="submit" disabled={saving} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 disabled:opacity-60">{saving ? "Saving…" : "Create"}</button>
                 </div>
+              </form>
+            ) : (
+              <form onSubmit={handleCreateCombination} className="space-y-3">
+                <div><label className="block text-xs font-semibold mb-1">Combination code *</label><input value={combinationForm.code} onChange={e => setCombinationForm(f => ({ ...f, code: e.target.value }))} required className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm" placeholder="e.g. MCB" /></div>
+                <div><label className="block text-xs font-semibold mb-1">Combination name *</label><input value={combinationForm.name} onChange={e => setCombinationForm(f => ({ ...f, name: e.target.value }))} required className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm" placeholder="Mathematics, Chemistry and Biology" /></div>
+                <div><label className="block text-xs font-semibold mb-1">Subjects</label><div className="max-h-32 space-y-1 overflow-y-auto rounded-lg border border-border p-2">{subjects.map(subject => <label key={subject.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={combinationForm.subject_ids.includes(subject.id)} onChange={e => setCombinationForm(f => ({ ...f, subject_ids: e.target.checked ? [...f.subject_ids, subject.id] : f.subject_ids.filter(id => id !== subject.id) }))} />{subject.name}{subject.code ? ` (${subject.code})` : ""}</label>)}</div></div>
+                <div className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setShowCreate(false)} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button><button type="submit" disabled={saving} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 disabled:opacity-60">{saving ? "Saving…" : "Create"}</button></div>
               </form>
             )}
           </div>

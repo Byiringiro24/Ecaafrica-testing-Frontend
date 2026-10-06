@@ -3,6 +3,8 @@ import { Link } from "@tanstack/react-router";
 import { Menu } from "lucide-react";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
+import { RoleSwitcher } from "@/components/RoleSwitcher";
+import { toast } from "sonner";
 
 function handleLogout() {
   clearSchoolAuth();
@@ -35,6 +37,9 @@ export function AppHeader({ title, subtitle, onMenuClick }: Props) {
           {subtitle && (
             <p className="text-xs md:text-sm text-muted-foreground mt-0.5">{subtitle}</p>
           )}
+        </div>
+        <div className="hidden md:block">
+          <RoleSwitcher compact />
         </div>
         <div className="relative">
           <button

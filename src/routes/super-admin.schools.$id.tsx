@@ -239,8 +239,24 @@ function SchoolDetailPage() {
   const [billingLoading, setBillingLoading] = useState(false);
   const [users, setUsers] = useState<SchoolUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [userPage, setUserPage] = useState(1);
+  const [userMeta, setUserMeta] = useState({ page: 1, limit: 10, total: 0 });
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState("All");
+  const USER_ROLE_OPTIONS = [
+    "school_admin",
+    "teacher",
+    "staff",
+    "parent",
+    "student",
+    "gate_keeper",
+    "boarding_officer",
+    "director_of_discipline",
+    "director_of_studies",
+    "patron",
+    "matron",
+    "finance_officer",
+  ];
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
   const [resettingSchoolPassword, setResettingSchoolPassword] = useState(false);
   const [auditLogs, setAuditLogs] = useState<SchoolAuditLog[]>([]);
@@ -362,23 +378,38 @@ function SchoolDetailPage() {
     if (tab !== "Users") {
       setUserSearch("");
       setUserRoleFilter("All");
+      setUserPage(1);
+      setUserMeta({ page: 1, limit: 10, total: 0 });
       return;
     }
+
     let active = true;
     const loadUsers = async () => {
       setUsersLoading(true);
       try {
-        // Fetch up to 500 users — all users per school visible at once
-        const resp = await apiRequest<{ data: SchoolUser[] }>(
-          `/platform/schools/${id}/users?page=1&limit=500`,
+        const params = new URLSearchParams({
+          page: String(userPage),
+          limit: "10",
+        });
+
+        if (userSearch.trim()) params.set("q", userSearch.trim());
+        if (userRoleFilter !== "All") params.set("role", userRoleFilter);
+
+        const resp = await apiRequest<{ data: SchoolUser[]; meta?: { page: number; limit: number; total: number } }>(
+          `/platform/schools/${id}/users?${params.toString()}`,
           { returnMeta: true }
         );
+
         if (!active) return;
         setUsers(Array.isArray(resp?.data) ? resp.data : []);
+        setUserMeta(resp?.meta ?? { page: userPage, limit: 10, total: Array.isArray(resp?.data) ? resp.data.length : 0 });
       } catch (error) {
         const message = error && typeof error === "object" && "message" in error ? String(error.message) : "Failed to load users";
         toast.error(message);
-        if (active) setUsers([]);
+        if (active) {
+          setUsers([]);
+          setUserMeta({ page: userPage, limit: 10, total: 0 });
+        }
       } finally {
         if (active) setUsersLoading(false);
       }
@@ -386,7 +417,7 @@ function SchoolDetailPage() {
 
     loadUsers();
     return () => { active = false; };
-  }, [id, tab]);
+  }, [id, tab, userPage, userSearch, userRoleFilter]);
 
   useEffect(() => {
     if (tab !== "Audit Log") return;
@@ -436,6 +467,7 @@ function SchoolDetailPage() {
   const studentCount = overview?.student_count ?? school.student_count ?? 0;
   const staffCount = overview?.staff_count ?? school.staff_count ?? 0;
   const classCount = overview?.class_count ?? (studentCount ? Math.ceil(studentCount / 35) : 0);
+  const userTotalPages = Math.max(1, Math.ceil(userMeta.total / Math.max(userMeta.limit, 1)));
   const smsMonth = overview?.sms_sent_month ?? 0;
   const location = formatLocation(school);
   const enabledModules = SCHOOL_MODULES.filter((m) => {
@@ -812,30 +844,54 @@ function SchoolDetailPage() {
           <div className="flex flex-wrap gap-3 items-center">
             <input
               value={userSearch}
-              onChange={e => setUserSearch(e.target.value)}
-              placeholder="Search by name or email…"
+              onChange={e => {
+                setUserSearch(e.target.value);
+                setUserPage(1);
+              }}
+              placeholder="Search by email or name…"
               className="h-9 flex-1 min-w-48 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
             />
             <select
               value={userRoleFilter}
-              onChange={e => setUserRoleFilter(e.target.value)}
+              onChange={e => {
+                setUserRoleFilter(e.target.value);
+                setUserPage(1);
+              }}
               className="h-9 rounded-lg border border-border bg-background px-3 text-sm"
             >
               <option value="All">All Roles</option>
-              {Array.from(new Set(users.map(u => u.role).filter(Boolean))).sort().map(r => (
-                <option key={r!} value={r!}>{r!.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>
+              {USER_ROLE_OPTIONS.map(r => (
+                <option key={r} value={r}>{r.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}</option>
               ))}
             </select>
             <span className="text-xs text-muted-foreground whitespace-nowrap">
-              {(() => {
-                const q = userSearch.toLowerCase();
-                const count = users.filter(u =>
-                  (userRoleFilter === "All" || u.role === userRoleFilter) &&
-                  (!q || (u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)))
-                ).length;
-                return `${count} of ${users.length} user${users.length !== 1 ? "s" : ""}`;
-              })()}
+              {userMeta.total} total user{userMeta.total === 1 ? "" : "s"} in this school
             </span>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+            <span>
+              Showing {users.length ? (userMeta.page - 1) * userMeta.limit + 1 : 0}-{Math.min(userMeta.page * userMeta.limit, userMeta.total)} of {userMeta.total}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setUserPage((current) => Math.max(1, current - 1))}
+                disabled={usersLoading || userPage <= 1}
+                className="rounded-md border border-border px-2 py-1 font-semibold disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span className="min-w-12 text-center font-medium text-foreground">{userMeta.page}/{userTotalPages}</span>
+              <button
+                type="button"
+                onClick={() => setUserPage((current) => Math.min(userTotalPages, current + 1))}
+                disabled={usersLoading || userPage >= userTotalPages}
+                className="rounded-md border border-border px-2 py-1 font-semibold disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
           </div>
 
           <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -856,19 +912,14 @@ function SchoolDetailPage() {
                     </tr>
                   ))
                 ) : (() => {
-                  const q = userSearch.toLowerCase();
-                  const filtered = users.filter(u =>
-                    (userRoleFilter === "All" || u.role === userRoleFilter) &&
-                    (!q || (u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)))
-                  );
-                  if (!filtered.length) return (
+                  if (!users.length) return (
                     <tr className="border-t border-border">
                       <td className="px-4 py-6 text-center text-muted-foreground" colSpan={6}>
-                        {users.length ? "No users match your search." : "No users found."}
+                        No users found.
                       </td>
                     </tr>
                   );
-                  return filtered.map(u => (
+                  return users.map(u => (
                     <tr key={u.id} className="border-t border-border hover:bg-muted/20">
                       <td className="px-4 py-3 font-medium">{u.name}</td>
                       <td className="px-4 py-3">

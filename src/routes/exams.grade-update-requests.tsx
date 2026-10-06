@@ -28,7 +28,7 @@ function RequestSummary({ request }: { request: ExamModificationRequest }) {
 
 function GradeUpdateRequestsPage() {
   const auth = getSchoolAuth();
-  return isSchoolAdminRole(auth?.user?.role) ? <AdminRequests /> : <TeacherRequests />;
+  return (isSchoolAdminRole(auth?.user?.role) || isDirectorOfStudiesRole(auth?.user?.role)) ? <AdminRequests /> : <TeacherRequests />;
 }
 
 function AdminRequests() {

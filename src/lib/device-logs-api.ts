@@ -19,6 +19,17 @@ import type {
 
 // Types
 
+export type DeviceLogQuery = {
+  startDate?: string;
+  endDate?: string;
+  studentId?: string;
+  deviceId?: string;
+  method?: string;
+  status?: string;
+  syncState?: string;
+  search?: string;
+};
+
 export type PullAllResult = {
   tablets: Array<{
     tabletId: string;
@@ -37,17 +48,9 @@ export type PullAllResult = {
  * Fetch device logs with filtering and pagination.
  * Reads from the attendance_logs table via the new /device-logs endpoint.
  */
-export async function fetchDeviceLogs(params: {
+export async function fetchDeviceLogs(params: DeviceLogQuery & {
   page?: number;
   limit?: number;
-  startDate?: string;
-  endDate?: string;
-  studentId?: string;
-  deviceId?: string;
-  method?: string;
-  status?: string;
-  syncState?: string;
-  search?: string;
 }): Promise<AttendanceResponse> {
   const q = new URLSearchParams();
 
@@ -71,6 +74,19 @@ export async function fetchDeviceLogs(params: {
     data: response.data ?? [],
     meta: response.meta ?? { total: 0, page: 1, limit: 20, totalPages: 1 }
   };
+}
+
+/** Fetch every device log matching the filters, across all API pages. */
+export async function fetchAllDeviceLogs(params: DeviceLogQuery = {}): Promise<DeviceLog[]> {
+  const pageSize = 200;
+  const firstPage = await fetchDeviceLogs({ ...params, page: 1, limit: pageSize });
+  const remainingPages = await Promise.all(
+    Array.from({ length: Math.max(0, firstPage.meta.totalPages - 1) }, (_, index) =>
+      fetchDeviceLogs({ ...params, page: index + 2, limit: pageSize })
+    )
+  );
+
+  return [firstPage.data, ...remainingPages.map((page) => page.data)].flat();
 }
 
 /**

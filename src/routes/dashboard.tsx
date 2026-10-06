@@ -160,8 +160,12 @@ const summarizeDeviceAttendance = (logs: DeviceLog[], totalStudents: number) => 
   };
 };
 
-const isEveningDeviceLog = (log: DeviceLog) =>
-  /evening|night/i.test(`${log.sessionName ?? ""} ${log.statusLabel ?? ""}`);
+const isEveningDeviceLog = (log: DeviceLog) => {
+  if (/evening|night/i.test(`${log.sessionName ?? ""} ${log.statusLabel ?? ""}`)) return true;
+
+  const timestamp = new Date(log.timestamp);
+  return !Number.isNaN(timestamp.getTime()) && timestamp.getHours() >= 15;
+};
 
 const formatTime = (value?: string | null) => {
   if (!value) return "--";

@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchDeviceLogs, fetchAttendanceStats } from "@/lib/device-logs-api";
-import type { AttendanceStats, DeviceLog, PaginationMeta } from "@/lib/device-logs-types";
+import { fetchAllDeviceLogs, fetchAttendanceStats } from "@/lib/device-logs-api";
+import type { AttendanceStats, DeviceLog } from "@/lib/device-logs-types";
 import { localDateInputValue } from "@/lib/dateInput";
 import { exportToExcel } from "@/lib/exportExcel";
 
@@ -39,6 +39,70 @@ const formatTime = (value?: string | null) => {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 };
 
+type DeviceAttendanceRow = DeviceLog & {
+  firstInTimestamp: string | null;
+  lastOutTimestamp: string | null;
+};
+
+const timestampValue = (value?: string | null) => {
+  const timestamp = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const studentKey = (log: DeviceLog) => {
+  const id = log.studentId?.trim();
+  if (id) return `id:${id}`;
+  const name = log.studentName?.trim().toLowerCase();
+  return name ? `name:${name}` : `log:${log.id}`;
+};
+
+/** Collapse raw device scans into one first-in/last-out row per student. */
+const summarizeDeviceLogs = (source: DeviceLog[]): DeviceAttendanceRow[] => {
+  const grouped = new Map<string, DeviceLog[]>();
+
+  source.forEach((log) => {
+    const key = studentKey(log);
+    const entries = grouped.get(key) ?? [];
+    entries.push(log);
+    grouped.set(key, entries);
+  });
+
+  return Array.from(grouped.entries())
+    .map(([key, entries]) => {
+      const chronological = entries
+        .slice()
+        .sort((a, b) => timestampValue(a.timestamp) - timestampValue(b.timestamp));
+      const firstScan = chronological[0];
+      const firstIn = chronological.find((log) => log.direction === "In") ?? firstScan;
+      const explicitOuts = chronological.filter((log) => log.direction === "Out");
+      // Some device exports mark every scan as entry. Keep the latest scan as
+      // the best available last-out value instead of losing it.
+      const lastOut = explicitOuts.at(-1) ?? (chronological.length > 1 ? chronological.at(-1) : null);
+      const statuses = chronological.map((log) => log.status.toLowerCase());
+      const status = statuses.some((value) => ["present", "excused", "still at school"].includes(value))
+        ? "Present"
+        : statuses.includes("late")
+          ? "Late"
+          : statuses.includes("absent")
+            ? "Absent"
+            : firstScan.status;
+
+      return {
+        ...firstIn,
+        id: `summary:${key}`,
+        status,
+        direction: "In" as const,
+        timestamp: firstIn.timestamp,
+        firstInTimestamp: firstIn.timestamp ?? null,
+        lastOutTimestamp: lastOut?.timestamp ?? null,
+      };
+    })
+    .sort((a, b) =>
+      timestampValue(b.lastOutTimestamp ?? b.firstInTimestamp) -
+      timestampValue(a.lastOutTimestamp ?? a.firstInTimestamp)
+    );
+};
+
 const statusClasses = (status: string) => {
   switch (status) {
     case "Present":
@@ -56,8 +120,7 @@ const statusClasses = (status: string) => {
 
 function DeviceAttendancePage() {
   const todayValue = localDateInputValue();
-  const [logs, setLogs] = useState<DeviceLog[]>([]);
-  const [meta, setMeta] = useState<PaginationMeta>({ total: 0, page: 1, limit: PAGE_SIZE, totalPages: 1 });
+  const [allLogs, setAllLogs] = useState<DeviceAttendanceRow[]>([]);
   const [stats, setStats] = useState<AttendanceStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -81,10 +144,8 @@ function DeviceAttendancePage() {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [logRes, statRes] = await Promise.all([
-          fetchDeviceLogs({
-            page,
-            limit: PAGE_SIZE,
+        const [rawLogs, statRes] = await Promise.all([
+          fetchAllDeviceLogs({
             startDate: dateFilter || undefined,
             endDate: dateFilter || undefined,
             status: statusFilter !== "all" ? statusFilter : undefined,
@@ -98,13 +159,19 @@ function DeviceAttendancePage() {
         ]);
 
         if (cancelled) return;
-        setLogs(logRes.data);
-        setMeta(logRes.meta);
-        setStats(statRes);
+        const summarizedLogs = summarizeDeviceLogs(rawLogs);
+        setAllLogs(summarizedLogs);
+        setStats({
+          ...statRes,
+          totalRecords: summarizedLogs.length,
+          uniqueStudents: summarizedLogs.length,
+          checkInCount: summarizedLogs.filter((log) => Boolean(log.firstInTimestamp)).length,
+          checkOutCount: summarizedLogs.filter((log) => Boolean(log.lastOutTimestamp)).length,
+        });
       } catch (error: any) {
         if (cancelled) return;
         toast.error(error?.message ?? "Failed to load device attendance records");
-        setLogs([]);
+        setAllLogs([]);
         setStats(null);
       } finally {
         if (!cancelled) setLoading(false);
@@ -115,10 +182,11 @@ function DeviceAttendancePage() {
     return () => {
       cancelled = true;
     };
-  }, [page, dateFilter, statusFilter, methodFilter, debouncedQuery]);
+  }, [dateFilter, statusFilter, methodFilter, debouncedQuery]);
 
-  const totalPages = Math.max(1, meta.totalPages);
-  const startIndex = (meta.page - 1) * meta.limit;
+  const totalPages = Math.max(1, Math.ceil(allLogs.length / PAGE_SIZE));
+  const startIndex = (page - 1) * PAGE_SIZE;
+  const logs = useMemo(() => allLogs.slice(startIndex, startIndex + PAGE_SIZE), [allLogs, startIndex]);
 
   return (
     <>
@@ -132,7 +200,7 @@ function DeviceAttendancePage() {
           </>
         ) : (
           <>
-            <StatCard label="Total Records" value={stats?.totalRecords ?? meta.total} tone="primary" />
+            <StatCard label="Total Records" value={stats?.totalRecords ?? allLogs.length} tone="primary" />
             <StatCard label="Unique Students" value={stats?.uniqueStudents ?? 0} tone="primary" />
             <StatCard label="Check-ins" value={stats?.checkInCount ?? 0} tone="success" />
             <StatCard label="Check-outs" value={stats?.checkOutCount ?? 0} tone="warning" />
@@ -194,7 +262,7 @@ function DeviceAttendancePage() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
               <tr>
-                {["#", "Student", "Class", "Status", "Time", "Scan Method"].map((header) => (
+                {["#", "Student", "Class", "Status", "First In", "Last Out", "Scan Method"].map((header) => (
                   <th key={header} className="text-left px-4 py-3 whitespace-nowrap">
                     {header}
                   </th>
@@ -204,13 +272,13 @@ function DeviceAttendancePage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     Loading device attendance records…
                   </td>
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     No device attendance records found for the selected filters.
                   </td>
                 </tr>
@@ -235,7 +303,8 @@ function DeviceAttendancePage() {
                         {row.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap">{formatTime(row.timestamp)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{formatTime(row.firstInTimestamp)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">{formatTime(row.lastOutTimestamp)}</td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                         {row.method}
@@ -248,10 +317,10 @@ function DeviceAttendancePage() {
           </table>
         </div>
 
-        {!loading && meta.total > PAGE_SIZE && (
+        {!loading && allLogs.length > PAGE_SIZE && (
           <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
             <span className="text-muted-foreground">
-              Showing {startIndex + 1}–{Math.min(startIndex + logs.length, meta.total)} of {meta.total}
+              Showing {startIndex + 1}–{Math.min(startIndex + logs.length, allLogs.length)} of {allLogs.length}
             </span>
             <div className="flex gap-2">
               <button
@@ -275,7 +344,7 @@ function DeviceAttendancePage() {
         )}
       </div>
 
-      {!loading && logs.length > 0 && (
+      {!loading && allLogs.length > 0 && (
         <div className="mt-4 flex justify-end">
           <button
             type="button"
@@ -289,17 +358,19 @@ function DeviceAttendancePage() {
                     { header: "Student ID", key: "sid", width: 16 },
                     { header: "Class", key: "cls", width: 18 },
                     { header: "Status", key: "status", width: 12 },
-                    { header: "Time In", key: "time", width: 14 },
+                    { header: "First In", key: "time", width: 14 },
+                    { header: "Last Out", key: "timeOut", width: 14 },
                     { header: "Method", key: "method", width: 14 },
                     { header: "Device", key: "device", width: 18 },
                   ],
-                  logs.map((l: DeviceLog, i) => ({
+                  allLogs.map((l: DeviceAttendanceRow, i) => ({
                     no: i + 1,
                     name: l.studentName ?? "—",
                     sid: l.studentId ?? "—",
                     cls: l.className ?? "—",
                     status: l.status ?? "—",
-                    time: l.timestamp ? new Date(l.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—",
+                    time: l.firstInTimestamp ? new Date(l.firstInTimestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—",
+                    timeOut: l.lastOutTimestamp ? new Date(l.lastOutTimestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—",
                     method: l.method ?? "—",
                     device: l.deviceId ?? "—",
                   })),

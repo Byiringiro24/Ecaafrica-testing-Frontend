@@ -116,6 +116,10 @@ function DeviceSessionsPage() {
   const [historyTab, setHistoryTab] = useState<"sessions" | "history">("sessions");
   const [historyDate, setHistoryDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [historyLogs, setHistoryLogs] = useState<any[]>([]);
+  const [historySessionFilter, setHistorySessionFilter] = useState("all");
+  const [historyClassFilter, setHistoryClassFilter] = useState("all");
+  const [historySectionFilter, setHistorySectionFilter] = useState("all");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState("all");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
 
@@ -170,6 +174,49 @@ function DeviceSessionsPage() {
   const selectedDeviceName = useMemo(() => devices.find(d => d.id === selectedDeviceId)?.name ?? "selected device", [devices, selectedDeviceId]);
   const selectedSmsTemplate = useMemo(() => smsTemplates.find(t => t.id === formData.notification_template_id) ?? null, [formData.notification_template_id, smsTemplates]);
 
+  const historySessionOptions = useMemo(() => {
+    const values = new Set<string>();
+    historyLogs.forEach((log) => {
+      const value = (log.attendance_period || log.session_name || "No Session").toString();
+      values.add(value);
+    });
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [historyLogs]);
+
+  const historyClassOptions = useMemo(() => {
+    const values = new Set<string>();
+    historyLogs.forEach((log) => {
+      const value = (log.class_name || "Unknown class").toString();
+      values.add(value);
+    });
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [historyLogs]);
+
+  const historySectionOptions = useMemo(() => {
+    const values = new Set<string>();
+    historyLogs.forEach((log) => {
+      const value = (log.section || "No section").toString();
+      values.add(value);
+    });
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [historyLogs]);
+
+  const filteredHistoryLogs = useMemo(() => {
+    return historyLogs.filter((log) => {
+      const sessionValue = (log.attendance_period || log.session_name || "No Session").toString();
+      const classValue = (log.class_name || "Unknown class").toString();
+      const sectionValue = (log.section || "No section").toString();
+      const statusValue = String(log.status || "").toLowerCase();
+
+      return (
+        (historySessionFilter === "all" || sessionValue === historySessionFilter) &&
+        (historyClassFilter === "all" || classValue === historyClassFilter) &&
+        (historySectionFilter === "all" || sectionValue === historySectionFilter) &&
+        (historyStatusFilter === "all" || statusValue === historyStatusFilter)
+      );
+    });
+  }, [historyLogs, historySessionFilter, historyClassFilter, historySectionFilter, historyStatusFilter]);
+
   const openCreateModal = (template?: SessionFormState) => {
     setFormData(template ?? createEmptySession());
     setEditingSession(null); setIsCreating(true); setShowModal(true);
@@ -187,7 +234,6 @@ function DeviceSessionsPage() {
 
   const handleActivate = async (session: Session) => {
     if (session.is_active) {
-      // Deactivate
       if (!confirm(`Stop session "${session.name}"? Scans will no longer be tagged to it.`)) return;
       setActivating(session.id);
       try {
@@ -197,16 +243,12 @@ function DeviceSessionsPage() {
       } catch (e) { toast.error(getErrorMessage(e, "Failed to deactivate")); }
       finally { setActivating(null); }
     } else {
-      // Activate
-      const current = sessions.find(s => s.is_active);
-      const msg = current
-        ? `Activate "${session.name}"?\n\nThis replaces "${current.name}" as the active session for this device. New scans will be tagged to "${session.name}", and attendance will still be resolved using that session's configured windows and grace periods.`
-        : `Activate "${session.name}"?\n\nThis device will use "${session.name}" as its active session. New scans will be tagged to it and resolved using the session windows and grace rules configured for that session.`;
+      const msg = `Set "${session.name}" as the manual override for this device?\n\nThe device still resolves attendance automatically by the matching time window, so this does not turn off the other saved sessions.`;
       if (!confirm(msg)) return;
       setActivating(session.id);
       try {
         await apiRequest(`/devices/${selectedDeviceId}/sessions/${session.id}/activate`, { method: "PATCH", auth: "school" });
-        toast.success(`"${session.name}" is now active — new scans will use this session's windows and grace rules`);
+        toast.success(`"${session.name}" is marked as active. Time-window matching still decides the effective attendance session automatically.`);
         await loadSessions(selectedDeviceId);
       } catch (e) { toast.error(getErrorMessage(e, "Failed to activate")); }
       finally { setActivating(null); }
@@ -245,7 +287,7 @@ function DeviceSessionsPage() {
   };
 
   return (
-    <AppLayout title="Attendance Sessions" subtitle="One active session per device; attendance windows and grace periods determine present, late, and absent status">
+    <AppLayout title="Attendance Sessions" subtitle="Sessions resolve automatically from the active time windows; manual activation only acts as a quick override when needed.">
       <div className="space-y-5">
 
         {/* ── Device selector + active session banner ── */}
@@ -291,7 +333,7 @@ function DeviceSessionsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold">Sessions for {selectedDeviceName}</p>
-                  <p className="text-xs text-muted-foreground">Activate one session to tag all scans to it.</p>
+                  <p className="text-xs text-muted-foreground">The matching session is selected automatically by the current time window.</p>
                 </div>
                 <div className="rounded-full border border-border bg-background p-2">
                   <Clock3 className="h-4 w-4" />
@@ -314,9 +356,9 @@ function DeviceSessionsPage() {
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800 space-y-1">
                 <p className="font-semibold">How sessions work:</p>
                 <p>1. Create sessions (Morning, Afternoon, etc.) with time windows.</p>
-                <p>2. When ready, press <strong>Activate</strong> on the session you want.</p>
-                <p>3. All FK623 scans are automatically tagged to the active session.</p>
-                <p>4. Deactivate when done, or activate the next session.</p>
+                <p>2. The device resolves the matching session automatically based on the current time.</p>
+                <p>3. Manual activation remains available as a temporary override for testing or special control.</p>
+                <p>4. Grace-period and late rules still apply within each configured window.</p>
               </div>
             </div>
 
@@ -325,7 +367,7 @@ function DeviceSessionsPage() {
               <div className="border-b border-border px-5 py-4 flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
                 <h3 className="text-sm font-semibold">Saved Sessions</h3>
-                {activeSession && <span className="ml-auto text-xs text-emerald-600 font-semibold flex items-center gap-1"><Activity className="h-3 w-3" /> 1 active</span>}
+                {activeSession && <span className="ml-auto text-xs text-emerald-600 font-semibold flex items-center gap-1"><Activity className="h-3 w-3" /> auto-selected</span>}
               </div>
               <div className="divide-y divide-border">
                 {loading ? (
@@ -417,20 +459,67 @@ function DeviceSessionsPage() {
                 {historyLoading ? <span className="h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Activity className="h-3.5 w-3.5" />}
                 Load
               </button>
-              <span className="text-xs text-muted-foreground">{historyLogs.length} records for {new Date(historyDate + "T12:00:00").toLocaleDateString([], { dateStyle: "medium" })}</span>
+              <span className="text-xs text-muted-foreground">{filteredHistoryLogs.length} of {historyLogs.length} records for {new Date(historyDate + "T12:00:00").toLocaleDateString([], { dateStyle: "medium" })}</span>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-3">
+              <div className="min-w-[140px] flex-1">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Session</label>
+                <select value={historySessionFilter} onChange={(e) => setHistorySessionFilter(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm">
+                  <option value="all">All sessions</option>
+                  {historySessionOptions.map((session) => <option key={session} value={session}>{session}</option>)}
+                </select>
+              </div>
+              <div className="min-w-[140px] flex-1">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Class</label>
+                <select value={historyClassFilter} onChange={(e) => setHistoryClassFilter(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm">
+                  <option value="all">All classes</option>
+                  {historyClassOptions.map((className) => <option key={className} value={className}>{className}</option>)}
+                </select>
+              </div>
+              <div className="min-w-[140px] flex-1">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Section</label>
+                <select value={historySectionFilter} onChange={(e) => setHistorySectionFilter(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm">
+                  <option value="all">All sections</option>
+                  {historySectionOptions.map((section) => <option key={section} value={section}>{section}</option>)}
+                </select>
+              </div>
+              <div className="min-w-[140px] flex-1">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Status</label>
+                <select value={historyStatusFilter} onChange={(e) => setHistoryStatusFilter(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm">
+                  <option value="all">All statuses</option>
+                  <option value="present">Present</option>
+                  <option value="late">Late</option>
+                  <option value="grace">Grace period</option>
+                  <option value="absent">Absent</option>
+                  <option value="not_scheduled">Not scheduled</option>
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setHistorySessionFilter("all");
+                  setHistoryClassFilter("all");
+                  setHistorySectionFilter("all");
+                  setHistoryStatusFilter("all");
+                }}
+                className="h-9 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-muted"
+              >
+                Clear filters
+              </button>
             </div>
 
             {/* Group by session */}
             {(() => {
               const grouped: Record<string, any[]> = {};
-              for (const log of historyLogs) {
+              for (const log of filteredHistoryLogs) {
                 const key = log.attendance_period || log.session_name || "No Session";
                 if (!grouped[key]) grouped[key] = [];
                 grouped[key].push(log);
               }
               const entries = Object.entries(grouped);
               if (historyLoading) return <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">Loading…</div>;
-              if (!entries.length) return <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">No attendance records for this date. Pull logs first or select a different date.</div>;
+              if (!entries.length) return <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">No attendance records match the selected filters.</div>;
               return (
                 <div className="space-y-4">
                   {entries.map(([sessionName, logs]) => (

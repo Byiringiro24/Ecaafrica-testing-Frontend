@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { teacherRouteGuard, getSchoolAuth } from "@/lib/schoolAuth";
 import { CheckCircle2, Download, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -230,6 +230,7 @@ function TeacherAttendance() {
   const [manualSearch, setManualSearch] = useState("");
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
   const [manualSubmitted, setManualSubmitted] = useState(false);
+  const manualSubmitInFlight = useRef(false);
 
   const clampManualDate = (value: string) => {
     if (value && value > todayValue) {
@@ -441,8 +442,12 @@ function TeacherAttendance() {
         )
       ]);
 
-      mergeStudents(students);
-      setManualStudents(students);
+      const uniqueStudents = Array.from(
+        new Map(students.map((student) => [student.id, student])).values()
+      );
+
+      mergeStudents(uniqueStudents);
+      setManualStudents(uniqueStudents);
 
       const existingSession = existingSessions[0] ?? null;
       setManualSessionId(existingSession?.id ?? null);
@@ -463,7 +468,7 @@ function TeacherAttendance() {
       }
 
       setManualLoaded(true);
-      toast.success(`Loaded ${students.length} students`);
+      toast.success(`Loaded ${uniqueStudents.length} students`);
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to load students");
     } finally {
@@ -475,6 +480,8 @@ function TeacherAttendance() {
     manualStudents.length > 0 && manualStudents.every((student) => manualMarks[student.id]);
 
   const submitManualAttendance = async () => {
+    if (manualSubmitInFlight.current) return;
+
     if (!manualSectionId) {
       toast.error("Select a class first");
       return;
@@ -485,6 +492,7 @@ function TeacherAttendance() {
       return;
     }
 
+    manualSubmitInFlight.current = true;
     setManualSaving(true);
     try {
       let sessionId = manualSessionId;
@@ -505,10 +513,14 @@ function TeacherAttendance() {
         setManualSessionId(sessionId);
       }
 
-      const payload = manualStudents.map((student) => ({
-        student_id: student.id,
-        status: manualMarks[student.id]
-      }));
+      const payload = Array.from(
+        new Map(
+          manualStudents.map((student) => [student.id, {
+            student_id: student.id,
+            status: manualMarks[student.id]
+          }])
+        ).values()
+      );
 
       await apiRequest("/attendance/records/bulk", {
         method: "POST",
@@ -532,6 +544,7 @@ function TeacherAttendance() {
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to save attendance");
     } finally {
+      manualSubmitInFlight.current = false;
       setManualSaving(false);
     }
   };

@@ -22,7 +22,7 @@ const weekAgo = attendanceDate(new Date(Date.now() - 7 * 86400000));
 
 type Section  = { id: string; name: string; full_name?: string | null };
 type Session  = { id: string; section_id: string; session_date: string; submitted_at?: string | null; started_at?: string | null };
-type AttendanceSummary = { total: number; present: number; absent: number; late: number; teachers: number; classes: number; sessions: number; details: Array<{ className: string; teacherName: string; periodName: string; total: number; present: number; late: number; absent: number; submittedAt?: string | null; sessionDate?: string; sessionId?: string }> };
+type AttendanceSummary = { total: number; present: number; absent: number; late: number; teachers: number; classes: number; sessions: number; details: Array<{ className: string; subjectName: string; teacherName: string; periodName: string; total: number; present: number; late: number; absent: number; startedAt?: string | null; submittedAt?: string | null; sessionDate?: string; sessionId?: string }> };
 type Exam     = { id: string; name: string; status: string; class?: { name?: string | null } | null };
 type Subject  = { id: string; name: string };
 type StaffUser= { id: string; name: string; role: string };
@@ -87,20 +87,44 @@ function DosReportsPage() {
   };
 
   const handleExportAttendance = async () => {
-    if (attendanceChart.length === 0) { toast.info("No data"); return; }
+    const details = attendanceSummary?.details ?? [];
+    if (details.length === 0) { toast.info("No attendance data"); return; }
     try {
       await exportToExcel(
         `attendance-report-${today}.xlsx`, "Attendance",
         [
-          { header: "Section", key: "name", width: 26 },
-          { header: "Sessions", key: "total", width: 12 },
-          { header: "Submitted", key: "submitted", width: 12 },
-          { header: "Rate (%)", key: "rate", width: 12 },
+          { header: "Session ID", key: "sessionId", width: 20 },
+          { header: "Class", key: "className", width: 26 },
+          { header: "Session Date", key: "sessionDate", width: 14 },
+          { header: "Subject", key: "subjectName", width: 24 },
+          { header: "Teacher", key: "teacherName", width: 24 },
+          { header: "Period", key: "periodName", width: 16 },
+          { header: "Started", key: "startedAt", width: 20 },
+          { header: "Submission", key: "submittedAt", width: 20 },
+          { header: "Status", key: "status", width: 14 },
+          { header: "Total Students", key: "total", width: 16 },
+          { header: "Present", key: "present", width: 12 },
+          { header: "Late", key: "late", width: 12 },
+          { header: "Absent", key: "absent", width: 12 },
         ],
-        attendanceChart,
-        `Attendance Submission Rate — Week of ${weekAgo}`
+        details.map((row) => ({
+          sessionId: row.sessionId ?? "",
+          className: row.className,
+          sessionDate: row.sessionDate?.slice(0, 10) ?? "—",
+          subjectName: row.subjectName,
+          teacherName: row.teacherName,
+          periodName: row.periodName,
+          startedAt: formatAttendanceDateTime(row.startedAt),
+          submittedAt: formatAttendanceDateTime(row.submittedAt),
+          status: row.submittedAt ? "Submitted" : "Pending",
+          total: row.total,
+          present: row.present,
+          late: row.late,
+          absent: row.absent,
+        })),
+        `Class Attendance Report — Week of ${weekAgo}`
       );
-      toast.success("Exported");
+      toast.success("Attendance report exported");
     } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
   };
 
@@ -170,9 +194,15 @@ function DosReportsPage() {
                     ))}
                   </div>
                   <div className="rounded-xl border border-border bg-card overflow-x-auto">
-                    <div className="px-5 py-3 border-b border-border font-semibold text-sm">Class attendance details</div>
-                    <table className="w-full text-sm"><thead className="bg-muted/40 text-xs uppercase"><tr>{['Class', 'Date', 'Teacher', 'Period', 'Submission', 'Total', 'Present', 'Late', 'Absent'].map((heading) => <th key={heading} className="text-left px-4 py-3">{heading}</th>)}</tr></thead>
-                      <tbody>{attendanceSummary.details.map((row, index) => <tr key={`${row.sessionId ?? row.className}-${row.periodName}-${index}`} className="border-t border-border"><td className="px-4 py-3 font-medium">{row.className}</td><td className="px-4 py-3 text-xs">{row.sessionDate?.slice(0, 10) ?? "—"}</td><td className="px-4 py-3">{row.teacherName}</td><td className="px-4 py-3">{row.periodName}</td><td className="px-4 py-3 text-xs">{formatAttendanceDateTime(row.submittedAt)}</td><td className="px-4 py-3">{row.total}</td><td className="px-4 py-3">{row.present}</td><td className="px-4 py-3">{row.late}</td><td className="px-4 py-3">{row.absent}</td></tr>)}</tbody>
+                    <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-3">
+                      <span className="font-semibold text-sm">Class attendance details</span>
+                      <button onClick={handleExportAttendance} disabled={attendanceSummary.details.length === 0}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50">
+                        <Download className="h-3.5 w-3.5" /> Export Excel
+                      </button>
+                    </div>
+                    <table className="w-full text-sm"><thead className="bg-muted/40 text-xs uppercase"><tr>{['Session ID', 'Class', 'Date', 'Subject', 'Teacher', 'Period', 'Started', 'Submission', 'Total', 'Present', 'Late', 'Absent'].map((heading) => <th key={heading} className="text-left px-4 py-3">{heading}</th>)}</tr></thead>
+                      <tbody>{attendanceSummary.details.map((row, index) => <tr key={`${row.sessionId ?? row.className}-${row.subjectName}-${row.periodName}-${index}`} className="border-t border-border"><td className="px-4 py-3 text-xs font-mono">{row.sessionId ?? "—"}</td><td className="px-4 py-3 font-medium">{row.className}</td><td className="px-4 py-3 text-xs">{row.sessionDate?.slice(0, 10) ?? "—"}</td><td className="px-4 py-3">{row.subjectName}</td><td className="px-4 py-3">{row.teacherName}</td><td className="px-4 py-3">{row.periodName}</td><td className="px-4 py-3 text-xs">{formatAttendanceDateTime(row.startedAt)}</td><td className="px-4 py-3 text-xs">{formatAttendanceDateTime(row.submittedAt)}</td><td className="px-4 py-3">{row.total}</td><td className="px-4 py-3">{row.present}</td><td className="px-4 py-3">{row.late}</td><td className="px-4 py-3">{row.absent}</td></tr>)}</tbody>
                     </table>
                   </div>
                 </>
@@ -186,10 +216,6 @@ function DosReportsPage() {
                       <h3 className="font-display font-bold">Attendance Submission Rate by Section</h3>
                       <p className="text-xs text-muted-foreground">Past 7 days — % of sessions submitted</p>
                     </div>
-                    <button onClick={handleExportAttendance}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted">
-                      <Download className="h-3.5 w-3.5" /> Export
-                    </button>
                   </div>
                   <ResponsiveContainer width="100%" height={260}>
                     <BarChart data={attendanceChart} margin={{ top: 4, right: 8, bottom: 40, left: 0 }}>

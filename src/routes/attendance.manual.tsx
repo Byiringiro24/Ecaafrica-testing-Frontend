@@ -40,6 +40,7 @@ type PeriodRecord = {
   is_break?: boolean;
 };
 type TeacherRecord = { id: string; name: string };
+type SubjectRecord = { id: string; name: string; code?: string | null };
 
 type ApiStudent = {
   id: string;
@@ -56,8 +57,11 @@ type ApiSession = {
   section_id: string;
   session_date: string;
   session_type?: string | null;
+  started_at?: string | null;
   teacher_id?: string | null;
   period_id?: string | null;
+  subject_id?: string | null;
+  subject?: { id: string; name: string; code?: string | null } | null;
   teacher?: { id: string; name: string } | null;
   period?: { id: string; name: string } | null;
   submitted_at?: string | null;
@@ -79,19 +83,23 @@ type AttendanceRow = {
   studentName: string;
   cardId: string;
   className: string;
+  sessionDate: string;
+  subjectName: string;
   timeIn: string;
   status: UiStatus;
   sessionId: string;
   sectionId: string;
   teacherName: string;
   periodName: string;
+  startedAt: string;
   submittedAt: string;
+  scanMethod: string;
   residency?: "Boarding" | "Day";
 };
 type AttendanceSummary = {
   total: number; present: number; absent: number; late: number; excused: number;
   teachers: number; classes: number; sessions: number;
-  details: Array<{ className: string; teacherName: string; periodName: string; total: number; present: number; late: number; absent: number; submittedAt?: string | null }>;
+  details: Array<{ className: string; subjectName: string; teacherName: string; periodName: string; total: number; present: number; late: number; absent: number; startedAt?: string | null; submittedAt?: string | null; sessionDate?: string; sessionId?: string }>;
 };
 
 const PAGE_SIZE = 20;
@@ -204,6 +212,7 @@ function ManualAttendancePage() {
   const [sectionRecords, setSectionRecords] = useState<SectionRecord[]>([]);
   const [periodRecords, setPeriodRecords] = useState<PeriodRecord[]>([]);
   const [teacherRecords, setTeacherRecords] = useState<TeacherRecord[]>([]);
+  const [subjectRecords, setSubjectRecords] = useState<SubjectRecord[]>([]);
   const [studentsById, setStudentsById] = useState<Record<string, ApiStudent>>({});
   const [sessions, setSessions] = useState<ApiSession[]>([]);
   const [records, setRecords] = useState<ApiRecord[]>([]);
@@ -221,6 +230,8 @@ function ManualAttendancePage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
 
   const [manualSectionId, setManualSectionId] = useState("");
+  const [manualSubjectId, setManualSubjectId] = useState("");
+  const [manualTeacherId, setManualTeacherId] = useState("");
   const [manualPeriodId, setManualPeriodId] = useState("");
   const [manualDate, setManualDate] = useState(todayValue);
   const [manualStudents, setManualStudents] = useState<ApiStudent[]>([]);
@@ -274,16 +285,18 @@ function ManualAttendancePage() {
   const loadClassData = async () => {
     setLoading(true);
     try {
-      const [classes, sections, periods, teachers] = await Promise.all([
+      const [classes, sections, periods, teachers, subjects] = await Promise.all([
         apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }),
         apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" }),
         apiRequest<PeriodRecord[]>("/timetable-periods?limit=100", { auth: "school" }),
-        apiRequest<TeacherRecord[]>("/users?role=teacher&limit=500", { auth: "school" })
+        apiRequest<TeacherRecord[]>("/users?role=teacher&limit=500", { auth: "school" }),
+        apiRequest<SubjectRecord[]>("/subjects?limit=500", { auth: "school" })
       ]);
       setClassRecords(classes);
       setSectionRecords(sections);
       setPeriodRecords(periods);
       setTeacherRecords(teachers);
+      setSubjectRecords(subjects);
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to load classes");
     } finally {
@@ -393,18 +406,39 @@ function ManualAttendancePage() {
     setManualLoading(true);
     setManualLoaded(false);
     try {
+      if (!manualSubjectId || !manualTeacherId) {
+        toast.error("Select the subject and teacher for this attendance session");
+        return;
+      }
+
+      const sessionQuery = new URLSearchParams({
+        section_id: manualSectionId,
+        date: manualDate,
+        subject_id: manualSubjectId,
+        teacher_id: manualTeacherId,
+        limit: "200"
+      });
+      if (manualPeriodId) sessionQuery.set("period_id", manualPeriodId);
+
       const [students, existingSessions] = await Promise.all([
         apiRequest<ApiStudent[]>(`/students?section_id=${manualSectionId}&limit=500`, {
           auth: "school"
         }),
         apiRequest<ApiSession[]>(
-          `/attendance/sessions?section_id=${manualSectionId}&date=${manualDate}${manualPeriodId ? `&period_id=${manualPeriodId}` : ""}&limit=1`,
+          `/attendance/sessions?${sessionQuery.toString()}`,
           { auth: "school" }
         )
       ]);
 
       mergeStudents(students);
       setManualStudents(students);
+
+      if (existingSessions.length > 1) {
+        setManualSessionId(null);
+        setManualMarks({});
+        toast.error("Multiple attendance sessions match these class, subject, teacher and date selections; choose a period");
+        return;
+      }
 
       const existingSession = existingSessions[0] ?? null;
       setManualSessionId(existingSession?.id ?? null);
@@ -455,6 +489,8 @@ function ManualAttendancePage() {
           auth: "school",
           body: JSON.stringify({
             section_id: manualSectionId,
+            subject_id: manualSubjectId,
+            teacher_id: manualTeacherId,
             ...(manualPeriodId ? { period_id: manualPeriodId } : {}),
             session_date: manualDate,
             session_type: "class",
@@ -530,8 +566,13 @@ function ManualAttendancePage() {
         sectionId
           ? classLabelForSection(sectionId)
           : student?.current_section?.full_name ?? "—";
+      const subjectName = session?.subject?.name ?? "No subject";
+      const sessionDate = session?.session_date?.slice(0, 10) ?? "Unknown date";
       const teacherName = session?.teacher?.name ?? "Unknown teacher";
       const periodName = session?.period?.name ?? "No period";
+      const startedAt = session?.started_at
+        ? formatAttendanceDateTime(session.started_at)
+        : "Not recorded";
       const submittedAt = session?.submitted_at
         ? formatAttendanceDateTime(session.submitted_at)
         : "Not submitted";
@@ -548,13 +589,17 @@ function ManualAttendancePage() {
         studentName,
         cardId,
         className,
+        sessionDate,
+        subjectName,
         timeIn,
         status,
         sessionId: record.session_id,
         sectionId,
         teacherName,
         periodName,
+        startedAt,
         submittedAt,
+        scanMethod: record.scan_method ?? "Unknown",
         residency
       };
     });
@@ -656,11 +701,16 @@ function ManualAttendancePage() {
         "#",
         "Student",
         "Card ID",
+        "Session ID",
         "Class",
+        "Session Date",
+        "Subject",
         "Teacher",
         "Period",
+        "Started",
         "Submission Time",
         "Time In",
+        "Scan Method",
         "Status",
         "Residency"
       ];
@@ -673,11 +723,16 @@ function ManualAttendancePage() {
           index + 1,
           row.studentName,
           row.cardId,
+          row.sessionId,
           row.className,
+          row.sessionDate,
+          row.subjectName,
           row.teacherName,
           row.periodName,
+          row.startedAt,
           row.submittedAt,
           row.timeIn,
+          row.scanMethod,
           row.status,
           row.residency ?? ""
         ]);
@@ -687,19 +742,24 @@ function ManualAttendancePage() {
         { width: 6 },
         { width: 28 },
         { width: 14 },
+        { width: 20 },
         { width: 18 },
+        { width: 14 },
+        { width: 24 },
         { width: 24 },
         { width: 14 },
         { width: 20 },
+        { width: 20 },
         { width: 12 },
+        { width: 14 },
         { width: 12 },
         { width: 12 }
       ];
 
-      sheet.getCell("K2").value = "Status";
-      sheet.getCell("L2").value = "Count";
-      sheet.getCell("K2").font = { bold: true };
-      sheet.getCell("L2").font = { bold: true };
+      sheet.getCell("Q2").value = "Status";
+      sheet.getCell("R2").value = "Count";
+      sheet.getCell("Q2").font = { bold: true };
+      sheet.getCell("R2").font = { bold: true };
 
       const summaryRows: Array<[UiStatus, number]> = [
         ["Present", exportCounts.Present],
@@ -709,8 +769,8 @@ function ManualAttendancePage() {
       ];
 
       summaryRows.forEach((row, idx) => {
-        sheet.getCell(`K${idx + 3}`).value = row[0];
-        sheet.getCell(`L${idx + 3}`).value = row[1];
+        sheet.getCell(`Q${idx + 3}`).value = row[0];
+        sheet.getCell(`R${idx + 3}`).value = row[1];
       });
 
       const imageId = workbook.addImage({
@@ -719,7 +779,7 @@ function ManualAttendancePage() {
       });
 
       sheet.addImage(imageId, {
-        tl: { col: 10, row: 6 },
+        tl: { col: 16, row: 6 },
         ext: { width: 640, height: 340 }
       });
 
@@ -834,16 +894,21 @@ function ManualAttendancePage() {
                     <th className="text-left px-5 py-3">Student</th>
                     <th className="text-left px-5 py-3">Card ID</th>
                     <th className="text-left px-5 py-3">Class</th>
+                    <th className="text-left px-5 py-3">Session Date</th>
+                    <th className="text-left px-5 py-3">Subject</th>
                     <th className="text-left px-5 py-3">Teacher</th>
                     <th className="text-left px-5 py-3">Period</th>
+                    <th className="text-left px-5 py-3">Started</th>
                     <th className="text-left px-5 py-3">Submitted</th>
                     <th className="text-left px-5 py-3">Time In</th>
+                    <th className="text-left px-5 py-3">Scan Method</th>
                     <th className="text-left px-5 py-3">Status</th>
+                    <th className="text-left px-5 py-3">Residency</th>
                   </tr>
                 </thead>
                 <tbody>
                   {recordsLoading && (
-                    <tr><td colSpan={9} className="px-5 py-6"><Skeleton className="h-6 w-full" /></td></tr>
+                    <tr><td colSpan={14} className="px-5 py-6"><Skeleton className="h-6 w-full" /></td></tr>
                   )}
                   {!recordsLoading && pageItems.map((row, i) => (
                     <tr key={row.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/40 transition-colors">
@@ -856,15 +921,20 @@ function ManualAttendancePage() {
                       </td>
                       <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{row.cardId}</td>
                       <td className="px-5 py-3">{row.className}</td>
+                      <td className="px-5 py-3 text-xs">{row.sessionDate}</td>
+                      <td className="px-5 py-3">{row.subjectName}</td>
                       <td className="px-5 py-3">{row.teacherName}</td>
                       <td className="px-5 py-3">{row.periodName}</td>
+                      <td className="px-5 py-3 text-xs">{row.startedAt}</td>
                       <td className="px-5 py-3 text-xs">{row.submittedAt}</td>
                       <td className="px-5 py-3">{row.timeIn}</td>
+                      <td className="px-5 py-3 text-xs">{row.scanMethod}</td>
                       <td className="px-5 py-3"><StatusBadge status={row.status} /></td>
+                      <td className="px-5 py-3 text-xs">{row.residency ?? "Unknown"}</td>
                     </tr>
                   ))}
                   {!recordsLoading && pageItems.length === 0 && (
-                    <tr><td colSpan={9} className="px-5 py-10 text-center text-muted-foreground">No records match your filters.</td></tr>
+                    <tr><td colSpan={14} className="px-5 py-10 text-center text-muted-foreground">No records match your filters.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -898,8 +968,8 @@ function ManualAttendancePage() {
                 ))}
               </div>
               <div className="rounded-xl border border-border bg-card overflow-x-auto">
-                <table className="w-full text-sm"><thead className="bg-muted/40 text-xs uppercase"><tr>{['Class', 'Teacher', 'Period', 'Submission', 'Total', 'Present', 'Late', 'Absent'].map((heading) => <th key={heading} className="text-left px-4 py-3">{heading}</th>)}</tr></thead>
-                  <tbody>{summaryReport.details.map((row, index) => <tr key={`${row.className}-${row.periodName}-${index}`} className="border-t border-border"><td className="px-4 py-3 font-medium">{row.className}</td><td className="px-4 py-3">{row.teacherName}</td><td className="px-4 py-3">{row.periodName}</td><td className="px-4 py-3 text-xs">{formatAttendanceDateTime(row.submittedAt)}</td><td className="px-4 py-3">{row.total}</td><td className="px-4 py-3">{row.present}</td><td className="px-4 py-3">{row.late}</td><td className="px-4 py-3">{row.absent}</td></tr>)}</tbody>
+                <table className="w-full text-sm"><thead className="bg-muted/40 text-xs uppercase"><tr>{['Session ID', 'Class', 'Session Date', 'Subject', 'Teacher', 'Period', 'Started', 'Submission', 'Total', 'Present', 'Late', 'Absent'].map((heading) => <th key={heading} className="text-left px-4 py-3">{heading}</th>)}</tr></thead>
+                  <tbody>{summaryReport.details.map((row, index) => <tr key={`${row.sessionId ?? row.className}-${row.subjectName}-${row.periodName}-${index}`} className="border-t border-border"><td className="px-4 py-3 text-xs font-mono">{row.sessionId ?? "—"}</td><td className="px-4 py-3 font-medium">{row.className}</td><td className="px-4 py-3 text-xs">{row.sessionDate?.slice(0, 10) ?? "—"}</td><td className="px-4 py-3">{row.subjectName}</td><td className="px-4 py-3">{row.teacherName}</td><td className="px-4 py-3">{row.periodName}</td><td className="px-4 py-3 text-xs">{formatAttendanceDateTime(row.startedAt)}</td><td className="px-4 py-3 text-xs">{formatAttendanceDateTime(row.submittedAt)}</td><td className="px-4 py-3">{row.total}</td><td className="px-4 py-3">{row.present}</td><td className="px-4 py-3">{row.late}</td><td className="px-4 py-3">{row.absent}</td></tr>)}</tbody>
                 </table>
               </div>
             </>
@@ -919,6 +989,34 @@ function ManualAttendancePage() {
               >
                 {classOptions.length === 0 && <option value="">No classes yet</option>}
                 {classOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">Subject</label>
+              <select
+                value={manualSubjectId}
+                onChange={(e) => { setManualSubjectId(e.target.value); setManualLoaded(false); }}
+                className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm block"
+                disabled={loading}
+              >
+                <option value="">Select subject</option>
+                {subjectRecords.map((subject) => (
+                  <option key={subject.id} value={subject.id}>{subject.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">Teacher</label>
+              <select
+                value={manualTeacherId}
+                onChange={(e) => { setManualTeacherId(e.target.value); setManualLoaded(false); }}
+                className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm block"
+                disabled={loading}
+              >
+                <option value="">Select teacher</option>
+                {teacherRecords.map((teacher) => (
+                  <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
+                ))}
               </select>
             </div>
             <div>

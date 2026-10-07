@@ -100,7 +100,7 @@ function CombinedAttendancePage() {
       // which can incorrectly hide an otherwise valid class roster.
       const studentBatches = await Promise.all(lesson.sectionIds.map((sectionId) => apiRequest<StudentListResponse>(`/sections/${sectionId}/students?limit=5000`, { auth: "school" })));
       const nextStudents = studentBatches.flatMap((batch, index) => unwrapStudents(batch).map((student) => ({ ...student, section_id: lesson.sectionIds[index] })));
-      const sessionBatches = await Promise.all(lesson.sectionIds.map((sectionId) => apiRequest<Session[]>(`/attendance/sessions?section_id=${sectionId}&date=${date}&period_id=${lesson.periodId}&teacher_id=${teacherId}&limit=1`, { auth: "school" }).catch(() => [])));
+      const sessionBatches = await Promise.all(lesson.sectionIds.map((sectionId) => apiRequest<Session[]>(`/attendance/sessions?section_id=${sectionId}&date=${date}&period_id=${lesson.periodId}&subject_id=${lesson.subjectId}&teacher_id=${teacherId}&limit=1`, { auth: "school" }).catch(() => [])));
       const nextSessions: Record<string, Session> = {};
       sessionBatches.forEach((batch, index) => { if (batch[0]) nextSessions[lesson.sectionIds[index]] = batch[0]; });
       const recordBatches = await Promise.all(Object.values(nextSessions).map((session) => apiRequest<RecordRow[]>(`/attendance/records?session_id=${session.id}&limit=2000`, { auth: "school" }).catch(() => [])));

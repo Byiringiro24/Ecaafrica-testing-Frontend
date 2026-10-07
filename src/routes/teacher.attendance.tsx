@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { localDateInputValue } from "@/lib/dateInput";
+import { formatAttendanceDateTime } from "@/lib/attendanceTime";
 import { studentSearchText, studentIdNumber } from "@/lib/studentIdentity";
 
 export const Route = createFileRoute("/teacher/attendance")({
@@ -58,9 +59,12 @@ type ApiSession = {
   section_id: string;
   session_date: string;
   session_type?: string | null;
+  started_at?: string | null;
   submitted_at?: string | null;
   teacher_id?: string | null;
   period_id?: string | null;
+  subject_id?: string | null;
+  subject?: { id: string; name: string; code?: string | null } | null;
   teacher?: { id: string; name: string } | null;
   period?: { id: string; name: string } | null;
 };
@@ -78,6 +82,13 @@ type ApiRecord = {
 type TeacherSectionSubject = {
   id: string;
   section_id: string;
+  subject_id: string;
+};
+
+type SubjectRecord = {
+  id: string;
+  name: string;
+  code?: string | null;
 };
 
 type AttendanceRow = {
@@ -86,7 +97,14 @@ type AttendanceRow = {
   studentName: string;
   cardId: string;
   className: string;
+  sessionDate: string;
+  subjectName: string;
+  teacherName: string;
+  periodName: string;
+  startedAt: string;
+  submittedAt: string;
   timeIn: string;
+  scanMethod: string;
   status: UiStatus;
   sessionId: string;
   sectionId: string;
@@ -190,6 +208,8 @@ function TeacherAttendance() {
   const [classRecords, setClassRecords] = useState<ClassRecord[]>([]);
   const [sectionRecords, setSectionRecords] = useState<SectionRecord[]>([]);
   const [periodRecords, setPeriodRecords] = useState<PeriodRecord[]>([]);
+  const [subjectRecords, setSubjectRecords] = useState<SubjectRecord[]>([]);
+  const [teacherAssignments, setTeacherAssignments] = useState<TeacherSectionSubject[]>([]);
   const [studentsById, setStudentsById] = useState<Record<string, ApiStudent>>({});
   const [sectionFilter, setSectionFilter] = useState("");
   const [search, setSearch] = useState("");
@@ -199,6 +219,7 @@ function TeacherAttendance() {
   const [loading, setLoading] = useState(false);
 
   const [manualSectionId, setManualSectionId] = useState("");
+  const [manualSubjectId, setManualSubjectId] = useState("");
   const [manualPeriodId, setManualPeriodId] = useState("");
   const [manualDate, setManualDate] = useState(todayValue);
   const [manualStudents, setManualStudents] = useState<ApiStudent[]>([]);
@@ -237,6 +258,18 @@ function TeacherAttendance() {
     });
   }, [sectionRecords, classMap]);
 
+  const manualSubjectOptions = useMemo(() => {
+    const assignedSubjectIds = new Set(
+      teacherAssignments
+        .filter((assignment) => assignment.section_id === manualSectionId)
+        .map((assignment) => assignment.subject_id)
+    );
+
+    return subjectRecords
+      .filter((subject) => assignedSubjectIds.has(subject.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [manualSectionId, subjectRecords, teacherAssignments]);
+
   const classLabelForSection = (sectionId?: string) => {
     if (!sectionId) return "--";
     const section = sectionMap.get(sectionId);
@@ -262,21 +295,24 @@ function TeacherAttendance() {
     
     setLoading(true);
     try {
-      const [allClasses, allSections, teacherAssignments, periods] = await Promise.all([
+      const [allClasses, allSections, assignments, periods, subjects] = await Promise.all([
         apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }),
         apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" }),
         apiRequest<TeacherSectionSubject[]>(
           `/teacher-section-subjects?teacher_id=${teacherId}&limit=500`,
           { auth: "school" }
         ),
-        apiRequest<PeriodRecord[]>("/timetable-periods?limit=100", { auth: "school" })
+        apiRequest<PeriodRecord[]>("/timetable-periods?limit=100", { auth: "school" }),
+        apiRequest<SubjectRecord[]>("/subjects?limit=500", { auth: "school" })
       ]);
 
       setClassRecords(allClasses);
+      setTeacherAssignments(assignments);
+      setSubjectRecords(subjects);
 
       // Get section IDs from teacher assignments
       const assignedSectionIds = new Set(
-        teacherAssignments.map((t) => t.section_id)
+        assignments.map((t) => t.section_id)
       );
 
       // Filter sections: those assigned to teacher or where teacher is class teacher
@@ -343,9 +379,9 @@ function TeacherAttendance() {
       }
 
       const sessionLists = await Promise.all(
-        dates.map((date) =>
-          apiRequest<ApiSession[]>(
-            `/attendance/sessions?date=${date}&section_id=${targetSectionId}&limit=200`,
+          dates.map((date) =>
+            apiRequest<ApiSession[]>(
+            `/attendance/sessions?date=${date}&section_id=${targetSectionId}&teacher_id=${teacherId}&limit=200`,
             { auth: "school" }
           ).catch(() => [])
         )
@@ -386,12 +422,21 @@ function TeacherAttendance() {
     setManualLoaded(false);
     setManualSubmitted(false);
     try {
+      const sessionQuery = new URLSearchParams({
+        section_id: manualSectionId,
+        date: manualDate,
+        teacher_id: String(teacherId ?? ""),
+        limit: "200"
+      });
+      if (manualPeriodId) sessionQuery.set("period_id", manualPeriodId);
+      if (manualSubjectId) sessionQuery.set("subject_id", manualSubjectId);
+
       const [students, existingSessions] = await Promise.all([
         apiRequest<ApiStudent[]>(`/students?section_id=${manualSectionId}&limit=500`, {
           auth: "school"
         }),
         apiRequest<ApiSession[]>(
-          `/attendance/sessions?section_id=${manualSectionId}&date=${manualDate}${manualPeriodId ? `&period_id=${manualPeriodId}` : ""}&limit=1`,
+          `/attendance/sessions?${sessionQuery.toString()}`,
           { auth: "school" }
         )
       ]);
@@ -449,6 +494,7 @@ function TeacherAttendance() {
           auth: "school",
           body: JSON.stringify({
             section_id: manualSectionId,
+            ...(manualSubjectId ? { subject_id: manualSubjectId } : {}),
             ...(manualPeriodId ? { period_id: manualPeriodId } : {}),
             session_date: manualDate,
             session_type: "class",
@@ -504,12 +550,15 @@ function TeacherAttendance() {
     if (!manualPeriodId && periodRecords.length) {
       setManualPeriodId(periodRecords.find((period) => !period.is_break)?.id ?? "");
     }
-  }, [classOptions, sectionFilter, manualSectionId, manualPeriodId, periodRecords]);
+    if (!manualSubjectOptions.some((subject) => subject.id === manualSubjectId)) {
+      setManualSubjectId(manualSubjectOptions[0]?.id ?? "");
+    }
+  }, [classOptions, sectionFilter, manualSectionId, manualPeriodId, manualSubjectId, manualSubjectOptions, periodRecords]);
 
   useEffect(() => {
     setManualSessionId(null);
     setManualLoaded(false);
-  }, [manualSectionId, manualPeriodId, manualDate]);
+  }, [manualSectionId, manualSubjectId, manualPeriodId, manualDate]);
 
   const historyRows = useMemo<AttendanceRow[]>(() => {
     return historyRecords.map((record) => {
@@ -523,6 +572,16 @@ function TeacherAttendance() {
       const status = STATUS_LABEL[record.status];
       const timeIn = formatTime(record.scanned_at ?? record.created_at, record.status);
       const className = classLabelForSection(sectionId);
+      const sessionDate = session?.session_date?.slice(0, 10) ?? "Unknown date";
+      const subjectName = session?.subject?.name ?? "No subject";
+      const teacherName = session?.teacher?.name ?? "Unknown teacher";
+      const periodName = session?.period?.name ?? "No period";
+      const startedAt = session?.started_at
+        ? formatAttendanceDateTime(session.started_at)
+        : "Not recorded";
+      const submittedAt = session?.submitted_at
+        ? formatAttendanceDateTime(session.submitted_at)
+        : "Not submitted";
 
       return {
         id: record.id,
@@ -530,7 +589,14 @@ function TeacherAttendance() {
         studentName,
         cardId,
         className,
+        sessionDate,
+        subjectName,
+        teacherName,
+        periodName,
+        startedAt,
+        submittedAt,
         timeIn,
+        scanMethod: record.scan_method ?? "Unknown",
         status,
         sessionId: record.session_id,
         sectionId
@@ -588,8 +654,16 @@ function TeacherAttendance() {
         "#",
         "Student",
         "Card ID",
+        "Session ID",
         "Class",
+        "Session Date",
+        "Subject",
+        "Teacher",
+        "Period",
+        "Started",
+        "Submitted",
         "Time In",
+        "Scan Method",
         "Status"
       ];
 
@@ -601,8 +675,16 @@ function TeacherAttendance() {
           index + 1,
           row.studentName,
           row.cardId,
+          row.sessionId,
           row.className,
+          row.sessionDate,
+          row.subjectName,
+          row.teacherName,
+          row.periodName,
+          row.startedAt,
+          row.submittedAt,
           row.timeIn,
+          row.scanMethod,
           row.status
         ]);
       });
@@ -611,8 +693,16 @@ function TeacherAttendance() {
         { width: 6 },
         { width: 28 },
         { width: 14 },
+        { width: 20 },
         { width: 18 },
+        { width: 14 },
+        { width: 24 },
+        { width: 24 },
+        { width: 14 },
+        { width: 20 },
+        { width: 20 },
         { width: 12 },
+        { width: 14 },
         { width: 12 }
       ];
 
@@ -772,14 +862,21 @@ function TeacherAttendance() {
                     <th className="text-left px-5 py-3">Student</th>
                     <th className="text-left px-5 py-3">Card ID</th>
                     <th className="text-left px-5 py-3">Class</th>
+                    <th className="text-left px-5 py-3">Session Date</th>
+                    <th className="text-left px-5 py-3">Subject</th>
+                    <th className="text-left px-5 py-3">Teacher</th>
+                    <th className="text-left px-5 py-3">Period</th>
+                    <th className="text-left px-5 py-3">Started</th>
+                    <th className="text-left px-5 py-3">Submitted</th>
                     <th className="text-left px-5 py-3">Time In</th>
+                    <th className="text-left px-5 py-3">Scan Method</th>
                     <th className="text-left px-5 py-3">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {historyLoading && (
                     <tr>
-                      <td colSpan={6} className="px-5 py-6">
+                      <td colSpan={13} className="px-5 py-6">
                         <Skeleton className="h-6 w-full" />
                       </td>
                     </tr>
@@ -795,13 +892,20 @@ function TeacherAttendance() {
                       </td>
                       <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{row.cardId}</td>
                       <td className="px-5 py-3">{row.className}</td>
+                      <td className="px-5 py-3 text-xs">{row.sessionDate}</td>
+                      <td className="px-5 py-3">{row.subjectName}</td>
+                      <td className="px-5 py-3">{row.teacherName}</td>
+                      <td className="px-5 py-3">{row.periodName}</td>
+                      <td className="px-5 py-3 text-xs">{row.startedAt}</td>
+                      <td className="px-5 py-3 text-xs">{row.submittedAt}</td>
                       <td className="px-5 py-3">{row.timeIn}</td>
+                      <td className="px-5 py-3 text-xs">{row.scanMethod}</td>
                       <td className="px-5 py-3"><StatusBadge status={row.status} /></td>
                     </tr>
                   ))}
                   {!historyLoading && historyFiltered.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
+                      <td colSpan={13} className="px-5 py-10 text-center text-muted-foreground">
                         No history records loaded yet.
                       </td>
                     </tr>
@@ -832,6 +936,23 @@ function TeacherAttendance() {
                 )}
                 {classOptions.map((option) => (
                   <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">Subject</label>
+              <select
+                value={manualSubjectId}
+                onChange={(event) => {
+                  setManualSubjectId(event.target.value);
+                  setManualLoaded(false);
+                }}
+                className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm"
+                disabled={loading || manualSubjectOptions.length === 0}
+              >
+                {manualSubjectOptions.length === 0 && <option value="">No assigned subject</option>}
+                {manualSubjectOptions.map((subject) => (
+                  <option key={subject.id} value={subject.id}>{subject.name}</option>
                 ))}
               </select>
             </div>

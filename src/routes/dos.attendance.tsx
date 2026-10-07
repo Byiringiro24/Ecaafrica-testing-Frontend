@@ -8,7 +8,7 @@ import { directorOfStudiesRouteGuard } from "@/lib/schoolAuth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { exportToExcel } from "@/lib/exportExcel";
-import { attendanceDate, formatAttendanceDateTime, formatAttendanceTime } from "@/lib/attendanceTime";
+import { attendanceDate, formatAttendanceDateTime } from "@/lib/attendanceTime";
 
 export const Route = createFileRoute("/dos/attendance")({
   beforeLoad: ({ location }) => directorOfStudiesRouteGuard(location),
@@ -21,6 +21,7 @@ type AttSession = {
   session_type: string;
   submitted_at?: string | null;
   started_at?: string | null;
+  subject?: { id: string; name: string; code?: string | null } | null;
   teacher?: { id: string; name: string } | null;
   period?: { id: string; name: string } | null;
   section?: {
@@ -80,16 +81,26 @@ function DosAttendancePage() {
       await exportToExcel(
         `class-attendance-${date}.xlsx`, "Class Attendance",
         [
+          { header: "Session ID", key: "sessionId", width: 20 },
           { header: "Class / Section", key: "section", width: 26 },
+          { header: "Session Date", key: "sessionDate", width: 14 },
+          { header: "Subject", key: "subject", width: 24 },
+          { header: "Teacher", key: "teacher", width: 24 },
+          { header: "Period", key: "period", width: 16 },
           { header: "Type", key: "type", width: 14 },
           { header: "Started", key: "started", width: 18 },
           { header: "Submitted", key: "submitted", width: 18 },
           { header: "Status", key: "status", width: 14 },
         ],
         filtered.map(s => ({
+          sessionId: s.id,
           section: s.section?.full_name ?? s.section?.name ?? "—",
+          sessionDate: s.session_date?.slice(0, 10) ?? "—",
+          subject: s.subject?.name ?? "No subject",
+          teacher: s.teacher?.name ?? "Unknown teacher",
+          period: s.period?.name ?? "No period",
           type: s.session_type,
-          started: formatAttendanceTime(s.started_at),
+          started: s.started_at ? formatAttendanceDateTime(s.started_at) : "Not recorded",
           submitted: s.submitted_at ? formatAttendanceDateTime(s.submitted_at) : "Pending",
           status: s.submitted_at ? "Submitted" : "Pending",
         })),
@@ -138,19 +149,22 @@ function DosAttendancePage() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
               <tr>
-                {["Class / Section", "Teacher", "Period", "Type", "Started", "Submitted", "Status"].map(h => (
+                {["Session ID", "Class / Section", "Session Date", "Subject", "Teacher", "Period", "Type", "Started", "Submitted", "Status"].map(h => (
                   <th key={h} className="text-left px-4 py-3">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">Loading…</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">Loading…</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No attendance sessions found for {date}.</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">No attendance sessions found for {date}.</td></tr>
               ) : filtered.map(s => (
                 <tr key={s.id} className="border-t border-border hover:bg-muted/20">
+                  <td className="px-4 py-3 text-xs font-mono">{s.id}</td>
                   <td className="px-4 py-3 font-medium">{s.section?.full_name ?? s.section?.name ?? "—"}</td>
+                  <td className="px-4 py-3 text-xs">{s.session_date?.slice(0, 10) ?? "—"}</td>
+                  <td className="px-4 py-3">{s.subject?.name ?? "No subject"}</td>
                   <td className="px-4 py-3">{s.teacher?.name ?? "Unknown teacher"}</td>
                   <td className="px-4 py-3">{s.period?.name ?? "No period"}</td>
                   <td className="px-4 py-3 text-xs capitalize">{s.session_type.replace(/_/g, " ")}</td>

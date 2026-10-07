@@ -84,16 +84,12 @@ type AttendanceRow = {
   cardId: string;
   className: string;
   sessionDate: string;
-  subjectName: string;
   timeIn: string;
   status: UiStatus;
   sessionId: string;
   sectionId: string;
   teacherName: string;
   periodName: string;
-  startedAt: string;
-  submittedAt: string;
-  scanMethod: string;
   residency?: "Boarding" | "Day";
 };
 type AttendanceSummary = {
@@ -566,16 +562,9 @@ function ManualAttendancePage() {
         sectionId
           ? classLabelForSection(sectionId)
           : student?.current_section?.full_name ?? "—";
-      const subjectName = session?.subject?.name ?? "No subject";
       const sessionDate = session?.session_date?.slice(0, 10) ?? "Unknown date";
       const teacherName = session?.teacher?.name ?? "Unknown teacher";
       const periodName = session?.period?.name ?? "No period";
-      const startedAt = session?.started_at
-        ? formatAttendanceDateTime(session.started_at)
-        : "Not recorded";
-      const submittedAt = session?.submitted_at
-        ? formatAttendanceDateTime(session.submitted_at)
-        : "Not submitted";
       const residency =
         student?.student_type === "boarding"
           ? "Boarding"
@@ -590,16 +579,12 @@ function ManualAttendancePage() {
         cardId,
         className,
         sessionDate,
-        subjectName,
         timeIn,
         status,
         sessionId: record.session_id,
         sectionId,
         teacherName,
         periodName,
-        startedAt,
-        submittedAt,
-        scanMethod: record.scan_method ?? "Unknown",
         residency
       };
     });
@@ -704,13 +689,9 @@ function ManualAttendancePage() {
         "Session ID",
         "Class",
         "Session Date",
-        "Subject",
         "Teacher",
         "Period",
-        "Started",
-        "Submission Time",
         "Time In",
-        "Scan Method",
         "Status",
         "Residency"
       ];
@@ -726,13 +707,9 @@ function ManualAttendancePage() {
           row.sessionId,
           row.className,
           row.sessionDate,
-          row.subjectName,
           row.teacherName,
           row.periodName,
-          row.startedAt,
-          row.submittedAt,
           row.timeIn,
-          row.scanMethod,
           row.status,
           row.residency ?? ""
         ]);
@@ -746,12 +723,8 @@ function ManualAttendancePage() {
         { width: 18 },
         { width: 14 },
         { width: 24 },
-        { width: 24 },
         { width: 14 },
-        { width: 20 },
-        { width: 20 },
         { width: 12 },
-        { width: 14 },
         { width: 12 },
         { width: 12 }
       ];
@@ -895,20 +868,16 @@ function ManualAttendancePage() {
                     <th className="text-left px-5 py-3">Card ID</th>
                     <th className="text-left px-5 py-3">Class</th>
                     <th className="text-left px-5 py-3">Session Date</th>
-                    <th className="text-left px-5 py-3">Subject</th>
                     <th className="text-left px-5 py-3">Teacher</th>
                     <th className="text-left px-5 py-3">Period</th>
-                    <th className="text-left px-5 py-3">Started</th>
-                    <th className="text-left px-5 py-3">Submitted</th>
                     <th className="text-left px-5 py-3">Time In</th>
-                    <th className="text-left px-5 py-3">Scan Method</th>
                     <th className="text-left px-5 py-3">Status</th>
                     <th className="text-left px-5 py-3">Residency</th>
                   </tr>
                 </thead>
                 <tbody>
                   {recordsLoading && (
-                    <tr><td colSpan={14} className="px-5 py-6"><Skeleton className="h-6 w-full" /></td></tr>
+                    <tr><td colSpan={10} className="px-5 py-6"><Skeleton className="h-6 w-full" /></td></tr>
                   )}
                   {!recordsLoading && pageItems.map((row, i) => (
                     <tr key={row.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/40 transition-colors">
@@ -922,19 +891,15 @@ function ManualAttendancePage() {
                       <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{row.cardId}</td>
                       <td className="px-5 py-3">{row.className}</td>
                       <td className="px-5 py-3 text-xs">{row.sessionDate}</td>
-                      <td className="px-5 py-3">{row.subjectName}</td>
                       <td className="px-5 py-3">{row.teacherName}</td>
                       <td className="px-5 py-3">{row.periodName}</td>
-                      <td className="px-5 py-3 text-xs">{row.startedAt}</td>
-                      <td className="px-5 py-3 text-xs">{row.submittedAt}</td>
                       <td className="px-5 py-3">{row.timeIn}</td>
-                      <td className="px-5 py-3 text-xs">{row.scanMethod}</td>
                       <td className="px-5 py-3"><StatusBadge status={row.status} /></td>
                       <td className="px-5 py-3 text-xs">{row.residency ?? "Unknown"}</td>
                     </tr>
                   ))}
                   {!recordsLoading && pageItems.length === 0 && (
-                    <tr><td colSpan={14} className="px-5 py-10 text-center text-muted-foreground">No records match your filters.</td></tr>
+                    <tr><td colSpan={10} className="px-5 py-10 text-center text-muted-foreground">No records match your filters.</td></tr>
                   )}
                 </tbody>
               </table>

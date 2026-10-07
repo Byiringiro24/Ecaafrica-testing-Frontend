@@ -31,7 +31,7 @@ type StaffProfileRecord = {
   basic_salary?: string | null;
   employment_status?: "active" | "on_leave" | "inactive" | null;
   subjects?: string[] | null;
-  user?: { id: string; name?: string | null; email?: string | null; phone?: string | null; role?: string | null } | null;
+  user?: { id: string; name?: string | null; email?: string | null; phone?: string | null; role?: string | null; status?: string | null } | null;
 };
 
 type UserRecord = {
@@ -193,6 +193,9 @@ const buildStaffRows = (
     const fallbackUser = profile.user ?? null;
     const user = linkedUser ?? fallbackUser;
     const roleValue = user?.role ?? fallbackUser?.role ?? null;
+    const statusValue = profile.employment_status === "inactive" || user?.status === "inactive"
+      ? "inactive"
+      : profile.employment_status ?? user?.status ?? null;
     const assignment = profile.user_id ? classTeacherAssignments.get(profile.user_id) : null;
     const teacherId = profile.user_id ?? user?.id ?? null;
 
@@ -207,8 +210,8 @@ const buildStaffRows = (
       phone: user?.phone ?? EMPTY_VALUE,
       email: user?.email ?? EMPTY_VALUE,
       joinDate: profile.join_date ?? EMPTY_VALUE,
-      status: statusLabel(profile.employment_status),
-      statusValue: profile.employment_status ?? null,
+      status: statusLabel(statusValue),
+      statusValue,
       gender: genderLabel(profile.gender),
       contractType: contractLabel(profile.contract_type),
       subjects: teacherId ? (teachingSubjectsByTeacher.get(teacherId) ?? []) : [],
@@ -252,26 +255,30 @@ function StaffPage() {
     () => buildStaffRows(staffProfiles, users, sections, classes, teacherSectionSubjects, subjectCatalog),
     [staffProfiles, users, sections, classes, teacherSectionSubjects, subjectCatalog]
   );
-  const teacherRows = useMemo(() => staffRows.filter((staff) => staff.roleValue === "teacher"), [staffRows]);
+  const visibleStaffRows = useMemo(
+    () => staffRows.filter((staff) => staff.statusValue !== "inactive"),
+    [staffRows]
+  );
+  const teacherRows = useMemo(() => visibleStaffRows.filter((staff) => staff.roleValue === "teacher"), [visibleStaffRows]);
 
   const departmentOptions = useMemo(() => {
-    const derived = staffRows.map((staff) => staff.department);
+    const derived = visibleStaffRows.map((staff) => staff.department);
     return mergeUnique([...DEFAULT_DEPARTMENTS, ...departments, ...derived]);
-  }, [departments, staffRows]);
+  }, [departments, visibleStaffRows]);
 
   const filtered = useMemo(() => {
-    const baseRows = tab === "Teachers" ? teacherRows : staffRows;
+    const baseRows = tab === "Teachers" ? teacherRows : visibleStaffRows;
     return baseRows.filter((staff) =>
       (q === "" || staff.name.toLowerCase().includes(q.toLowerCase()) || staff.staffId.toLowerCase().includes(q.toLowerCase())) &&
       (dept === "All" || staff.department === dept) &&
       (status === "All" || staff.status === status)
     );
-  }, [staffRows, teacherRows, q, dept, status, tab]);
+  }, [visibleStaffRows, teacherRows, q, dept, status, tab]);
 
-  const teaching = staffRows.filter((staff) => staff.roleValue === "teacher").length;
-  const nonTeaching = staffRows.length - teaching;
-  const activeStaff = staffRows.filter((staff) => staff.statusValue === "active").length;
-  const showSkeleton = loading && staffRows.length === 0;
+  const teaching = visibleStaffRows.filter((staff) => staff.roleValue === "teacher").length;
+  const nonTeaching = visibleStaffRows.length - teaching;
+  const activeStaff = visibleStaffRows.filter((staff) => staff.statusValue === "active").length;
+  const showSkeleton = loading && visibleStaffRows.length === 0;
 
   const nextStaffIdNumber = useMemo(() => {
     const year = new Date().getFullYear();
@@ -403,6 +410,12 @@ function StaffPage() {
               <ShieldCheck className="h-4 w-4" /> Role Management
             </Link>
           )}
+          <Link
+            to="/staff/archive"
+            className="mr-2 inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-semibold hover:bg-muted"
+          >
+            Inactive Archive
+          </Link>
           <button onClick={() => setRegisterOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-sm font-semibold hover:bg-primary/90">
             <Plus className="h-4 w-4" /> Register Staff
           </button>
@@ -421,7 +434,7 @@ function StaffPage() {
               <option>All</option>{departmentOptions.map(d => <option key={d}>{d}</option>)}
             </select>
             <select value={status} onChange={e => setStatus(e.target.value)} className="h-10 rounded-lg border border-border bg-background px-3 text-sm">
-              <option>All</option><option>Active</option><option>On Leave</option><option>Inactive</option>
+              <option>All</option><option>Active</option><option>On Leave</option>
             </select>
             <div className="flex rounded-lg border border-border overflow-hidden">
               <button onClick={() => setView("grid")} className={`p-2 ${view === "grid" ? "bg-primary text-primary-foreground" : "bg-background"}`}><Grid3X3 className="h-4 w-4" /></button>
@@ -510,7 +523,7 @@ function StaffPage() {
       {tab === "Departments" && (
         <DepartmentsTab
           departments={departmentOptions}
-          staff={staffRows}
+          staff={visibleStaffRows}
           onPick={(d) => { setTab("All Staff"); setDept(d); }}
         />
       )}

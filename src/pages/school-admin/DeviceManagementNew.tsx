@@ -108,6 +108,13 @@ export default function DeviceManagementNew() {
 
   const handlePushStudents = async (device: Device) => {
     try {
+      const status = await deviceApi.getStatus(device.id);
+      const reachable = Boolean(status.is_connected ?? status.is_online);
+      if (!reachable) {
+        toast.warning(`${device.name} is offline or unreachable. Connect the tablet before pushing students.`);
+        return;
+      }
+
       const result = await deviceApi.pushStudents(device.id, { mode: "all" });
       toast.success(`Queued ${result.pushed_count} students for ${device.name}`);
       loadDevices();

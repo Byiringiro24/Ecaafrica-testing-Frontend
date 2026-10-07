@@ -200,13 +200,13 @@ function DeviceSessionsPage() {
       // Activate
       const current = sessions.find(s => s.is_active);
       const msg = current
-        ? `Activate "${session.name}"?\n\nThis will stop "${current.name}" and start tagging all new scans to "${session.name}".`
-        : `Activate "${session.name}"?\n\nAll new FK623 scans will be tagged to this session.`;
+        ? `Activate "${session.name}"?\n\nThis replaces "${current.name}" as the active session for this device. New scans will be tagged to "${session.name}", and attendance will still be resolved using that session's configured windows and grace periods.`
+        : `Activate "${session.name}"?\n\nThis device will use "${session.name}" as its active session. New scans will be tagged to it and resolved using the session windows and grace rules configured for that session.`;
       if (!confirm(msg)) return;
       setActivating(session.id);
       try {
         await apiRequest(`/devices/${selectedDeviceId}/sessions/${session.id}/activate`, { method: "PATCH", auth: "school" });
-        toast.success(`"${session.name}" is now active — all scans will be tagged to it`);
+        toast.success(`"${session.name}" is now active — new scans will use this session's windows and grace rules`);
         await loadSessions(selectedDeviceId);
       } catch (e) { toast.error(getErrorMessage(e, "Failed to activate")); }
       finally { setActivating(null); }
@@ -245,7 +245,7 @@ function DeviceSessionsPage() {
   };
 
   return (
-    <AppLayout title="Attendance Sessions" subtitle="Create sessions, activate one, and all scans are tagged to it automatically">
+    <AppLayout title="Attendance Sessions" subtitle="One active session per device; attendance windows and grace periods determine present, late, and absent status">
       <div className="space-y-5">
 
         {/* ── Device selector + active session banner ── */}

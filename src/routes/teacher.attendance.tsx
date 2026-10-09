@@ -489,11 +489,15 @@ function TeacherAttendance() {
     try {
       let sessionId = manualSessionId;
       if (!sessionId) {
+        // Always send teacher_id so the backend's findOrCreate scopes
+        // this session to THIS teacher — two teachers can both record
+        // attendance for the same class/period/subject independently.
         const session = await apiRequest<ApiSession>("/attendance/sessions", {
           method: "POST",
           auth: "school",
           body: JSON.stringify({
             section_id: manualSectionId,
+            teacher_id: teacherId,
             ...(manualSubjectId ? { subject_id: manualSubjectId } : {}),
             ...(manualPeriodId ? { period_id: manualPeriodId } : {}),
             session_date: manualDate,

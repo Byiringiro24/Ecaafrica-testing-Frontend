@@ -69,6 +69,12 @@ const getErrorMessage = (error: unknown, fallback: string) =>
     : typeof error === "object" && error !== null && "message" in error
     ? String((error as any).message) : fallback;
 
+const normalizeListResponse = (payload: unknown) => {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === "object" && Array.isArray((payload as any).data)) return (payload as any).data;
+  return [] as any[];
+};
+
 const createEmptySession = (name = ""): SessionFormState => ({
   name, windows: [{ label: "Present", start_time: "07:00", end_time: "08:00" }],
   send_sms: true, auto_approve: true, notification_template_id: "",
@@ -116,6 +122,8 @@ function DeviceSessionsPage() {
   const [historyTab, setHistoryTab] = useState<"sessions" | "history">("sessions");
   const [historyDate, setHistoryDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [historyLogs, setHistoryLogs] = useState<any[]>([]);
+  const [schoolClasses, setSchoolClasses] = useState<string[]>([]);
+  const [schoolSections, setSchoolSections] = useState<string[]>([]);
   const [historySessionFilter, setHistorySessionFilter] = useState("all");
   const [historyClassFilter, setHistoryClassFilter] = useState("all");
   const [historySectionFilter, setHistorySectionFilter] = useState("all");
@@ -126,13 +134,24 @@ function DeviceSessionsPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [deviceData, templateData] = await Promise.all([
+        const [deviceData, templateData, classData, sectionData] = await Promise.all([
           apiRequest<Device[]>("/devices?limit=200", { auth: "school" }),
           apiRequest<NotificationTemplate[]>("/notifications/templates?scope=global&is_active=true&limit=100", { auth: "school" }),
+          apiRequest<any[]>("/classes?limit=500", { auth: "school" }),
+          apiRequest<any[]>("/sections?limit=500", { auth: "school" }),
         ]);
-        const mapped = (Array.isArray(deviceData) ? deviceData : []).map(d => ({ id: d.id, name: d.name, location: d.location }));
+        const mapped = normalizeListResponse(deviceData).map(d => ({ id: d.id, name: d.name, location: d.location }));
+        const classNames = normalizeListResponse(classData)
+          .map((item: any) => item?.name ?? item?.class_name)
+          .filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0);
+        const sectionNames = normalizeListResponse(sectionData)
+          .map((item: any) => item?.name ?? item?.section_name ?? item?.full_name)
+          .filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0);
+
         setDevices(mapped);
-        setSmsTemplates(Array.isArray(templateData) ? templateData : []);
+        setSmsTemplates(normalizeListResponse(templateData));
+        setSchoolClasses(Array.from(new Set(classNames)).sort((a, b) => a.localeCompare(b)));
+        setSchoolSections(Array.from(new Set(sectionNames)).sort((a, b) => a.localeCompare(b)));
         if (mapped[0]) setSelectedDeviceId(c => c || mapped[0].id);
       } catch (e) { toast.error(getErrorMessage(e, "Failed to load devices")); }
       finally { setLoading(false); }
@@ -176,30 +195,36 @@ function DeviceSessionsPage() {
 
   const historySessionOptions = useMemo(() => {
     const values = new Set<string>();
+    sessions.forEach((session) => {
+      const value = session.name?.trim();
+      if (value) values.add(value);
+    });
     historyLogs.forEach((log) => {
       const value = (log.attendance_period || log.session_name || "No Session").toString();
       values.add(value);
     });
     return Array.from(values).sort((a, b) => a.localeCompare(b));
-  }, [historyLogs]);
+  }, [sessions, historyLogs]);
 
   const historyClassOptions = useMemo(() => {
     const values = new Set<string>();
+    for (const value of schoolClasses) values.add(value);
     historyLogs.forEach((log) => {
-      const value = (log.class_name || "Unknown class").toString();
-      values.add(value);
+      const value = (log.class_name || log.class || "Unknown class").toString();
+      if (value.trim()) values.add(value);
     });
     return Array.from(values).sort((a, b) => a.localeCompare(b));
-  }, [historyLogs]);
+  }, [schoolClasses, historyLogs]);
 
   const historySectionOptions = useMemo(() => {
     const values = new Set<string>();
+    for (const value of schoolSections) values.add(value);
     historyLogs.forEach((log) => {
-      const value = (log.section || "No section").toString();
-      values.add(value);
+      const value = (log.section || log.section_name || "No section").toString();
+      if (value.trim()) values.add(value);
     });
     return Array.from(values).sort((a, b) => a.localeCompare(b));
-  }, [historyLogs]);
+  }, [schoolSections, historyLogs]);
 
   const filteredHistoryLogs = useMemo(() => {
     return historyLogs.filter((log) => {

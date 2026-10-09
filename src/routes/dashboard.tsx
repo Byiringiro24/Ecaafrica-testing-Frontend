@@ -257,6 +257,7 @@ function DashboardPage() {
   ).values()).sort((a, b) => a.label.localeCompare(b.label));
 
   useEffect(() => {
+    if (!loading) return;  // only run when loading=true (initial mount or auto-refresh trigger)
     let active = true;
     const load = async () => {
       setLoading(true);
@@ -421,6 +422,26 @@ function DashboardPage() {
     load();
     return () => {
       active = false;
+    };
+  }, [loading]);  // re-run whenever loading is set to true
+
+  // Auto-refresh every 60 seconds so all devices show consistent live data.
+  // Also refresh when the tab becomes visible again (user switches back).
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLoading(true);
+    }, 60000);
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        setLoading(true);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 

@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   Clock3, Plus, Save, Sparkles, Trash2, Edit2, X,
   MessageSquareText, Power, PowerOff, CheckCircle2,
-  Calendar, ChevronDown, ChevronUp, Activity,
+  Calendar, ChevronDown, ChevronUp, Activity, ClipboardList,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -121,6 +121,8 @@ function DeviceSessionsPage() {
   const [showModal, setShowModal] = useState(false);
   const [historyTab, setHistoryTab] = useState<"sessions" | "history">("sessions");
   const [historyDate, setHistoryDate] = useState(() => new Date().toISOString().slice(0, 10));
+  // Linked boarding attendance sessions — shows which roll calls were triggered by each device
+  const [boardingSessions, setBoardingSessions] = useState<any[]>([]);
   const [historyLogs, setHistoryLogs] = useState<any[]>([]);
   const [schoolClasses, setSchoolClasses] = useState<string[]>([]);
   const [schoolSections, setSchoolSections] = useState<string[]>([]);
@@ -175,13 +177,24 @@ function DeviceSessionsPage() {
     try {
       const start = `${historyDate}T00:00:00.000Z`;
       const end   = `${historyDate}T23:59:59.999Z`;
-      const data = await apiRequest<any>(
-        `/attendance/records/device-logs?deviceId=${selectedDeviceId}&startDate=${start}&endDate=${end}&limit=200`,
-        { auth: "school" }
-      );
-      const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+      const [logsData, boardingData] = await Promise.all([
+        apiRequest<any>(
+          `/attendance/records/device-logs?deviceId=${selectedDeviceId}&startDate=${start}&endDate=${end}&limit=200`,
+          { auth: "school" }
+        ).catch(() => null),
+        // Load boarding attendance sessions for the same date — shows dormitory roll calls
+        // triggered by this device's scans (linked via boarding_attendance_windows.window_id)
+        apiRequest<any>(
+          `/boarding/attendance/sessions?session_date=${historyDate}&limit=100`,
+          { auth: "school" }
+        ).catch(() => null),
+      ]);
+      const rows = Array.isArray(logsData?.data) ? logsData.data : Array.isArray(logsData) ? logsData : [];
       setHistoryLogs(rows);
-    } catch { setHistoryLogs([]); }
+      const boardingRows = Array.isArray(boardingData?.data) ? boardingData.data
+        : Array.isArray(boardingData) ? boardingData : [];
+      setBoardingSessions(boardingRows);
+    } catch { setHistoryLogs([]); setBoardingSessions([]); }
     finally { setHistoryLoading(false); }
   };
 
@@ -605,6 +618,36 @@ function DeviceSessionsPage() {
         )}
       </div>
 
+            {/* Dormitory Roll Calls triggered by this device - linked via boarding_attendance_windows */}
+            {boardingSessions.length > 0 && (
+              <div className="rounded-xl border border-border bg-card overflow-hidden mt-4">
+                <div className="border-b border-border px-5 py-3 flex items-center gap-2 bg-muted/30">
+                  <ClipboardList className="h-4 w-4 text-primary" />
+                  <span className="font-semibold text-sm">Dormitory Roll Calls — {historyDate}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">{boardingSessions.length} session{boardingSessions.length !== 1 ? "s" : ""}</span>
+                </div>
+                <div className="divide-y divide-border">
+                  {boardingSessions.map((bs: any) => (
+                    <div key={bs.id} className="px-5 py-3 flex flex-wrap items-center gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm">{bs.session_name || "Roll Call"}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {bs.dormitory?.name ?? "All dormitories"} · {bs.session_date ? new Date(bs.session_date).toLocaleDateString([], { dateStyle: "medium" }) : "—"}
+                        </div>
+                      </div>
+                      <div className="flex gap-4 text-xs text-center">
+                        <div><div className="font-bold text-emerald-600">{bs.total_present ?? 0}</div><div className="text-muted-foreground">Present</div></div>
+                        <div><div className="font-bold text-amber-600">{bs.total_late ?? 0}</div><div className="text-muted-foreground">Late</div></div>
+                        <div><div className="font-bold text-blue-600">{bs.total_on_leave ?? 0}</div><div className="text-muted-foreground">On Leave</div></div>
+                        <div><div className="font-bold text-destructive">{bs.total_missing ?? 0}</div><div className="text-muted-foreground">Missing</div></div>
+                        <div><div className="font-bold text-muted-foreground">{bs.total_expected ?? 0}</div><div className="text-muted-foreground">Expected</div></div>
+                      </div>
+                      {bs.reconciled_at && <span className="rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs font-semibold">Reconciled</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
       {/* ════════════════ CREATE / EDIT MODAL ════════════════ */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

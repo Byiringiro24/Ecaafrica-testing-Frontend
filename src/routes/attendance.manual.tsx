@@ -293,7 +293,7 @@ function ManualAttendancePage() {
       const [classes, sections, periods, teachers, subjects] = await Promise.all([
         apiRequest<ClassRecord[]>("/classes?limit=200", { auth: "school" }),
         apiRequest<SectionRecord[]>("/sections?limit=200", { auth: "school" }),
-        apiRequest<PeriodRecord[]>("/timetable-periods?limit=100", { auth: "school" }),
+        apiRequest<PeriodRecord[]>("/timetable-periods?limit=500", { auth: "school" }),
         apiRequest<TeacherRecord[]>("/users?role=teacher&limit=500", { auth: "school" }),
         apiRequest<SubjectRecord[]>("/subjects?limit=500", { auth: "school" })
       ]);
@@ -488,21 +488,48 @@ function ManualAttendancePage() {
     setManualSaving(true);
     try {
       let sessionId = manualSessionId;
+
+      // Always verify/create the session — don't rely solely on cached manualSessionId
+      // because the teacher may have changed class/subject/period after loading.
+      // The backend uses an advisory lock + find-or-create so calling POST is safe.
       if (!sessionId) {
-        const session = await apiRequest<ApiSession>("/attendance/sessions", {
-          method: "POST",
-          auth: "school",
-          body: JSON.stringify({
-            section_id: manualSectionId,
-            subject_id: manualSubjectId,
-            teacher_id: manualTeacherId,
-            ...(manualPeriodId ? { period_id: manualPeriodId } : {}),
-            session_date: manualDate,
-            session_type: "class",
-            started_at: new Date().toISOString()
-          })
+        // Double-check: look for an existing session first (avoids race with advisory lock)
+        const sessionQuery = new URLSearchParams({
+          section_id: manualSectionId,
+          date: manualDate,
+          subject_id: manualSubjectId,
+          teacher_id: manualTeacherId,
+          limit: "5"
         });
-        sessionId = session.id;
+        if (manualPeriodId) sessionQuery.set("period_id", manualPeriodId);
+
+        const existing = await apiRequest<ApiSession[]>(
+          `/attendance/sessions?${sessionQuery.toString()}`,
+          { auth: "school" }
+        ).catch(() => []);
+
+        if (existing.length === 1) {
+          sessionId = existing[0].id;
+        } else if (existing.length > 1) {
+          toast.error("Multiple sessions match — select a period to narrow it down");
+          return;
+        } else {
+          // Create new session
+          const session = await apiRequest<ApiSession>("/attendance/sessions", {
+            method: "POST",
+            auth: "school",
+            body: JSON.stringify({
+              section_id: manualSectionId,
+              subject_id: manualSubjectId,
+              teacher_id: manualTeacherId,
+              ...(manualPeriodId ? { period_id: manualPeriodId } : {}),
+              session_date: manualDate,
+              session_type: "class",
+              started_at: new Date().toISOString()
+            })
+          });
+          sessionId = session.id;
+        }
         setManualSessionId(sessionId);
       }
 
@@ -548,7 +575,9 @@ function ManualAttendancePage() {
 
   useEffect(() => {
     if (!manualPeriodId && periodRecords.length) {
-      setManualPeriodId(periodRecords.find((period) => !period.is_break)?.id ?? "");
+      // Default to Period 1 (first non-break period, or first period overall)
+      const first = periodRecords.find((p) => !p.is_break) ?? periodRecords[0];
+      setManualPeriodId(first?.id ?? "");
     }
   }, [manualPeriodId, periodRecords]);
 
@@ -982,7 +1011,7 @@ function ManualAttendancePage() {
               <label className="text-xs font-semibold text-muted-foreground">Class</label>
               <select
                 value={manualSectionId}
-                onChange={(e) => { setManualSectionId(e.target.value); setManualLoaded(false); }}
+                onChange={(e) => { setManualSectionId(e.target.value); setManualLoaded(false); setManualSessionId(null); }}
                 className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm block"
               >
                 {classOptions.length === 0 && <option value="">No classes yet</option>}
@@ -993,7 +1022,7 @@ function ManualAttendancePage() {
               <label className="text-xs font-semibold text-muted-foreground">Subject</label>
               <select
                 value={manualSubjectId}
-                onChange={(e) => { setManualSubjectId(e.target.value); setManualLoaded(false); }}
+                onChange={(e) => { setManualSubjectId(e.target.value); setManualLoaded(false); setManualSessionId(null); }}
                 className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm block"
                 disabled={loading}
               >
@@ -1007,7 +1036,7 @@ function ManualAttendancePage() {
               <label className="text-xs font-semibold text-muted-foreground">Teacher</label>
               <select
                 value={manualTeacherId}
-                onChange={(e) => { setManualTeacherId(e.target.value); setManualLoaded(false); }}
+                onChange={(e) => { setManualTeacherId(e.target.value); setManualLoaded(false); setManualSessionId(null); }}
                 className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm block"
                 disabled={loading}
               >
@@ -1031,12 +1060,14 @@ function ManualAttendancePage() {
               <label className="text-xs font-semibold text-muted-foreground">Period</label>
               <select
                 value={manualPeriodId}
-                onChange={(e) => { setManualPeriodId(e.target.value); setManualLoaded(false); }}
+                onChange={(e) => { setManualPeriodId(e.target.value); setManualLoaded(false); setManualSessionId(null); }}
                 className="mt-1 h-9 rounded-md border border-input bg-background px-3 text-sm block"
               >
                 <option value="">No period</option>
-                {periodRecords.filter((period) => !period.is_break).map((period) => (
-                  <option key={period.id} value={period.id}>{period.name}</option>
+                {periodRecords.map((period) => (
+                  <option key={period.id} value={period.id}>
+                    {period.name}{period.is_break ? " (break)" : ""}
+                  </option>
                 ))}
               </select>
             </div>

@@ -96,6 +96,7 @@ type AttendanceRow = {
   sectionId: string;
   teacherName: string;
   periodName: string;
+  subjectName: string;
   residency?: "Boarding" | "Day";
 };
 type AttendanceSummary = {
@@ -223,6 +224,8 @@ function ManualAttendancePage() {
   const [statusFilter, setStatusFilter] = useState<"All" | UiStatus>("All");
   const [residencyFilter, setResidencyFilter] = useState<"All" | "Boarding" | "Day">("All");
   const [teacherFilter, setTeacherFilter] = useState("All");
+  const [periodFilter, setPeriodFilter] = useState("All");
+  const [subjectFilter, setSubjectFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -571,6 +574,7 @@ function ManualAttendancePage() {
       const sessionDate = session?.session_date?.slice(0, 10) ?? "Unknown date";
       const teacherName = session?.teacher?.name ?? "Unknown teacher";
       const periodName = session?.period?.name ?? "No period";
+      const subjectName = session?.subject?.name ?? "No subject";
       const residency =
         student?.student_type === "boarding"
           ? "Boarding"
@@ -591,36 +595,41 @@ function ManualAttendancePage() {
         sectionId,
         teacherName,
         periodName,
+        subjectName,
         residency
       };
     });
   }, [records, sessionMap, studentsById, classMap, sectionMap]);
 
+  const filtered = useMemo(() => {
+    return rows.filter((row) => {
+      const matchesClass    = classFilter    === "All" || row.sectionId    === classFilter;
+      const matchesStatus   = statusFilter   === "All" || row.status       === statusFilter;
+      const matchesResidency= residencyFilter=== "All" || row.residency    === residencyFilter;
+      const matchesTeacher  = teacherFilter  === "All" || sessionMap.get(row.sessionId)?.teacher_id === teacherFilter;
+      const matchesPeriod   = periodFilter   === "All" || sessionMap.get(row.sessionId)?.period_id  === periodFilter;
+      const matchesSubject  = subjectFilter  === "All" || sessionMap.get(row.sessionId)?.subject_id === subjectFilter;
+      const target = `${row.studentName} ${row.cardId}`.toLowerCase();
+      const matchesSearch   = search === "" || target.includes(search.toLowerCase());
+      return matchesClass && matchesStatus && matchesResidency && matchesTeacher && matchesPeriod && matchesSubject && matchesSearch;
+    });
+  }, [rows, classFilter, statusFilter, residencyFilter, teacherFilter, periodFilter, subjectFilter, search, sessionMap]);
+
   const counts = useMemo(() => {
-    return records.reduce(
-      (acc, record) => {
+    // Counts reflect the filtered view so the header numbers match what you see
+    return filtered.reduce(
+      (acc, row) => {
         acc.total += 1;
-        if (record.status === "present") acc.present += 1;
-        if (record.status === "absent") acc.absent += 1;
-        if (record.status === "late") acc.late += 1;
-        if (record.status === "excused") acc.excused += 1;
+        const s = row.status.toLowerCase();
+        if (s === "present") acc.present += 1;
+        if (s === "absent")  acc.absent  += 1;
+        if (s === "late")    acc.late    += 1;
+        if (s === "excused") acc.excused += 1;
         return acc;
       },
       { total: 0, present: 0, absent: 0, late: 0, excused: 0 }
     );
-  }, [records]);
-
-  const filtered = useMemo(() => {
-    return rows.filter((row) => {
-      const matchesClass = classFilter === "All" || row.sectionId === classFilter;
-      const matchesStatus = statusFilter === "All" || row.status === statusFilter;
-      const matchesResidency = residencyFilter === "All" || row.residency === residencyFilter;
-      const matchesTeacher = teacherFilter === "All" || sessionMap.get(row.sessionId)?.teacher_id === teacherFilter;
-      const target = `${row.studentName} ${row.cardId}`.toLowerCase();
-      const matchesSearch = search === "" || target.includes(search.toLowerCase());
-      return matchesClass && matchesStatus && matchesResidency && matchesTeacher && matchesSearch;
-    });
-  }, [rows, classFilter, statusFilter, residencyFilter, teacherFilter, search, sessionMap]);
+  }, [filtered]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pageItems = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -838,6 +847,22 @@ function ManualAttendancePage() {
               <option value="All">All Teachers</option>
               {teacherRecords.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
             </select>
+            <select
+              value={periodFilter}
+              onChange={(e) => { setPeriodFilter(e.target.value); setPage(1); }}
+              className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+            >
+              <option value="All">All Periods</option>
+              {periodRecords.filter(p => !p.is_break).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <select
+              value={subjectFilter}
+              onChange={(e) => { setSubjectFilter(e.target.value); setPage(1); }}
+              className="h-10 rounded-lg border border-border bg-background px-3 text-sm"
+            >
+              <option value="All">All Subjects</option>
+              {subjectRecords.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
             <div className="relative flex-1 min-w-50">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -876,6 +901,7 @@ function ManualAttendancePage() {
                     <th className="text-left px-5 py-3">Session Date</th>
                     <th className="text-left px-5 py-3">Teacher</th>
                     <th className="text-left px-5 py-3">Period</th>
+                    <th className="text-left px-5 py-3">Subject</th>
                     <th className="text-left px-5 py-3">Time In</th>
                     <th className="text-left px-5 py-3">Status</th>
                     <th className="text-left px-5 py-3">Residency</th>
@@ -883,7 +909,7 @@ function ManualAttendancePage() {
                 </thead>
                 <tbody>
                   {recordsLoading && (
-                    <tr><td colSpan={10} className="px-5 py-6"><Skeleton className="h-6 w-full" /></td></tr>
+                    <tr><td colSpan={11} className="px-5 py-6"><Skeleton className="h-6 w-full" /></td></tr>
                   )}
                   {!recordsLoading && pageItems.map((row, i) => (
                     <tr key={row.id} className="border-t border-border odd:bg-background even:bg-muted/20 hover:bg-accent/40 transition-colors">
@@ -899,13 +925,14 @@ function ManualAttendancePage() {
                       <td className="px-5 py-3 text-xs">{row.sessionDate}</td>
                       <td className="px-5 py-3">{row.teacherName}</td>
                       <td className="px-5 py-3">{row.periodName}</td>
+                      <td className="px-5 py-3">{row.subjectName}</td>
                       <td className="px-5 py-3">{row.timeIn}</td>
                       <td className="px-5 py-3"><StatusBadge status={row.status} /></td>
                       <td className="px-5 py-3 text-xs">{row.residency ?? "Unknown"}</td>
                     </tr>
                   ))}
                   {!recordsLoading && pageItems.length === 0 && (
-                    <tr><td colSpan={10} className="px-5 py-10 text-center text-muted-foreground">No records match your filters.</td></tr>
+                    <tr><td colSpan={11} className="px-5 py-10 text-center text-muted-foreground">No records match your filters.</td></tr>
                   )}
                 </tbody>
               </table>

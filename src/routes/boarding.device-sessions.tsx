@@ -121,6 +121,7 @@ function DeviceSessionsPage() {
   const [showModal, setShowModal] = useState(false);
   const [historyTab, setHistoryTab] = useState<"sessions" | "history">("sessions");
   const [historyDate, setHistoryDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [historyEndDate, setHistoryEndDate] = useState(() => new Date().toISOString().slice(0, 10));
   // Linked boarding attendance sessions — shows which roll calls were triggered by each device
   const [boardingSessions, setBoardingSessions] = useState<any[]>([]);
   const [historyLogs, setHistoryLogs] = useState<any[]>([]);
@@ -130,6 +131,8 @@ function DeviceSessionsPage() {
   const [historyClassFilter, setHistoryClassFilter] = useState("all");
   const [historySectionFilter, setHistorySectionFilter] = useState("all");
   const [historyStatusFilter, setHistoryStatusFilter] = useState("all");
+  const [historyMethodFilter, setHistoryMethodFilter] = useState("all");
+  const [historySearch, setHistorySearch] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
 
@@ -181,10 +184,10 @@ function DeviceSessionsPage() {
     setHistoryLoading(true);
     try {
       // Use plain YYYY-MM-DD — backend utcDateRange expects this format.
-      // Full ISO timestamps cause UTC timezone shift (shows wrong day in UTC+3).
+      const endDate = historyEndDate && historyEndDate >= historyDate ? historyEndDate : historyDate;
       const [logsData, boardingData] = await Promise.all([
         apiRequest<any>(
-          `/attendance/records/device-logs?deviceId=${selectedDeviceId}&startDate=${historyDate}&endDate=${historyDate}&limit=500`,
+          `/attendance/records/device-logs?deviceId=${selectedDeviceId}&startDate=${historyDate}&endDate=${endDate}&limit=1000`,
           { auth: "school" }
         ).catch(() => null),
         apiRequest<any>(
@@ -203,7 +206,7 @@ function DeviceSessionsPage() {
 
   useEffect(() => {
     if (historyTab === "history") void loadHistory();
-  }, [historyTab, historyDate, selectedDeviceId]);
+  }, [historyTab, historyDate, historyEndDate, selectedDeviceId]);
 
   const activeSession = useMemo(() => sessions.find(s => s.is_active), [sessions]);
   const selectedDeviceName = useMemo(() => devices.find(d => d.id === selectedDeviceId)?.name ?? "selected device", [devices, selectedDeviceId]);
@@ -216,7 +219,7 @@ function DeviceSessionsPage() {
       if (value) values.add(value);
     });
     historyLogs.forEach((log) => {
-      const value = (log.attendance_period || log.session_name || "No Session").toString();
+      const value = (log.sessionName || log.attendance_period || log.session_name || "No Session").toString();
       values.add(value);
     });
     return Array.from(values).sort((a, b) => a.localeCompare(b));
@@ -226,7 +229,7 @@ function DeviceSessionsPage() {
     const values = new Set<string>();
     for (const value of schoolClasses) values.add(value);
     historyLogs.forEach((log) => {
-      const value = (log.class_name || log.class || "Unknown class").toString();
+      const value = (log.className || log.class_name || log.class || "Unknown class").toString();
       if (value.trim()) values.add(value);
     });
     return Array.from(values).sort((a, b) => a.localeCompare(b));
@@ -244,19 +247,26 @@ function DeviceSessionsPage() {
 
   const filteredHistoryLogs = useMemo(() => {
     return historyLogs.filter((log) => {
-      const sessionValue = (log.attendance_period || log.session_name || "No Session").toString();
-      const classValue = (log.class_name || "Unknown class").toString();
-      const sectionValue = (log.section || "No section").toString();
-      const statusValue = String(log.status || "").toLowerCase();
+      // API returns camelCase (sessionName, className, section) — handle both
+      const sessionValue = (log.sessionName || log.attendance_period || log.session_name || "No Session").toString();
+      const classValue   = (log.className   || log.class_name || "Unknown class").toString();
+      const sectionValue = (log.section     || log.section_name || "No section").toString();
+      const statusValue  = String(log.status || "").toLowerCase();
+      const methodValue  = (log.method      || log.methodRaw || log.authentication_method || "").toLowerCase();
+      const nameValue    = (log.studentName || log.student_name || "").toLowerCase();
+      const idValue      = (log.studentId   || log.student_id  || "").toLowerCase();
+      const searchMatch  = !historySearch || nameValue.includes(historySearch.toLowerCase()) || idValue.includes(historySearch.toLowerCase());
 
       return (
         (historySessionFilter === "all" || sessionValue === historySessionFilter) &&
-        (historyClassFilter === "all" || classValue === historyClassFilter) &&
+        (historyClassFilter   === "all" || classValue   === historyClassFilter) &&
         (historySectionFilter === "all" || sectionValue === historySectionFilter) &&
-        (historyStatusFilter === "all" || statusValue === historyStatusFilter)
+        (historyStatusFilter  === "all" || statusValue  === historyStatusFilter) &&
+        (historyMethodFilter  === "all" || methodValue.includes(historyMethodFilter.toLowerCase())) &&
+        searchMatch
       );
     });
-  }, [historyLogs, historySessionFilter, historyClassFilter, historySectionFilter, historyStatusFilter]);
+  }, [historyLogs, historySessionFilter, historyClassFilter, historySectionFilter, historyStatusFilter, historyMethodFilter, historySearch]);
 
   const openCreateModal = (template?: SessionFormState) => {
     setFormData(template ?? createEmptySession());
@@ -488,11 +498,17 @@ function DeviceSessionsPage() {
         {/* ════════════════ HISTORY TAB ════════════════ */}
         {historyTab === "history" && (
           <div className="space-y-4">
+            {/* ── Date range + load bar ── */}
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
-                <label className="text-xs font-semibold text-muted-foreground">Date</label>
+                <label className="text-xs font-semibold text-muted-foreground">From</label>
                 <input type="date" value={historyDate} onChange={e => setHistoryDate(e.target.value)}
+                  className="h-9 rounded-lg border border-border bg-background px-3 text-sm" />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-muted-foreground">To</label>
+                <input type="date" value={historyEndDate} min={historyDate} onChange={e => setHistoryEndDate(e.target.value)}
                   className="h-9 rounded-lg border border-border bg-background px-3 text-sm" />
               </div>
               <button onClick={() => void loadHistory()} disabled={historyLoading}
@@ -500,10 +516,18 @@ function DeviceSessionsPage() {
                 {historyLoading ? <span className="h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin" /> : <Activity className="h-3.5 w-3.5" />}
                 Load
               </button>
-              <span className="text-xs text-muted-foreground">{filteredHistoryLogs.length} of {historyLogs.length} records for {new Date(historyDate + "T12:00:00").toLocaleDateString([], { dateStyle: "medium" })}</span>
+              <span className="text-xs text-muted-foreground">{filteredHistoryLogs.length} of {historyLogs.length} records</span>
             </div>
 
+            {/* ── Filter bar ── */}
             <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-card p-3">
+              {/* Student search */}
+              <div className="min-w-[180px] flex-1">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Search student</label>
+                <input value={historySearch} onChange={e => setHistorySearch(e.target.value)}
+                  placeholder="Name or ID…"
+                  className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm" />
+              </div>
               <div className="min-w-[140px] flex-1">
                 <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Session</label>
                 <select value={historySessionFilter} onChange={(e) => setHistorySessionFilter(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm">
@@ -536,6 +560,16 @@ function DeviceSessionsPage() {
                   <option value="not_scheduled">Not scheduled</option>
                 </select>
               </div>
+              <div className="min-w-[130px] flex-1">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Method</label>
+                <select value={historyMethodFilter} onChange={(e) => setHistoryMethodFilter(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-sm">
+                  <option value="all">All methods</option>
+                  <option value="fingerprint">Fingerprint</option>
+                  <option value="face">Face</option>
+                  <option value="card">Card / RFID</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -543,6 +577,8 @@ function DeviceSessionsPage() {
                   setHistoryClassFilter("all");
                   setHistorySectionFilter("all");
                   setHistoryStatusFilter("all");
+                  setHistoryMethodFilter("all");
+                  setHistorySearch("");
                 }}
                 className="h-9 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-muted"
               >
@@ -554,7 +590,7 @@ function DeviceSessionsPage() {
             {(() => {
               const grouped: Record<string, any[]> = {};
               for (const log of filteredHistoryLogs) {
-                const key = log.attendance_period || log.session_name || "No Session";
+                const key = log.sessionName || log.attendance_period || log.session_name || "No Session";
                 if (!grouped[key]) grouped[key] = [];
                 grouped[key].push(log);
               }
@@ -585,24 +621,41 @@ function DeviceSessionsPage() {
                             {logs.map((log, i) => (
                               <tr key={log.id ?? i} className="hover:bg-muted/20">
                                 <td className="px-4 py-2.5">
-                                  <div className="font-medium">{log.student_name || "—"}</div>
-                                  <div className="text-xs text-muted-foreground">{log.student_id || ""}</div>
+                                  {/* API returns camelCase: studentName, studentId */}
+                                  <div className="font-medium">{log.studentName || log.student_name || "—"}</div>
+                                  <div className="text-xs text-muted-foreground">{log.studentId || log.student_id || ""}</div>
                                 </td>
-                                <td className="px-4 py-2.5 text-xs text-muted-foreground">{log.class_name || "—"}{log.section ? ` / ${log.section}` : ""}</td>
-                                <td className="px-4 py-2.5 capitalize text-xs">{log.authentication_method || "—"}</td>
-                                <td className="px-4 py-2.5">
-                                  <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold",
-                                    log.direction === "entry" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>
-                                    {log.direction === "entry" ? "In" : "Out"}
-                                  </span>
+                                <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                                  {log.className || log.class_name || "—"}
+                                  {(log.section || log.section_name) ? ` / ${log.section || log.section_name}` : ""}
+                                </td>
+                                <td className="px-4 py-2.5 capitalize text-xs">
+                                  {log.method || log.methodRaw || log.authentication_method || "—"}
                                 </td>
                                 <td className="px-4 py-2.5">
-                                  <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold capitalize",
-                                    log.status === "present" ? "bg-emerald-100 text-emerald-700"
-                                    : log.status === "late" ? "bg-amber-100 text-amber-700"
-                                    : "bg-muted text-muted-foreground")}>
-                                    {log.status || "—"}
-                                  </span>
+                                  {(() => {
+                                    const dir = (log.direction || log.directionRaw || "").toLowerCase();
+                                    const isIn = dir === "in" || dir === "entry";
+                                    return (
+                                      <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold",
+                                        isIn ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>
+                                        {isIn ? "In" : "Out"}
+                                      </span>
+                                    );
+                                  })()}
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  {(() => {
+                                    const st = String(log.status || "").toLowerCase();
+                                    return (
+                                      <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold capitalize",
+                                        st === "present" ? "bg-emerald-100 text-emerald-700"
+                                        : st === "late" ? "bg-amber-100 text-amber-700"
+                                        : "bg-muted text-muted-foreground")}>
+                                        {log.status || "—"}
+                                      </span>
+                                    );
+                                  })()}
                                 </td>
                                 <td className="px-4 py-2.5 text-xs text-muted-foreground">
                                   {log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}

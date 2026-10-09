@@ -407,63 +407,62 @@ function ManualAttendancePage() {
       toast.error("Select a class first");
       return;
     }
+    if (!manualSubjectId || !manualTeacherId) {
+      toast.error("Select the subject and teacher for this attendance session");
+      return;
+    }
 
     setManualLoading(true);
     setManualLoaded(false);
     try {
-      if (!manualSubjectId || !manualTeacherId) {
-        toast.error("Select the subject and teacher for this attendance session");
-        return;
-      }
-
+      // Load students and look for an existing session in parallel.
+      // The session lookup is purely for pre-filling existing marks —
+      // it is NOT used by Submit (Submit calls /records/submit which
+      // does its own find-or-create safely at the DB level).
       const sessionQuery = new URLSearchParams({
         section_id: manualSectionId,
-        date: manualDate,
+        date:       manualDate,
         subject_id: manualSubjectId,
         teacher_id: manualTeacherId,
-        limit: "200"
+        limit:      "10"
       });
       if (manualPeriodId) sessionQuery.set("period_id", manualPeriodId);
 
       const [students, existingSessions] = await Promise.all([
-        apiRequest<ApiStudent[]>(`/students?section_id=${manualSectionId}&limit=500`, {
-          auth: "school"
-        }),
-        apiRequest<ApiSession[]>(
-          `/attendance/sessions?${sessionQuery.toString()}`,
-          { auth: "school" }
-        )
+        apiRequest<ApiStudent[]>(`/students?section_id=${manualSectionId}&limit=500`, { auth: "school" }),
+        apiRequest<ApiSession[]>(`/attendance/sessions?${sessionQuery.toString()}`, { auth: "school" }).catch(() => [] as ApiSession[])
       ]);
 
       mergeStudents(students);
       setManualStudents(students);
 
-      if (existingSessions.length > 1) {
-        setManualSessionId(null);
-        setManualMarks({});
-        toast.error("Multiple attendance sessions match these class, subject, teacher and date selections; choose a period");
-        return;
-      }
+      // Use first matching session (period_id narrows it to one).
+      // If somehow multiple still match, pick the most recent.
+      const existingSession = existingSessions.length > 0
+        ? existingSessions.reduce((best, s) =>
+            !best || s.id > best.id ? s : best
+          )
+        : null;
 
-      const existingSession = existingSessions[0] ?? null;
       setManualSessionId(existingSession?.id ?? null);
 
       if (existingSession) {
+        // Pre-fill marks from previous submission so teacher can review/correct
         const existingRecords = await apiRequest<ApiRecord[]>(
           `/attendance/records?session_id=${existingSession.id}&limit=2000`,
           { auth: "school" }
-        );
+        ).catch(() => [] as ApiRecord[]);
+
         const nextMarks: Record<string, ApiStatus> = {};
-        existingRecords.forEach((record) => {
-          nextMarks[record.student_id] = record.status;
-        });
+        existingRecords.forEach((r) => { nextMarks[r.student_id] = r.status; });
         setManualMarks(nextMarks);
+        toast.success(`Loaded ${students.length} students — previous marks restored`);
       } else {
         setManualMarks({});
+        toast.success(`Loaded ${students.length} students`);
       }
 
       setManualLoaded(true);
-      toast.success(`Loaded ${students.length} students`);
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to load students");
     } finally {
@@ -479,7 +478,6 @@ function ManualAttendancePage() {
       toast.error("Select a class first");
       return;
     }
-
     if (!manualAllMarked) {
       toast.error("Mark all students before saving");
       return;
@@ -487,67 +485,31 @@ function ManualAttendancePage() {
 
     setManualSaving(true);
     try {
-      let sessionId = manualSessionId;
-
-      // Always verify/create the session — don't rely solely on cached manualSessionId
-      // because the teacher may have changed class/subject/period after loading.
-      // The backend uses an advisory lock + find-or-create so calling POST is safe.
-      if (!sessionId) {
-        // Double-check: look for an existing session first (avoids race with advisory lock)
-        const sessionQuery = new URLSearchParams({
-          section_id: manualSectionId,
-          date: manualDate,
-          subject_id: manualSubjectId,
-          teacher_id: manualTeacherId,
-          limit: "5"
-        });
-        if (manualPeriodId) sessionQuery.set("period_id", manualPeriodId);
-
-        const existing = await apiRequest<ApiSession[]>(
-          `/attendance/sessions?${sessionQuery.toString()}`,
-          { auth: "school" }
-        ).catch(() => []);
-
-        if (existing.length === 1) {
-          sessionId = existing[0].id;
-        } else if (existing.length > 1) {
-          toast.error("Multiple sessions match — select a period to narrow it down");
-          return;
-        } else {
-          // Create new session
-          const session = await apiRequest<ApiSession>("/attendance/sessions", {
-            method: "POST",
-            auth: "school",
-            body: JSON.stringify({
-              section_id: manualSectionId,
-              subject_id: manualSubjectId,
-              teacher_id: manualTeacherId,
-              ...(manualPeriodId ? { period_id: manualPeriodId } : {}),
-              session_date: manualDate,
-              session_type: "class",
-              started_at: new Date().toISOString()
-            })
-          });
-          sessionId = session.id;
+      // Single POST — backend finds or creates the session then upserts all
+      // records in one atomic call.  No two-step round-trip, no race window,
+      // no duplicate-session errors.  Multiple teachers submitting at the
+      // same time are handled entirely by the DB (unique index + upserts).
+      const result = await apiRequest<{ session: ApiSession; records: ApiRecord[] }>(
+        "/attendance/records/submit",
+        {
+          method: "POST",
+          auth: "school",
+          body: JSON.stringify({
+            section_id: manualSectionId,
+            date:       manualDate,
+            teacher_id: manualTeacherId,
+            subject_id: manualSubjectId || undefined,
+            period_id:  manualPeriodId  || undefined,
+            records: manualStudents.map((student) => ({
+              student_id: student.id,
+              status:     manualMarks[student.id]
+            }))
+          })
         }
-        setManualSessionId(sessionId);
-      }
+      );
 
-      const payload = manualStudents.map((student) => ({
-        student_id: student.id,
-        status: manualMarks[student.id]
-      }));
-
-      await apiRequest("/attendance/records/bulk", {
-        method: "POST",
-        auth: "school",
-        body: JSON.stringify({
-          session_id: sessionId,
-          scan_method: "manual",
-          records: payload
-        })
-      });
-
+      // Cache the session id so a second Save without re-loading still works
+      setManualSessionId(result.session?.id ?? null);
       toast.success("Attendance saved");
       setDateFilter(manualDate);
       await loadAttendanceData(manualDate);

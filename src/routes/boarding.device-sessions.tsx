@@ -164,8 +164,13 @@ function DeviceSessionsPage() {
   const loadSessions = async (deviceId: string) => {
     if (!deviceId) return;
     try {
-      const payload = await apiRequest<{ sessions?: Session[] }>(`/devices/${deviceId}/sessions`, { auth: "school" });
-      setSessions(Array.isArray(payload?.sessions) ? payload.sessions : []);
+      const payload = await apiRequest<any>(`/devices/${deviceId}/sessions`, { auth: "school" });
+      // Backend may return { sessions: [...] } or { data: [...] } or a plain array
+      const list = Array.isArray(payload?.sessions) ? payload.sessions
+        : Array.isArray(payload?.data) ? payload.data
+        : Array.isArray(payload) ? payload
+        : [];
+      setSessions(normalizeListResponse(list));
     } catch (e) { toast.error(getErrorMessage(e, "Failed to load sessions")); }
   };
 
@@ -175,15 +180,13 @@ function DeviceSessionsPage() {
     if (!selectedDeviceId || !historyDate) return;
     setHistoryLoading(true);
     try {
-      const start = `${historyDate}T00:00:00.000Z`;
-      const end   = `${historyDate}T23:59:59.999Z`;
+      // Use plain YYYY-MM-DD — backend utcDateRange expects this format.
+      // Full ISO timestamps cause UTC timezone shift (shows wrong day in UTC+3).
       const [logsData, boardingData] = await Promise.all([
         apiRequest<any>(
-          `/attendance/records/device-logs?deviceId=${selectedDeviceId}&startDate=${start}&endDate=${end}&limit=200`,
+          `/attendance/records/device-logs?deviceId=${selectedDeviceId}&startDate=${historyDate}&endDate=${historyDate}&limit=500`,
           { auth: "school" }
         ).catch(() => null),
-        // Load boarding attendance sessions for the same date — shows dormitory roll calls
-        // triggered by this device's scans (linked via boarding_attendance_windows.window_id)
         apiRequest<any>(
           `/boarding/attendance/sessions?session_date=${historyDate}&limit=100`,
           { auth: "school" }

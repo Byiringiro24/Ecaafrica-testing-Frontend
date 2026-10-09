@@ -74,8 +74,12 @@ export function BoardingAttendanceManager({ canEdit: _canEdit = false }: { canEd
     logs.forEach((log) => {
       const studentId = studentKeys.get(String(log.studentId));
       if (!studentId) return;
-      const period = `${log.sessionName ?? ""} ${log.statusLabel ?? ""}`.toLowerCase();
-      if (period.trim() && !period.includes(sessionType)) return;
+      // Only filter by session type when attendance_period is set AND non-empty.
+      // If attendance_period is null/empty the scan has no session label —
+      // count it as a valid scan for both morning and evening roll calls
+      // so biometric scans that arrive without a session label are not silently dropped.
+      const period = `${log.sessionName ?? ""} ${log.statusLabel ?? ""}`.toLowerCase().trim();
+      if (period && !period.includes(sessionType)) return;
       const status = String(log.status).toLowerCase() === "late" ? "late" : "present";
       if (status === "late" || !scanned.has(studentId)) scanned.set(studentId, status);
     });

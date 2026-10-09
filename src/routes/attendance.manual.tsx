@@ -75,6 +75,12 @@ type ApiRecord = {
   scan_method?: string | null;
   scanned_at?: string | null;
   created_at?: string | null;
+  // New: enriched from session join — available when records are fetched from /attendance/records
+  session_date?: string | null;
+  teacher_name?: string | null;
+  period_name?: string | null;
+  subject_name?: string | null;
+  section_name?: string | null;
 };
 
 type AttendanceRow = {

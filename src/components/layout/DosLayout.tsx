@@ -14,35 +14,50 @@ import { RoleSwitcher } from "@/components/RoleSwitcher";
 
 const NAV = [
   {
+    section: "Overview",
+    items: [
+      { to: "/dos/dashboard",     label: "Dashboard",             icon: LayoutDashboard },
+      { to: "/dos/attendance",    label: "Attendance Overview",   icon: ClipboardCheck  },
+      { to: "/dos/reports",       label: "Academic Reports",      icon: BarChart3       },
+      { to: "/dos/alerts",        label: "Academic Alerts",       icon: ClipboardCheck  },
+    ],
+  },
+  {
     section: "Academic",
     items: [
-      { to: "/dos/dashboard",   label: "Dashboard",            icon: LayoutDashboard },
-      { to: "/dos/attendance",  label: "Class Attendance",     icon: ClipboardCheck },
-      { to: "/dos/timetable",   label: "Timetable Overview",   icon: CalendarDays },
-      { to: "/dos/exams",       label: "Exams & Results",      icon: GraduationCap },
-      { to: "/dos/classes",     label: "Classes & Subjects",   icon: BookOpen },
-      { to: "/dos/staff",       label: "Teaching Staff",       icon: Users },
-      { to: "/dos/reports",     label: "Academic Reports",     icon: BarChart3 },
-      { to: "/classes",         label: "Class Management",      icon: BookOpen },
-      { to: "/subject-assignments", label: "Teacher Assignments", icon: Users },
-      { to: "/timetable",       label: "Full Timetable",        icon: CalendarDays },
-      { to: "/attendance",      label: "Attendance Workspace",  icon: ClipboardCheck },
-      { to: "/exams",           label: "Full Exams Workspace",  icon: GraduationCap },
-      { to: "/reports",         label: "Full Reports",           icon: BarChart3 },
-      { to: "/dos/calendar",    label: "Academic Calendar",       icon: CalendarDays },
-      { to: "/dos/curriculum",  label: "Curriculum",               icon: BookOpen },
-      { to: "/dos/syllabus",    label: "Syllabus Progress",        icon: BookOpen },
-      { to: "/dos/lesson-plans",label: "Lesson Plans",              icon: BookOpen },
-      { to: "/dos/performance", label: "Academic Performance",      icon: BarChart3 },
-      { to: "/dos/risk",        label: "Academic Risk",             icon: ClipboardCheck },
-      { to: "/dos/interventions", label: "Interventions",            icon: ClipboardCheck },
-      { to: "/dos/referrals",   label: "DOD/DOS Referrals",         icon: Users },
-      { to: "/dos/meetings",    label: "Academic Meetings",         icon: CalendarDays },
-      { to: "/dos/chat",        label: "Parent Academic Chat",      icon: Users },
-      { to: "/dos/alerts",      label: "Academic Alerts",           icon: ClipboardCheck },
-      { to: "/dos/rooms",       label: "Rooms",                     icon: BookOpen },
-      { to: "/dos/substitutions", label: "Teacher Substitution",     icon: Users },
-      { to: "/dos/assessments", label: "Assessments",                icon: GraduationCap },
+      { to: "/dos/classes",       label: "Classes & Subjects",    icon: BookOpen        },
+      { to: "/dos/timetable",     label: "Timetable Overview",    icon: CalendarDays    },
+      { to: "/dos/curriculum",    label: "Curriculum",            icon: BookOpen        },
+      { to: "/dos/syllabus",      label: "Syllabus Progress",     icon: BookOpen        },
+      { to: "/dos/lesson-plans",  label: "Lesson Plans",          icon: BookOpen        },
+      { to: "/dos/assessments",   label: "Assessments",           icon: GraduationCap   },
+      { to: "/dos/exams",         label: "Exams & Results",       icon: GraduationCap   },
+    ],
+  },
+  {
+    section: "Staff",
+    items: [
+      { to: "/dos/staff",         label: "Teaching Staff",        icon: Users           },
+      { to: "/dos/substitutions", label: "Substitutions",         icon: Users           },
+      { to: "/dos/meetings",      label: "Academic Meetings",     icon: CalendarDays    },
+    ],
+  },
+  {
+    section: "Monitoring",
+    items: [
+      { to: "/dos/performance",   label: "Academic Performance",  icon: BarChart3       },
+      { to: "/dos/risk",          label: "At-Risk Students",      icon: ClipboardCheck  },
+      { to: "/dos/interventions", label: "Interventions",         icon: ClipboardCheck  },
+      { to: "/dos/referrals",     label: "DOD/DOS Referrals",     icon: Users           },
+    ],
+  },
+  {
+    section: "Workspace",
+    items: [
+      { to: "/attendance",        label: "Full Attendance",       icon: ClipboardCheck  },
+      { to: "/exams",             label: "Full Exams",            icon: GraduationCap   },
+      { to: "/subject-assignments",label:"Teacher Assignments",   icon: Users           },
+      { to: "/timetable",         label: "Full Timetable",        icon: CalendarDays    },
     ],
   },
 ];
@@ -149,9 +164,9 @@ export function DosLayout({
             >
               <LogOut className="h-4 w-4" />
             </button>
-          {/* Role switcher — visible when user has multiple roles */}
-          <div className="mt-2">
           </div>
+          <div className="mt-2">
+            <RoleSwitcher compact />
           </div>
         </div>
       </aside>

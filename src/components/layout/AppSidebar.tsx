@@ -4,7 +4,7 @@ import {
   LayoutDashboard, ScanLine, Users, BookOpen, ClipboardCheck,
   Heart, MessageSquare, Settings, LogOut, X,
   Home, FileText, Briefcase, ChevronDown, UserCheck,
-  Cpu, UserPlus, ListChecks, GraduationCap, Clock3, TabletSmartphone,
+  Cpu, UserPlus, ListChecks, GraduationCap, Clock3,
   CalendarClock, Headphones,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -24,24 +24,24 @@ interface Section { id: string; label: string; items: NavItem[]; }
 
 const SECTIONS: Section[] = [
   { id: "core", label: "Core", items: [
-    { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
-    { to: "/attendance", label: "Attendance", icon: ScanLine, module: "attendance" },
-    { to: "/students", label: "Students", icon: Users, module: "students" },
-    { to: "/classes", label: "Classes", icon: BookOpen, module: "classes" },
-    { to: "/timetable", label: "Timetable", icon: CalendarClock, module: "classes" },
-    { to: "/subject-assignments", label: "Subject Assignments", icon: BookOpen, module: "classes" },
-    { to: "/exams", label: "Exams & Results", icon: GraduationCap, module: "exams" },
-    { to: "/visitors", label: "Visitors", icon: UserCheck, module: "visitors" },
+    { to: "/dashboard",         label: "Dashboard",           icon: LayoutDashboard, module: "dashboard" },
+    { to: "/attendance",        label: "Attendance",          icon: ScanLine,        module: "attendance" },
+    { to: "/students",          label: "Students",            icon: Users,           module: "students"   },
+    { to: "/classes",           label: "Classes",             icon: BookOpen,        module: "classes"    },
+    { to: "/timetable",         label: "Timetable",           icon: CalendarClock,   module: "classes"    },
+    { to: "/subject-assignments",label:"Subject Assignments", icon: BookOpen,        module: "classes"    },
+    { to: "/exams",             label: "Exams & Results",     icon: GraduationCap,   module: "exams"      },
+    { to: "/visitors",          label: "Visitors",            icon: UserCheck,       module: "visitors"   },
   ]},
   { id: "boarding", label: "Boarding", items: [
-    { to: "/boarding", label: "Boarding", icon: Home, module: "boarding", match: "exact" },
-    { to: "/boarding/attendance", label: "Dormitory Attendance", icon: ClipboardCheck, module: "boarding" },
-    { to: "/leaves", label: "Leaves", icon: FileText, module: "leaves" },
+    { to: "/boarding",           label: "Boarding",              icon: Home,           module: "boarding", match: "exact" },
+    { to: "/boarding/attendance",label: "Dormitory Attendance",  icon: ClipboardCheck, module: "boarding" },
+    { to: "/leaves",             label: "Leaves",                icon: FileText,       module: "leaves"   },
   ]},
   { id: "devices", label: "Tablets & Devices", items: [
-    { to: "/boarding/devices", label: "Device Management", icon: TabletSmartphone, module: "boarding" },
-    { to: "/boarding/device-sessions", label: "Attendance Sessions", icon: Clock3, module: "boarding" },
-    { to: "/boarding/device-students", label: "Device Students", icon: UserPlus, module: "boarding" },
+    { to: "/devices",                  label: "Device Management",   icon: Cpu,            module: "boarding" },
+    { to: "/boarding/device-sessions", label: "Attendance Sessions", icon: Clock3,         module: "boarding" },
+    { to: "/boarding/device-students", label: "Device Students",     icon: UserPlus,       module: "boarding" },
   ]},
   { id: "hr", label: "HR", items: [
     { to: "/staff", label: "Staff", icon: Briefcase, module: "staff" },

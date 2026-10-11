@@ -120,6 +120,8 @@ const statusClasses = (status: string) => {
 
 function DeviceAttendancePage() {
   const todayValue = localDateInputValue();
+  const [devices, setDevices] = useState<Array<{ id: string; name: string; location?: string | null }>>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const [allLogs, setAllLogs] = useState<DeviceAttendanceRow[]>([]);
   const [stats, setStats] = useState<AttendanceStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -129,6 +131,17 @@ function DeviceAttendancePage() {
   const [methodFilter, setMethodFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState(todayValue);
   const [page, setPage] = useState(1);
+
+  // Load device list for the selector
+  useEffect(() => {
+    import("@/lib/deviceApi").then(({ deviceApi }) => {
+      deviceApi.getAll({ limit: 200 }).then(res => {
+        const list = (res.data ?? []).map((d: any) => ({ id: d.id, name: d.name, location: d.location }));
+        setDevices(list);
+        if (list.length && !selectedDeviceId) setSelectedDeviceId(list[0].id);
+      }).catch(() => {});
+    });
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -148,6 +161,8 @@ function DeviceAttendancePage() {
           fetchAllDeviceLogs({
             startDate: dateFilter || undefined,
             endDate: dateFilter || undefined,
+            // Filter by selected device — shows only that device's scans
+            deviceId: selectedDeviceId || undefined,
             status: statusFilter !== "all" ? statusFilter : undefined,
             method: methodFilter !== "all" ? methodFilter : undefined,
             search: debouncedQuery || undefined,
@@ -182,7 +197,7 @@ function DeviceAttendancePage() {
     return () => {
       cancelled = true;
     };
-  }, [dateFilter, statusFilter, methodFilter, debouncedQuery]);
+  }, [dateFilter, statusFilter, methodFilter, debouncedQuery, selectedDeviceId]);
 
   const totalPages = Math.max(1, Math.ceil(allLogs.length / PAGE_SIZE));
   const startIndex = (page - 1) * PAGE_SIZE;
@@ -209,6 +224,17 @@ function DeviceAttendancePage() {
       </div>
 
       <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap gap-3 items-center mb-5">
+        {/* Device selector — required: user must choose which device to view */}
+        <select
+          value={selectedDeviceId}
+          onChange={(e) => { setSelectedDeviceId(e.target.value); setPage(1); }}
+          className="h-10 rounded-lg border border-border bg-background px-3 text-sm min-w-40"
+        >
+          <option value="">All Devices</option>
+          {devices.map(d => (
+            <option key={d.id} value={d.id}>{d.name}{d.location ? ` (${d.location})` : ""}</option>
+          ))}
+        </select>
         <div className="relative flex-1 min-w-60">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input

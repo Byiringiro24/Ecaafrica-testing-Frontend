@@ -2,16 +2,8 @@ import { ReactNode, useState } from "react";
 import { SuspendedBanner } from "@/components/layout/SuspendedBanner";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard,
-  CalendarDays,
-  Home,
-  ClipboardCheck,
-  Utensils,
-  LogOut,
-  Menu,
-  X,
-  UserCheck,
-  Upload,
+  LayoutDashboard, CalendarDays, Home, ClipboardCheck,
+  Utensils, LogOut, Menu, X, UserCheck, Bell,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
@@ -23,12 +15,18 @@ const NAV = [
   {
     section: "My Dormitories",
     items: [
-      { to: "/patron/dashboard",   matronTo: "/matron/dashboard",   label: "Dashboard",             icon: LayoutDashboard },
-      { to: "/patron/dormitories", matronTo: "/patron/dormitories", label: "My Dormitories",        icon: Home },
-      { to: "/patron/assignments",  matronTo: "/patron/assignments",  label: "Assign Students",       icon: UserCheck },
-      { to: "/patron/attendance",  matronTo: "/matron/attendance",  label: "Boarding Attendance",   icon: ClipboardCheck },
-      { to: "/patron/leaves",      matronTo: "/patron/leaves",      label: "Leave & Returns",       icon: CalendarDays },
-      { to: "/patron/dining",      matronTo: "/patron/dining",      label: "Dining Attendance",     icon: Utensils },
+      { to: "/patron/dashboard",   matronTo: "/matron/dashboard",   label: "Dashboard",           icon: LayoutDashboard },
+      { to: "/patron/dormitories", matronTo: "/patron/dormitories", label: "My Dormitories",      icon: Home },
+      { to: "/patron/assignments",  matronTo: "/patron/assignments", label: "Assign Students",     icon: UserCheck },
+      { to: "/patron/attendance",  matronTo: "/matron/attendance",  label: "Boarding Attendance", icon: ClipboardCheck },
+      { to: "/patron/leaves",      matronTo: "/patron/leaves",      label: "Leave & Returns",     icon: CalendarDays },
+      { to: "/patron/dining",      matronTo: "/patron/dining",      label: "Dining Attendance",   icon: Utensils },
+    ],
+  },
+  {
+    section: "Communication",
+    items: [
+      { to: "/notifications", matronTo: "/notifications", label: "Notifications & News", icon: Bell },
     ],
   },
 ];
@@ -130,9 +128,9 @@ export function PatronLayout({
             >
               <LogOut className="h-4 w-4" />
             </button>
-          {/* Role switcher — visible when user has multiple roles */}
-          <div className="mt-2">
           </div>
+          <div className="mt-2">
+            <RoleSwitcher compact />
           </div>
         </div>
       </aside>

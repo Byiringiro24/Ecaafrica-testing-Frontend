@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   BedDouble,
   Cpu,
+  Bell,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
@@ -61,6 +62,12 @@ const NAV = [
     items: [
       { to: "/dod/alerts",              label: "Alerts & Exceptions",     icon: AlertTriangle   },
       { to: "/dod/reports",             label: "Boarding Reports",        icon: BarChart3       },
+    ],
+  },
+  {
+    section: "Communication",
+    items: [
+      { to: "/notifications",           label: "Notifications & News",    icon: Bell            },
     ],
   },
 ];

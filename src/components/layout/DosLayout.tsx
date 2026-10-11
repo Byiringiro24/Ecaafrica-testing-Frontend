@@ -4,7 +4,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard, ClipboardCheck, BookOpen,
   BarChart3, CalendarDays, Users, GraduationCap,
-  LogOut, Menu, X, FileText, Pencil, Award,
+  LogOut, Menu, X, FileText, Pencil, Award, Bell,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
@@ -58,6 +58,12 @@ const NAV = [
       { to: "/exams",             label: "Full Exams",            icon: GraduationCap   },
       { to: "/subject-assignments",label:"Teacher Assignments",   icon: Users           },
       { to: "/timetable",         label: "Full Timetable",        icon: CalendarDays    },
+    ],
+  },
+  {
+    section: "Communication",
+    items: [
+      { to: "/notifications",     label: "Notifications & News",  icon: Bell            },
     ],
   },
 ];

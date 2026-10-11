@@ -2,29 +2,30 @@ import { ReactNode, useEffect, useState } from "react";
 import { SuspendedBanner } from "@/components/layout/SuspendedBanner";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard, BookOpen, ClipboardCheck, GraduationCap, TrendingUp,
-  Calendar, User, LogOut, Menu, X, MessageSquare, Users,
+  LayoutDashboard, BookOpen, ClipboardCheck, GraduationCap,
+  Calendar, User, LogOut, Menu, X, MessageSquare, Users, Bell,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
-import { TEACHER_ME } from "@/lib/teacherStaffData";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 import logo from "@/assets/logo.png";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { apiRequest } from "@/lib/api";
 
-const NAV = [
-  { section: "Main", items: [
-    { to: "/teacher/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/teacher/classes", label: "My Classes", icon: BookOpen },
-    { to: "/teacher/attendance", label: "Attendance", icon: ClipboardCheck },
-    { to: "/teacher/combined-attendance", label: "Combined Class", icon: Users },
-    { to: "/teacher/exams", label: "Record Marks", icon: BookOpen },
-    { to: "/teacher/schedule", label: "My Timetable", icon: Calendar },
-    { to: "/teacher/profile", label: "My Profile", icon: User },
-    { to: "/exams/grade-update-requests", label: "Grade Requests", icon: MessageSquare },
-    // { to: "/teacher/messages", label: "Communicate with parents", icon: MessageSquare },
-  ]},
+const BASE_NAV = [
+  { to: "/teacher/dashboard",          label: "Dashboard",       icon: LayoutDashboard },
+  { to: "/teacher/classes",            label: "My Classes",      icon: BookOpen },
+  { to: "/teacher/attendance",         label: "Attendance",      icon: ClipboardCheck },
+  { to: "/teacher/combined-attendance",label: "Combined Class",  icon: Users },
+  { to: "/teacher/exams",              label: "Record Marks",    icon: BookOpen },
+  { to: "/teacher/schedule",           label: "My Timetable",    icon: Calendar },
+  { to: "/teacher/profile",            label: "My Profile",      icon: User },
+  { to: "/exams/grade-update-requests",label: "Grade Requests",  icon: MessageSquare },
+];
+
+const COMM_NAV = [
+  { to: "/notifications", label: "Notifications & News", icon: Bell },
+  { to: "/teacher/messages", label: "Messages", icon: MessageSquare },
 ];
 
 export function TeacherLayout({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
@@ -32,12 +33,24 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
   const [profileOpen, setProfileOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const currentUser = useCurrentUser();
-  const initials = currentUser?.name ? getInitials(currentUser.name) : TEACHER_ME.initials;
-  const displayName = currentUser?.name ?? TEACHER_ME.name;
+
+  // Use real user data — no hardcoded fallbacks
+  const displayName = currentUser?.name ?? "Teacher";
   const displayRole = currentUser?.role ? formatRole(currentUser.role) : "Teacher";
+  const initials = currentUser?.name ? getInitials(currentUser.name) : "??";
+
   const [hasDiningDuty, setHasDiningDuty] = useState(false);
-  useEffect(() => { void apiRequest<any>(`/boarding/dining/assignments?date=${new Date().toISOString().slice(0, 10)}`, { auth: "school" }).then(v => setHasDiningDuty((Array.isArray(v) ? v : v?.data ?? []).length > 0)).catch(() => setHasDiningDuty(false)); }, []);
-  const navItems = hasDiningDuty ? [...NAV[0].items, { to: "/teacher/dining-attendance", label: "Dining Attendance", icon: ClipboardCheck }] : NAV[0].items;
+  useEffect(() => {
+    void apiRequest<any>(
+      `/boarding/dining/assignments?date=${new Date().toISOString().slice(0, 10)}`,
+      { auth: "school" }
+    ).then(v => setHasDiningDuty((Array.isArray(v) ? v : v?.data ?? []).length > 0))
+     .catch(() => setHasDiningDuty(false));
+  }, []);
+
+  const mainItems = hasDiningDuty
+    ? [...BASE_NAV, { to: "/teacher/dining-attendance", label: "Dining Attendance", icon: ClipboardCheck }]
+    : BASE_NAV;
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -58,28 +71,48 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
-          {[{ ...NAV[0], items: navItems }].map((sec) => (
-            <div key={sec.section}>
-              <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold text-sidebar-foreground/50">{sec.section}</div>
-              <div className="space-y-0.5 mt-1">
-                {sec.items.map((item) => {
-                  const Icon = item.icon;
-                  const active = pathname === item.to;
-                  return (
-                    <Link key={item.to} to={item.to} onClick={() => setOpen(false)}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                        active ? "bg-primary text-primary-foreground shadow-sm"
-                               : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-foreground"
-                      )}>
-                      <Icon className="h-[18px] w-[18px]" />
-                      <span>{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
+          {/* Main section */}
+          <div>
+            <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold text-sidebar-foreground/50">Main</div>
+            <div className="space-y-0.5 mt-1">
+              {mainItems.map((item) => {
+                const Icon = item.icon;
+                const active = pathname === item.to;
+                return (
+                  <Link key={item.to} to={item.to} onClick={() => setOpen(false)}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      active ? "bg-primary text-primary-foreground shadow-sm"
+                             : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-foreground"
+                    )}>
+                    <Icon className="h-[18px] w-[18px]" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
             </div>
-          ))}
+          </div>
+          {/* Communication */}
+          <div>
+            <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-bold text-sidebar-foreground/50">Communication</div>
+            <div className="space-y-0.5 mt-1">
+              {COMM_NAV.map((item) => {
+                const Icon = item.icon;
+                const active = pathname === item.to;
+                return (
+                  <Link key={item.to} to={item.to} onClick={() => setOpen(false)}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                      active ? "bg-primary text-primary-foreground shadow-sm"
+                             : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-foreground"
+                    )}>
+                    <Icon className="h-[18px] w-[18px]" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
         </nav>
 
         <div className="border-t border-sidebar-border p-4">
@@ -93,15 +126,14 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
               <div className="text-[11px] text-sidebar-foreground/60">{displayRole}</div>
             </div>
             <button
-              onClick={() => {
-                clearSchoolAuth();
-                window.location.replace("/login");
-              }}
+              onClick={() => { clearSchoolAuth(); window.location.replace("/login"); }}
               className="rounded-md p-2 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-foreground"
-              aria-label="Logout"
-            >
+              aria-label="Logout">
               <LogOut className="h-4 w-4" />
             </button>
+          </div>
+          <div className="mt-2">
+            <RoleSwitcher compact />
           </div>
         </div>
       </aside>
@@ -119,43 +151,21 @@ export function TeacherLayout({ title, subtitle, children }: { title: string; su
               <button
                 type="button"
                 onClick={() => setProfileOpen(p => !p)}
-                className="hidden sm:flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted"
-              >
+                className="hidden sm:flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted">
                 <div className="text-right leading-tight">
                   <div className="text-sm font-semibold">{displayName}</div>
                   <div className="text-[11px] text-muted-foreground">{displayRole}</div>
                 </div>
-                <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground text-sm font-bold">
-                  {initials}
-                </div>
+                <div className="grid h-10 w-10 place-items-center rounded-full bg-primary text-primary-foreground text-sm font-bold">{initials}</div>
               </button>
-
               {profileOpen && (
                 <div className="absolute right-0 mt-2 w-48 rounded-lg border border-border bg-card shadow-lg overflow-hidden">
-                  <Link
-                    to="/teacher/profile"
-                    onClick={() => setProfileOpen(false)}
-                    className="block w-full text-left px-4 py-2 text-sm hover:bg-muted"
-                  >
-                    View Profile
-                  </Link>
-                  <Link
-                    to="/teacher/settings"
-                    onClick={() => setProfileOpen(false)}
-                    className="block w-full text-left px-4 py-2 text-sm hover:bg-muted"
-                  >
-                    Account Settings
-                  </Link>
-                  <button
-                    onClick={() => {
-                      clearSchoolAuth();
-                      setProfileOpen(false);
-                      window.location.replace("/login");
-                    }}
-                    className="w-full text-left px-4 py-2 text-sm text-destructive hover:bg-muted"
-                  >
-                    Sign Out
-                  </button>
+                  <Link to="/teacher/profile" onClick={() => setProfileOpen(false)}
+                    className="block w-full text-left px-4 py-2 text-sm hover:bg-muted">View Profile</Link>
+                  <Link to="/teacher/settings" onClick={() => setProfileOpen(false)}
+                    className="block w-full text-left px-4 py-2 text-sm hover:bg-muted">Account Settings</Link>
+                  <button onClick={() => { clearSchoolAuth(); setProfileOpen(false); window.location.replace("/login"); }}
+                    className="w-full text-left px-4 py-2 text-sm text-destructive hover:bg-muted">Sign Out</button>
                 </div>
               )}
             </div>

@@ -8,7 +8,6 @@ import {
   CalendarClock, Headphones,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { schoolConfig } from "@/lib/mockData";
 import logo from "@/assets/logo.png";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 import { clearSchoolAuth, isDirectorOfStudiesRole } from "@/lib/schoolAuth";
@@ -47,9 +46,9 @@ const SECTIONS: Section[] = [
     { to: "/staff", label: "Staff", icon: Briefcase, module: "staff" },
   ]},
   { id: "comm", label: "Communication", items: [
-    { to: "/parents", label: "Parents", icon: Heart, module: "parents" },
-    { to: "/notifications", label: "Notifications", icon: MessageSquare, module: "notifications" },
-    { to: "/attendance/messages", label: "Attendance Messages", icon: MessageSquare, module: "notifications" },
+    { to: "/parents",               label: "Parents",             icon: Heart,        module: "parents"       },
+    { to: "/notifications",         label: "Notifications & News",icon: MessageSquare,module: "notifications" },
+    { to: "/attendance/messages",   label: "Attendance Messages", icon: MessageSquare,module: "notifications" },
   ]},
   { id: "support", label: "Support", items: [
     { to: "/support", label: "Support Tickets", icon: Headphones, module: "support", role: "school_admin" },
@@ -61,18 +60,18 @@ const SECTIONS: Section[] = [
 
 const DOS_SECTIONS: Section[] = [
   { id: "academic-core", label: "Academic", items: [
-    { to: "/dos/dashboard", label: "Dashboard", icon: LayoutDashboard, module: "dashboard" },
-    { to: "/dos/classes", label: "Classes & Subjects", icon: BookOpen, module: "classes" },
-    { to: "/classes", label: "Class Management", icon: Users, module: "classes" },
-    { to: "/subject-assignments", label: "Teacher Assignments", icon: BookOpen, module: "classes" },
-    { to: "/timetable", label: "Timetable", icon: CalendarClock, module: "classes" },
-    { to: "/attendance", label: "Academic Attendance", icon: ScanLine, module: "attendance" },
-    { to: "/dos/exams", label: "Exams & Results", icon: GraduationCap, module: "exams" },
-    { to: "/reports", label: "Academic Reports", icon: FileText, module: "reports" },
+    { to: "/dos/dashboard",      label: "Dashboard",          icon: LayoutDashboard, module: "dashboard"   },
+    { to: "/dos/classes",        label: "Classes & Subjects", icon: BookOpen,        module: "classes"     },
+    { to: "/dos/attendance",     label: "Attendance Overview",icon: ClipboardCheck,  module: "attendance"  },
+    { to: "/attendance",         label: "Attendance Workspace",icon: ScanLine,       module: "attendance"  },
+    { to: "/subject-assignments",label: "Teacher Assignments",icon: BookOpen,        module: "classes"     },
+    { to: "/timetable",          label: "Timetable",          icon: CalendarClock,   module: "classes"     },
+    { to: "/dos/exams",          label: "Exams & Results",    icon: GraduationCap,   module: "exams"       },
+    { to: "/reports",            label: "Academic Reports",   icon: FileText,        module: "reports"     },
+    { to: "/dos/staff",          label: "Teaching Staff",     icon: Briefcase,       module: "staff"       },
   ]},
-  { id: "academic-monitoring", label: "DOS Monitoring", items: [
-    { to: "/dos/attendance", label: "Attendance Overview", icon: ClipboardCheck, module: "attendance" },
-    { to: "/dos/staff", label: "Teaching Staff", icon: Briefcase, module: "staff" },
+  { id: "comm",           label: "Communication", items: [
+    { to: "/notifications",      label: "Notifications & News",icon: MessageSquare,  module: "notifications"},
   ]},
 ];
 
@@ -113,10 +112,9 @@ export function AppSidebar({ open, onClose }: Props) {
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
           {visibleSections.map((sec) => {
             const items = sec.items.filter(it => {
+              // Role-specific items (e.g. Support Tickets only for school_admin)
               if (it.role && currentUser?.role !== it.role) return false;
-              if (it.module !== "support" && !schoolConfig.enabledModules.includes(it.module)) return false;
-              if (!schoolConfig.hasBoarding && (it.module === "boarding" || it.module === "leaves")) return false;
-              if (!schoolConfig.hasGateManagement && it.module === "gate") return false;
+              // All modules and boarding shown by default — backend enforces access
               return true;
             });
             if (items.length === 0) return null;

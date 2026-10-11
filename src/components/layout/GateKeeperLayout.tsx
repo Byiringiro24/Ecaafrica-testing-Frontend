@@ -2,15 +2,8 @@
 import { SuspendedBanner } from "@/components/layout/SuspendedBanner";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-  LayoutDashboard,
-  ClipboardList,
-  Users,
-  ShieldCheck,
-  Wifi,
-  Headphones,
-  LogOut,
-  Menu,
-  X,
+  LayoutDashboard, ClipboardList, Users, ShieldCheck,
+  Wifi, Headphones, LogOut, Menu, X, Bell,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
@@ -22,16 +15,18 @@ const NAV = [
   {
     section: "Main",
     items: [
-      { to: "/gate-keeper/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/gate-keeper/attendance", label: "Gate Attendance", icon: ClipboardList },
-      { to: "/gate-keeper/visitors", label: "Visitors", icon: Users },
-      {
-        to: "/gate-keeper/boarding-leave",
-        label: "Boarding Leave Verification",
-        icon: ShieldCheck,
-      },
-      { to: "/gate-keeper/device-status", label: "Device Status", icon: Wifi },
-      { to: "/gate-keeper/support", label: "Support Tickets", icon: Headphones },
+      { to: "/gate-keeper/dashboard",      label: "Dashboard",                   icon: LayoutDashboard },
+      { to: "/gate-keeper/attendance",     label: "Gate Attendance",             icon: ClipboardList   },
+      { to: "/gate-keeper/visitors",       label: "Visitors",                    icon: Users           },
+      { to: "/gate-keeper/boarding-leave", label: "Boarding Leave Verification", icon: ShieldCheck     },
+      { to: "/gate-keeper/device-status",  label: "Device Status",               icon: Wifi            },
+    ],
+  },
+  {
+    section: "Communication",
+    items: [
+      { to: "/notifications",              label: "Notifications & News",        icon: Bell            },
+      { to: "/gate-keeper/support",        label: "Support Tickets",             icon: Headphones      },
     ],
   },
 ];

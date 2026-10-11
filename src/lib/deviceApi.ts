@@ -124,10 +124,12 @@ export type UpdateTabletRequest = {
 };
 
 export type PushStudentsRequest = {
-  mode?: "selected" | "class" | "all";
+  mode?: "selected" | "class" | "section" | "all";
   student_ids?: (string | number)[];
   section_id?: string | number;
   class_id?: string | number;
+  student_type?: "boarding" | "day";
+  gender?: "male" | "female";
 };
 
 // Device API

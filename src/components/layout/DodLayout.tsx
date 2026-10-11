@@ -16,40 +16,58 @@ import {
   ShieldCheck,
   BedDouble,
   Cpu,
+  Bell,
 } from "lucide-react";
 import { clearSchoolAuth } from "@/lib/schoolAuth";
 import { cn } from "@/lib/utils";
 import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser";
 import logo from "@/assets/logo.png";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
+import { RoleSwitcher } from "@/components/RoleSwitcher";
 
 const NAV = [
   {
     section: "Operations",
     items: [
-      { to: "/dod/dashboard",    label: "Dashboard",           icon: LayoutDashboard },
-      { to: "/dod/leaves",       label: "Leave Management",    icon: CalendarDays },
-      { to: "/dod/gate-exits",   label: "Gate Exits",          icon: ShieldCheck },
-      { to: "/dod/attendance",   label: "Boarding Attendance", icon: ClipboardCheck },
-      { to: "/dod/dormitories",  label: "Dormitories & Rooms", icon: BedDouble },
-      { to: "/dod/patrons",      label: "Patrons & Matrons",   icon: Users },
-      { to: "/dod/devices",      label: "Device Locations",    icon: Cpu },
+      { to: "/dod/dashboard",           label: "Dashboard",              icon: LayoutDashboard },
+      { to: "/dod/leaves",              label: "Leave Management",       icon: CalendarDays    },
+      { to: "/dod/gate-exits",          label: "Gate Exits",             icon: ShieldCheck     },
+      { to: "/dod/dormitories",         label: "Dormitories & Rooms",    icon: BedDouble       },
+      { to: "/dod/patrons",             label: "Patrons & Matrons",      icon: Users           },
+    ],
+  },
+  {
+    section: "Attendance",
+    items: [
+      { to: "/dod/attendance",          label: "Attendance Config",       icon: ClipboardCheck  },
+      { to: "/boarding/attendance",     label: "Dormitory Attendance",    icon: ClipboardCheck  },
+    ],
+  },
+  {
+    section: "Devices",
+    items: [
+      { to: "/dod/devices",             label: "Device Locations",        icon: Cpu             },
+      { to: "/boarding/device-sessions",label: "Device Sessions",         icon: ClipboardCheck  },
     ],
   },
   {
     section: "Dining",
     items: [
-      { to: "/dod/dining",       label: "Dining Management",   icon: Utensils },
-      { to: "/attendance/dining-reports", label: "Submitted Dining Reports", icon: ClipboardCheck },
+      { to: "/dod/dining",              label: "Dining Management",       icon: Utensils        },
+      { to: "/attendance/dining-reports",label:"Dining Reports",          icon: BarChart3       },
     ],
   },
   {
     section: "Admin",
     items: [
-      { to: "/dod/alerts",       label: "Alerts & Exceptions", icon: AlertTriangle },
-      { to: "/dod/reports",      label: "Boarding Reports",    icon: BarChart3 },
-      { to: "/staff/management", label: "Staff Management",    icon: Users },
-      { to: "/dod/config",       label: "Configuration",       icon: Settings },
+      { to: "/dod/alerts",              label: "Alerts & Exceptions",     icon: AlertTriangle   },
+      { to: "/dod/reports",             label: "Boarding Reports",        icon: BarChart3       },
+    ],
+  },
+  {
+    section: "Communication",
+    items: [
+      { to: "/notifications",           label: "Notifications & News",    icon: Bell            },
     ],
   },
 ];
@@ -147,9 +165,9 @@ export function DodLayout({
             >
               <LogOut className="h-4 w-4" />
             </button>
-          {/* Role switcher — visible when user has multiple roles */}
-          <div className="mt-2">
           </div>
+          <div className="mt-2">
+            <RoleSwitcher compact />
           </div>
         </div>
       </aside>

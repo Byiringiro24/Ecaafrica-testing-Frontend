@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { deviceLocationApi } from "@/lib/boardingApi";
 import { cn } from "@/lib/utils";
+import { isDeviceOnline } from "@/components/ui-kit/DeviceStatusCards";
 
 export const Route = createFileRoute("/dod/devices")({
   beforeLoad: ({ location }) => directorOfDisciplineRouteGuard(location),
@@ -225,8 +226,8 @@ function DodDevicesPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm">{d.name}</span>
                       <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold",
-                        d.is_connected ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
-                        {d.is_connected ? "Online" : "Offline"}
+                        isDeviceOnline(d) ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
+                        {isDeviceOnline(d) ? "Online" : "Offline"}
                       </span>
                       {d.location_scope ? (
                         <span className="rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-[10px] font-bold capitalize">

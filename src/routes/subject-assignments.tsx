@@ -15,7 +15,13 @@ export const Route = createFileRoute("/subject-assignments")({
   component: SubjectAssignmentsPage,
 });
 
-type TeacherRecord = { id: string; name: string; email?: string | null; role: string };
+type TeacherRecord = {
+  id: string;
+  name: string;
+  email?: string | null;
+  role: string;
+  roles?: { slug: string }[];
+};
 type SectionRecord = { id: string; name: string; full_name: string };
 type SubjectRecord = { id: string; name: string; code?: string | null; is_active: boolean };
 type CombinationRecord = { id: string; code: string; name: string; subjects?: { id: string; name: string; code?: string | null }[] };
@@ -56,7 +62,13 @@ function SubjectAssignmentsPage() {
           apiRequest<SubjectRecord[]>("/subjects?limit=500", { auth: "school" }),
           apiRequest<CombinationRecord[]>("/combinations?limit=500", { auth: "school" }),
         ]);
-        setTeachers((userList ?? []).filter((user) => user.role === "teacher"));
+        // `/users?role=teacher` includes users whose teacher role is secondary
+        // (for example a finance officer who was also assigned teaching duties).
+        // Keep those users in the picker; timetable access is unrelated to
+        // whether someone can be assigned a subject.
+        setTeachers((userList ?? []).filter((user) =>
+          user.role === "teacher" || user.roles?.some((role) => role.slug === "teacher")
+        ));
         setSections(sectionList ?? []);
         setSubjects(subjectList ?? []);
         setCombinations(combinationList ?? []);

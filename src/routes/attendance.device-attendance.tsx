@@ -16,6 +16,37 @@ export const Route = createFileRoute("/attendance/device-attendance")({
 
 const PAGE_SIZE = 25;
 
+/**
+ * Determine if a device log scan is a "check-in" (entry) or "check-out" (exit)
+ * based on the session name or direction field.
+ *
+ * Most FK623 gate setups use a SINGLE device for both entry and exit.
+ * The session name (from device session config) tells us which window it belongs to.
+ * This is more reliable than the raw direction field which often shows "In" for all scans.
+ */
+const classifyDirection = (log: DeviceLog): "In" | "Out" => {
+  const session = (log.sessionName ?? log.statusLabel ?? "").toLowerCase().trim();
+  const direction = (log.direction ?? "").toLowerCase();
+
+  // Explicit direction from device — trust it if meaningful
+  if (direction === "out" || direction === "exit") return "Out";
+  if (direction === "in" || direction === "entry") {
+    // But also check session name — some devices set direction="In" for everything
+    // while the session name reveals it's actually an exit window
+  }
+
+  // Session name patterns for EXIT windows
+  const exitPatterns = /exit|out|departure|evening|prep|afternoon|leave\b|end of day|dismissal/i;
+  if (exitPatterns.test(session)) return "Out";
+
+  // Session name patterns for ENTRY windows
+  const entryPatterns = /entry|arrival|morning|check.?in|school in|gate in|open/i;
+  if (entryPatterns.test(session)) return "In";
+
+  // Default: treat as In (most gate devices are entry-only)
+  return "In";
+};
+
 const METHOD_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "all", label: "All Methods" },
   { value: "fingerprint", label: "Fingerprint" },
@@ -56,7 +87,13 @@ const studentKey = (log: DeviceLog) => {
   return name ? `name:${name}` : `log:${log.id}`;
 };
 
-/** Collapse raw device scans into one first-in/last-out row per student. */
+/** Collapse raw device scans into one first-in/last-out row per student.
+ *
+ * Check-in and check-out are determined by the device session the scan belongs to,
+ * not the raw direction field (which the FK623 often sets to "In" for all scans).
+ * Sessions named "Morning / Entry / Arrival" = check-in.
+ * Sessions named "Evening / Exit / Prep / Afternoon" = check-out.
+ */
 const summarizeDeviceLogs = (source: DeviceLog[]): DeviceAttendanceRow[] => {
   const grouped = new Map<string, DeviceLog[]>();
 
@@ -72,12 +109,22 @@ const summarizeDeviceLogs = (source: DeviceLog[]): DeviceAttendanceRow[] => {
       const chronological = entries
         .slice()
         .sort((a, b) => timestampValue(a.timestamp) - timestampValue(b.timestamp));
+
       const firstScan = chronological[0];
-      const firstIn = chronological.find((log) => log.direction === "In") ?? firstScan;
-      const explicitOuts = chronological.filter((log) => log.direction === "Out");
-      // Some device exports mark every scan as entry. Keep the latest scan as
-      // the best available last-out value instead of losing it.
-      const lastOut = explicitOuts.at(-1) ?? (chronological.length > 1 ? chronological.at(-1) : null);
+
+      // Classify each scan using session name → direction
+      const inScans  = chronological.filter(log => classifyDirection(log) === "In");
+      const outScans = chronological.filter(log => classifyDirection(log) === "Out");
+
+      const firstIn = inScans[0] ?? firstScan;
+      // Last-out: prefer an explicit exit-session scan; fall back to last scan
+      // ONLY if it is a different scan from firstIn (avoids same-time issue)
+      const lastOut = outScans.length > 0
+        ? outScans[outScans.length - 1]
+        : chronological.length > 1
+          ? chronological[chronological.length - 1]
+          : null;  // single scan = no exit recorded
+
       const statuses = chronological.map((log) => log.status.toLowerCase());
       const status = statuses.some((value) => ["present", "excused", "still at school"].includes(value))
         ? "Present"
@@ -94,7 +141,10 @@ const summarizeDeviceLogs = (source: DeviceLog[]): DeviceAttendanceRow[] => {
         direction: "In" as const,
         timestamp: firstIn.timestamp,
         firstInTimestamp: firstIn.timestamp ?? null,
-        lastOutTimestamp: lastOut?.timestamp ?? null,
+        // Only set lastOut if it's a genuinely different scan (different timestamp)
+        lastOutTimestamp: lastOut && lastOut.timestamp !== firstIn.timestamp
+          ? lastOut.timestamp ?? null
+          : null,
       };
     })
     .sort((a, b) =>
@@ -288,7 +338,7 @@ function DeviceAttendancePage() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
               <tr>
-                {["#", "Student", "Class", "Status", "First In", "Last Out", "Scan Method"].map((header) => (
+                {["#", "Student", "Class", "Status", "Check In", "Check Out", "Session", "Scan Method"].map((header) => (
                   <th key={header} className="text-left px-4 py-3 whitespace-nowrap">
                     {header}
                   </th>
@@ -298,13 +348,13 @@ function DeviceAttendancePage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                     Loading device attendance records…
                   </td>
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                     No device attendance records found for the selected filters.
                   </td>
                 </tr>
@@ -330,7 +380,15 @@ function DeviceAttendancePage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">{formatTime(row.firstInTimestamp)}</td>
-                    <td className="px-4 py-3 whitespace-nowrap">{formatTime(row.lastOutTimestamp)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {row.lastOutTimestamp
+                        ? formatTime(row.lastOutTimestamp)
+                        : <span className="text-muted-foreground text-xs">Not recorded</span>
+                      }
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">
+                      {row.sessionName ?? "—"}
+                    </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                         {row.method}

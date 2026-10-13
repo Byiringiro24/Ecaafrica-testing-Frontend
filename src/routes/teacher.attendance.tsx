@@ -479,6 +479,47 @@ function TeacherAttendance() {
   const manualAllMarked =
     manualStudents.length > 0 && manualStudents.every((student) => manualMarks[student.id]);
 
+  const submitManualAttendanceLegacy = async (
+    records: Array<{ student_id: string; status: ApiStatus }>
+  ) => {
+    let sessionId = manualSessionId;
+    let session: ApiSession | null = null;
+
+    if (!sessionId) {
+      session = await apiRequest<ApiSession>("/attendance/sessions", {
+        method: "POST",
+        auth: "school",
+        body: JSON.stringify({
+          section_id: manualSectionId,
+          teacher_id: teacherId,
+          ...(manualSubjectId ? { subject_id: manualSubjectId } : {}),
+          ...(manualPeriodId ? { period_id: manualPeriodId } : {}),
+          session_date: manualDate,
+          session_type: "class",
+          started_at: new Date().toISOString()
+        })
+      });
+      sessionId = session.id;
+    }
+
+    await apiRequest("/attendance/records/bulk", {
+      method: "POST",
+      auth: "school",
+      body: JSON.stringify({
+        session_id: sessionId,
+        scan_method: "manual",
+        records
+      })
+    });
+
+    await apiRequest(`/attendance/sessions/${sessionId}/close`, {
+      method: "PATCH",
+      auth: "school"
+    });
+
+    return { session: session ?? ({ id: sessionId } as ApiSession), records: [] as ApiRecord[] };
+  };
+
   const submitManualAttendance = async () => {
     if (manualSubmitInFlight.current) return;
 
@@ -495,29 +536,7 @@ function TeacherAttendance() {
     manualSubmitInFlight.current = true;
     setManualSaving(true);
     try {
-      let sessionId = manualSessionId;
-      if (!sessionId) {
-        // Always send teacher_id so the backend's findOrCreate scopes
-        // this session to THIS teacher — two teachers can both record
-        // attendance for the same class/period/subject independently.
-        const session = await apiRequest<ApiSession>("/attendance/sessions", {
-          method: "POST",
-          auth: "school",
-          body: JSON.stringify({
-            section_id: manualSectionId,
-            teacher_id: teacherId,
-            ...(manualSubjectId ? { subject_id: manualSubjectId } : {}),
-            ...(manualPeriodId ? { period_id: manualPeriodId } : {}),
-            session_date: manualDate,
-            session_type: "class",
-            started_at: new Date().toISOString()
-          })
-        });
-        sessionId = session.id;
-        setManualSessionId(sessionId);
-      }
-
-      const payload = Array.from(
+      const submitPayload = Array.from(
         new Map(
           manualStudents.map((student) => [student.id, {
             student_id: student.id,
@@ -526,21 +545,35 @@ function TeacherAttendance() {
         ).values()
       );
 
-      await apiRequest("/attendance/records/bulk", {
-        method: "POST",
-        auth: "school",
-        body: JSON.stringify({
-          session_id: sessionId,
-          scan_method: "manual",
-          records: payload
-        })
-      });
+      // Create/find the session and upsert its records in one request. The
+      // backend scopes the session by teacher + period + subject + section +
+      // date, so two teachers can submit different periods on the same day.
+      let result: { session: ApiSession; records: ApiRecord[] };
+      try {
+        result = await apiRequest<{ session: ApiSession; records: ApiRecord[] }>(
+          "/attendance/records/submit",
+          {
+            method: "POST",
+            auth: "school",
+            body: JSON.stringify({
+              section_id: manualSectionId,
+              date: manualDate,
+              teacher_id: teacherId,
+              ...(manualSubjectId ? { subject_id: manualSubjectId } : {}),
+              ...(manualPeriodId ? { period_id: manualPeriodId } : {}),
+              records: submitPayload
+            })
+          }
+        );
+      } catch (error: any) {
+        // Keep the teacher workflow usable while an older backend instance is
+        // still serving traffic. The current endpoint is preferred because it
+        // performs find/create + record upserts in one request.
+        if (error?.status !== 404 || error?.code !== "not_found") throw error;
+        result = await submitManualAttendanceLegacy(submitPayload);
+      }
 
-      await apiRequest(`/attendance/sessions/${sessionId}/close`, {
-        method: "PATCH",
-        auth: "school"
-      });
-
+      setManualSessionId(result.session.id);
       setManualSubmitted(true);
       toast.success("Attendance submitted");
       setSectionFilter(manualSectionId);

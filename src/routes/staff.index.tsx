@@ -109,6 +109,7 @@ type StaffRow = {
   basicSalary: string;
   assignedClasses: string[];
   assignedSectionIds: string[];
+  roles?: Array<{ slug: string }>;  // secondary roles from user_roles join
 };
 
 const TABS = ["All Staff", "Departments"] as const;
@@ -225,6 +226,7 @@ const buildStaffRows = (
       basicSalary: profile.basic_salary ?? EMPTY_VALUE,
       assignedClasses: assignment?.classNames ?? [],
       assignedSectionIds: assignment?.sectionIds ?? [],
+      roles: (user as any)?.roles ?? [],
     };
   });
 };
@@ -259,7 +261,12 @@ function StaffPage() {
     () => staffRows.filter((staff) => staff.statusValue !== "inactive"),
     [staffRows]
   );
-  const teacherRows = useMemo(() => visibleStaffRows.filter((staff) => staff.roleValue === "teacher"), [visibleStaffRows]);
+  const teacherRows = useMemo(() =>
+    visibleStaffRows.filter((staff) =>
+      // Include users whose primary role is teacher OR who have teacher as a secondary role
+      staff.roleValue === "teacher" ||
+      (staff.roles ?? []).some((r: any) => (r.slug ?? r) === "teacher")
+    ), [visibleStaffRows]);
 
   const departmentOptions = useMemo(() => {
     const derived = visibleStaffRows.map((staff) => staff.department);

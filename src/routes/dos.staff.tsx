@@ -26,7 +26,12 @@ function DosStaffPage() {
     apiRequest<StaffRecord[]>("/users?limit=500&role=teacher,staff", { auth: "school" })
       .then(d => {
         const list = Array.isArray(d) ? d : (d as any)?.data ?? [];
-        setStaff(list.filter((s: StaffRecord) => ["teacher", "staff"].includes(s.role?.toLowerCase() ?? "")));
+        // Include users whose primary role is teacher/staff OR who have it as secondary role
+        setStaff(list.filter((s: StaffRecord) => {
+          const primary = (s.role ?? "").toLowerCase();
+          const secondary = ((s as any).roles ?? []).map((r: any) => (r.slug ?? r).toLowerCase());
+          return ["teacher", "staff"].includes(primary) || secondary.some((r: string) => ["teacher", "staff"].includes(r));
+        }));
       })
       .catch(e => toast.error(e?.message ?? "Failed to load staff"))
       .finally(() => setLoading(false));

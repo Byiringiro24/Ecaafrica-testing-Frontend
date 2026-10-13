@@ -63,11 +63,10 @@ function SubjectAssignmentsPage() {
           apiRequest<CombinationRecord[]>("/combinations?limit=500", { auth: "school" }),
         ]);
         // `/users?role=teacher` includes users whose teacher role is secondary
-        // (for example a finance officer who was also assigned teaching duties).
-        // Keep those users in the picker; timetable access is unrelated to
-        // whether someone can be assigned a subject.
+        // (e.g. a patron or finance officer also assigned teaching duties).
+        // Keep those users in all teacher pickers — timetable access is unrelated.
         setTeachers((userList ?? []).filter((user) =>
-          user.role === "teacher" || user.roles?.some((role) => role.slug === "teacher")
+          user.role === "teacher" || (user.roles ?? []).some((r: any) => (r.slug ?? r) === "teacher")
         ));
         setSections(sectionList ?? []);
         setSubjects(subjectList ?? []);
@@ -241,6 +240,33 @@ function SubjectAssignmentsPage() {
       title="Subject Assignments"
       subtitle="Assign teachers to the classes and subjects they will grade"
     >
+      {/* A-Level combinations info panel */}
+      {combinations.length > 0 && (
+        <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <h3 className="text-sm font-semibold text-blue-800 mb-2">
+            A-Level Subject Combinations ({combinations.length})
+          </h3>
+          <p className="text-xs text-blue-700 mb-3">
+            Students are uploaded with their combination code. Each combination defines which subjects
+            that student studies. Assign a teacher per combination-subject below.
+            To view which students have each combination, go to <b>Students</b> and filter by combination.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {combinations.map(c => (
+              <div key={c.id} className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs">
+                <span className="font-bold text-blue-700">{c.code}</span>
+                <span className="text-blue-500 mx-1">—</span>
+                <span className="text-blue-800">{c.name}</span>
+                {c.subjects && c.subjects.length > 0 && (
+                  <span className="text-blue-500 ml-1">
+                    ({c.subjects.map(s => s.name).join(", ")})
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="mb-5 rounded-xl border border-border bg-card p-4">
         <div className="flex items-center justify-between mb-2">
           <label className="text-sm font-medium">Teacher</label>

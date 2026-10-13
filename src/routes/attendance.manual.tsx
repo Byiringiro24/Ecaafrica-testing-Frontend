@@ -39,7 +39,7 @@ type PeriodRecord = {
   end_time?: string;
   is_break?: boolean;
 };
-type TeacherRecord = { id: string; name: string };
+type TeacherRecord = { id: string; name: string; role?: string; roles?: Array<{ slug: string }> };
 type SubjectRecord = { id: string; name: string; code?: string | null };
 
 type ApiStudent = {
@@ -873,7 +873,13 @@ function ManualAttendancePage() {
 
           <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-border flex flex-wrap gap-2 items-center justify-between">
-              <h3 className="font-display font-bold">Manual Attendance — {todayLabel}</h3>
+              <div>
+                <h3 className="font-display font-bold">Manual Attendance — {todayLabel}</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Each row is one student's mark. If two teachers both marked the same class in the same period,
+                  both sets of records appear — each teacher's session is kept separately in history.
+                </p>
+              </div>
               <div className="text-xs text-muted-foreground space-x-3">
                 <span>Total: <b className="text-foreground">{counts.total}</b></span>
                 <span>Present: <b className="text-success">{counts.present}</b></span>
@@ -968,6 +974,13 @@ function ManualAttendancePage() {
 
       {tab === "manual" && (
         <>
+          {/* Timing note — Time In column shows when teacher saved marks, not bell time */}
+          <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs text-blue-800">
+            <b>Note:</b> The "Time In" column shows when the teacher submitted attendance for each student — it is the
+            actual save time, not the period bell time. Device (biometric) attendance uses session time windows for
+            automatic status; manual attendance does not. If two different teachers mark the same class in the same
+            period, both sessions are preserved separately so neither teacher's records are lost.
+          </div>
           <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap gap-3 items-end mb-5">
             <div>
               <label className="text-xs font-semibold text-muted-foreground">Class</label>

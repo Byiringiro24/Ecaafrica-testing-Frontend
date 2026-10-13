@@ -102,7 +102,11 @@ type DeviceRecord = {
   mode?: string | null;
   type?: string | null;
   is_active?: boolean;
+  is_online?: boolean;
+  is_connected?: boolean;
   last_seen_at?: string | null;
+  last_sync_status?: string | null;
+  last_sync_error?: string | null;
 };
 
 const deviceStatusLabel = (status?: string | null): RecentCheckin["status"] => {
@@ -242,15 +246,21 @@ function DashboardPage() {
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const pct = (n: number) => (counts.total ? ((n / counts.total) * 100).toFixed(0) : "0");
 
-  const activeDevices = devices.filter((device) => device.is_active !== false);
-  const offlineDevices = devices.filter((device) => device.is_active === false);
+  const activeDevices = devices.filter((device) => {
+    // Use real connectivity: is_online → is_connected → last_seen_at < 90s
+    if (device.is_online === true || device.is_connected === true) return true;
+    if (device.is_online === false || device.is_connected === false) return false;
+    if (device.last_seen_at) return Date.now() - new Date(device.last_seen_at).getTime() < 90_000;
+    return false;
+  });
+  const offlineDevices = devices.filter((device) => !activeDevices.includes(device));
 
   const deviceLocationRows = Array.from(
     devices.reduce((acc, device) => {
       const key = (device.location?.trim() || device.mode?.trim() || "Unknown location").toLowerCase();
       const current = acc.get(key) ?? { label: device.location?.trim() || device.mode?.trim() || "Unknown location", active: 0, offline: 0 };
-      if (device.is_active === false) current.offline += 1;
-      else current.active += 1;
+      const online = activeDevices.includes(device);
+      if (online) current.active += 1; else current.offline += 1;
       acc.set(key, current);
       return acc;
     }, new Map<string, { label: string; active: number; offline: number }>()

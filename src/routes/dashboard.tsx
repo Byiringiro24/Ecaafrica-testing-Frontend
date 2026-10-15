@@ -477,7 +477,7 @@ function DashboardPage() {
           </div>
 
           <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 mt-6">
-            <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <div className="hidden rounded-xl border border-border bg-card p-5 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-display font-bold text-lg">This Week's Attendance</h3>
                 <span className="text-xs text-muted-foreground">Mon – Fri</span>

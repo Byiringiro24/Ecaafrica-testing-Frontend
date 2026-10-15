@@ -465,12 +465,12 @@ function DashboardPage() {
       ) : (
         <>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Total Students" value={counts.total} icon={<Users className="h-5 w-5" />} trend="" tone="primary" />
-            <StatCard label="Present Today" value={counts.present} icon={<CheckCircle2 className="h-5 w-5" />} trend={`${pct(counts.present)}% of total`} tone="success" />
-            <StatCard label="Absent Today" value={counts.absent} icon={<XCircle className="h-5 w-5" />} trend={`${pct(counts.absent)}% of total`} tone="destructive" />
-            <StatCard label="Late Arrivals" value={counts.late} icon={<Clock className="h-5 w-5" />} trend={`${pct(counts.late)}% of total`} tone="warning" />
-            <StatCard label="Total Present Students" value={counts.present} icon={<CheckCircle2 className="h-5 w-5" />} trend="Entry device attendance" tone="success" />
-            <StatCard label="Total Present Students" value={counts.eveningPresent} icon={<Moon className="h-5 w-5" />} trend="Exit device attendance" tone="primary" />
+            <StatCard label="Total Students" value={counts.total} icon={<Users className="h-5 w-5" />} trend="" tone="primary" className="hidden" />
+            <StatCard label="Present Today" value={counts.present} icon={<CheckCircle2 className="h-5 w-5" />} trend={`${pct(counts.present)}% of total`} tone="success" className="hidden" />
+            <StatCard label="Absent Today" value={counts.absent} icon={<XCircle className="h-5 w-5" />} trend={`${pct(counts.absent)}% of total`} tone="destructive" className="hidden" />
+            <StatCard label="Late Arrivals" value={counts.late} icon={<Clock className="h-5 w-5" />} trend={`${pct(counts.late)}% of total`} tone="warning" className="hidden" />
+            <StatCard label="Total Present Students" value={counts.present} icon={<CheckCircle2 className="h-5 w-5" />} trend="Entry device attendance" tone="success" className="hidden" />
+            <StatCard label="Total Present Students" value={counts.eveningPresent} icon={<Moon className="h-5 w-5" />} trend="Exit device attendance" tone="primary" className="hidden" />
             <StatCard label="Teachers Taking Attendance" value={classAttendance.teachers} icon={<GraduationCap className="h-5 w-5" />} trend="Class attendance today" tone="primary" />
             <StatCard label="Class Present Attendance" value={classAttendance.present} icon={<ClipboardCheck className="h-5 w-5" />} trend="Student records marked present" tone="success" />
             <StatCard label="Class Absent Attendance" value={classAttendance.absent} icon={<ClipboardX className="h-5 w-5" />} trend="Student records marked absent" tone="destructive" />

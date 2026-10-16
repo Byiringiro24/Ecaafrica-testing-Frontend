@@ -1,25 +1,15 @@
 /**
  * Device Management — School Admin
- *
- * Layout:
- *   Left sidebar: scrollable device list (any number of devices)
- *   Right panel: horizontal tab navigation
- *     Tab 1 — Overview:     Status, FK623 metrics, device assignment, attendance sessions
- *     Tab 2 — Push/Remove:  Push students (all/boarding/day/class/section) + remove students
- *     Tab 3 — Users:        Enrolled users on device — search, filter, delete individual
- *     Tab 4 — Scans:        Attendance logs — all filters (class/section/gender/type/dormitory/session/method/status/search)
- *     Tab 5 — Reports:      Summary stats + Excel export
- *
- * All dropdowns (classes, sections, dormitories, sessions) come from the school's
- * real data — nothing is hardcoded.
+ * Professional layout with left device sidebar + tabbed right panel.
+ * Everything comes from real school data — no hardcoded values.
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   RefreshCw, Wifi, WifiOff, Upload, Download, Clock, Users, Activity,
   Fingerprint, Smile, CreditCard, HardDrive, Trash2, Plus, MapPin,
   Zap, ZapOff, AlertTriangle, ChevronDown, ChevronUp, Check, X,
-  Shield, Search, Key, RotateCcw, ChevronRight, Filter, FileSpreadsheet,
-  BarChart3, Settings2,
+  Shield, Search, Key, RotateCcw, ChevronRight, Filter,
+  FileSpreadsheet, BarChart3, Info, Circle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { apiRequest } from "@/lib/api";
@@ -45,8 +35,8 @@ type DeviceSession= { id: string; name: string; is_active: boolean; activated_at
 const fmtTime = (ts?: string | null) => { if (!ts) return "—"; const d = new Date(ts); return isNaN(d.getTime()) ? "—" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }); };
 const fmtFull = (ts?: string | null) => { if (!ts) return "—"; const d = new Date(ts); return isNaN(d.getTime()) ? "—" : d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); };
 const isLiveOnline = (d?: Device | null) => { if (!d) return false; if (d.last_seen_at && Date.now() - new Date(d.last_seen_at).getTime() < 90_000) return true; return Boolean(d.is_connected || d.is_online || d.status === "online"); };
-const scopeColor  = (s?: string) => { if (s === "gate") return "bg-emerald-100 text-emerald-700"; if (s === "dormitory") return "bg-blue-100 text-blue-700"; if (s === "dining_hall") return "bg-amber-100 text-amber-700"; if (s === "classroom") return "bg-violet-100 text-violet-700"; return "bg-muted text-muted-foreground"; };
-const statusPill  = (s: string) => { const l = (s ?? "").toLowerCase(); if (l === "present") return "bg-success/15 text-success"; if (l === "late") return "bg-amber-100 text-amber-700"; if (l === "absent") return "bg-destructive/15 text-destructive"; return "bg-muted text-muted-foreground"; };
+const scopeColor  = (s?: string) => { if (s === "gate") return "bg-emerald-100 text-emerald-700 border-emerald-200"; if (s === "dormitory") return "bg-blue-100 text-blue-700 border-blue-200"; if (s === "dining_hall") return "bg-amber-100 text-amber-700 border-amber-200"; if (s === "classroom") return "bg-violet-100 text-violet-700 border-violet-200"; return "bg-gray-100 text-gray-600 border-gray-200"; };
+const statusPill  = (s: string) => { const l = (s ?? "").toLowerCase(); if (l === "present") return "bg-green-100 text-green-700"; if (l === "late") return "bg-amber-100 text-amber-700"; if (l === "absent") return "bg-red-100 text-red-700"; return "bg-gray-100 text-gray-600"; };
 
 const LOGS_PER_PAGE  = 25;
 const STATUS_POLL_MS = 15_000;
@@ -59,31 +49,53 @@ const SCOPES = [
   { value: "other",       label: "Other"                 },
 ];
 
-const TABS: { id: Tab; label: string; icon: typeof Activity }[] = [
-  { id: "overview", label: "Overview",        icon: Activity      },
-  { id: "push",     label: "Push / Remove",   icon: Upload        },
-  { id: "users",    label: "Enrolled Users",  icon: Users         },
-  { id: "scans",    label: "Attendance Scans",icon: BarChart3     },
-  { id: "reports",  label: "Reports & Export",icon: FileSpreadsheet},
+const TABS: { id: Tab; label: string; icon: typeof Activity; desc: string }[] = [
+  { id: "overview", label: "Overview",         icon: Activity,       desc: "Status, assignment, sessions" },
+  { id: "push",     label: "Push / Remove",    icon: Upload,         desc: "Manage student enrollment" },
+  { id: "users",    label: "Enrolled Users",   icon: Users,          desc: "View & manage device users" },
+  { id: "scans",    label: "Attendance Scans", icon: BarChart3,      desc: "View & filter scan logs" },
+  { id: "reports",  label: "Reports & Export", icon: FileSpreadsheet,desc: "Export attendance data" },
 ];
 
-// ─── Collapsible section ─────────────────────────────────────────────────────
-function Section({ title, icon: Icon, children, defaultOpen = true, badge, danger = false }: {
-  title: string; icon: typeof Upload; children: React.ReactNode;
-  defaultOpen?: boolean; badge?: React.ReactNode; danger?: boolean;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
+// ─── Card wrapper ─────────────────────────────────────────────────────────────
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`rounded-xl border border-border bg-card shadow-sm overflow-hidden ${className}`}>{children}</div>;
+}
+function CardHeader({ title, subtitle, icon: Icon, action, badge }: { title: string; subtitle?: string; icon?: typeof Activity; action?: React.ReactNode; badge?: React.ReactNode }) {
   return (
-    <div className={`rounded-xl border overflow-hidden ${danger ? "border-destructive/30" : "border-border"} bg-card`}>
-      <button onClick={() => setOpen(o => !o)} className={`flex w-full items-center justify-between px-5 py-3.5 hover:bg-muted/30 transition-colors text-left ${danger ? "bg-destructive/5" : ""}`}>
-        <span className="flex items-center gap-2 font-semibold text-sm">
-          <Icon className={`h-4 w-4 shrink-0 ${danger ? "text-destructive" : "text-primary"}`} />
+    <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+      <div className="flex items-center gap-2.5 min-w-0">
+        {Icon && <div className="rounded-lg bg-primary/10 p-1.5 shrink-0"><Icon className="h-4 w-4 text-primary" /></div>}
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">{badge}<h3 className="font-semibold text-sm">{title}</h3></div>
+          {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+        </div>
+      </div>
+      {action && <div className="shrink-0 ml-3">{action}</div>}
+    </div>
+  );
+}
+
+// ─── Collapsible ─────────────────────────────────────────────────────────────
+function Collapse({ title, icon: Icon, children, open: controlledOpen, onToggle, badge, danger = false, defaultOpen = false }: {
+  title: string; icon: typeof Activity; children: React.ReactNode;
+  open?: boolean; onToggle?: () => void;
+  badge?: React.ReactNode; danger?: boolean; defaultOpen?: boolean;
+}) {
+  const [internalOpen, setInternalOpen] = useState(defaultOpen);
+  const isOpen   = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const doToggle = onToggle ?? (() => setInternalOpen(o => !o));
+  return (
+    <Card className={danger ? "border-red-200" : ""}>
+      <button onClick={doToggle} className={`w-full flex items-center justify-between px-5 py-3.5 hover:bg-muted/20 transition-colors text-left ${danger ? "bg-red-50/50" : ""}`}>
+        <span className="flex items-center gap-2.5 font-semibold text-sm">
+          <Icon className={`h-4 w-4 shrink-0 ${danger ? "text-red-500" : "text-primary"}`} />
           {title}{badge}
         </span>
-        {open ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+        {isOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
       </button>
-      {open && <div className="border-t border-border px-5 py-4">{children}</div>}
-    </div>
+      {isOpen && <div className="px-5 py-5 border-t border-border">{children}</div>}
+    </Card>
   );
 }
 
@@ -97,7 +109,7 @@ export default function DeviceManagement() {
   const [statusLoading, setStatusLoading] = useState(false);
   const statusFlight = useRef(false);
 
-  // Reference data — school-specific, loaded from API
+  // Reference data from school API
   const [classes,     setClasses]     = useState<ClassRecord[]>([]);
   const [sections,    setSections]    = useState<SectionRecord[]>([]);
   const [dormitories, setDormitories] = useState<Dormitory[]>([]);
@@ -134,32 +146,32 @@ export default function DeviceManagement() {
   const [assigning, setAssigning] = useState(false);
 
   // Logs + filters
-  const [logs,           setLogs]           = useState<DeviceLog[]>([]);
-  const [logsLoad,       setLogsLoad]       = useState(false);
-  const [logsDate,       setLogsDate]       = useState(localDateInputValue);
-  const [logsPage,       setLogsPage]       = useState(1);
-  const [logsMeta,       setLogsMeta]       = useState({ total: 0, totalPages: 1 });
-  const [fSearch,        setFSearch]        = useState("");
-  const [fStatus,        setFStatus]        = useState("");
-  const [fMethod,        setFMethod]        = useState("");
-  const [fClass,         setFClass]         = useState("");
-  const [fSection,       setFSection]       = useState("");
-  const [fDirection,     setFDirection]     = useState("");
-  const [fSession,       setFSession]       = useState("");
-  const [fGender,        setFGender]        = useState("");
-  const [fStudentType,   setFStudentType]   = useState("");
-  const [fDormitory,     setFDormitory]     = useState("");
-  const [debouncedQ,     setDebouncedQ]     = useState("");
-  const [clientStudentIds, setClientStudentIds] = useState<Set<string> | null>(null);
-  const [clientFiltLoading, setClientFiltLoading] = useState(false);
+  const [logs,            setLogs]            = useState<DeviceLog[]>([]);
+  const [logsLoad,        setLogsLoad]        = useState(false);
+  const [logsDate,        setLogsDate]        = useState(localDateInputValue);
+  const [logsPage,        setLogsPage]        = useState(1);
+  const [logsMeta,        setLogsMeta]        = useState({ total: 0, totalPages: 1 });
+  const [fSearch,         setFSearch]         = useState("");
+  const [fStatus,         setFStatus]         = useState("");
+  const [fMethod,         setFMethod]         = useState("");
+  const [fClass,          setFClass]          = useState("");
+  const [fSection,        setFSection]        = useState("");
+  const [fDirection,      setFDirection]      = useState("");
+  const [fSession,        setFSession]        = useState("");
+  const [fGender,         setFGender]         = useState("");
+  const [fStudentType,    setFStudentType]     = useState("");
+  const [fDormitory,      setFDormitory]       = useState("");
+  const [debouncedQ,      setDebouncedQ]       = useState("");
+  const [clientStudentIds,   setClientStudentIds]   = useState<Set<string> | null>(null);
+  const [clientFiltLoading,  setClientFiltLoading]  = useState(false);
 
   // Reports
-  const [reportDate,    setReportDate]    = useState(localDateInputValue);
-  const [exporting,     setExporting]     = useState(false);
+  const [reportDate, setReportDate] = useState(localDateInputValue);
+  const [exporting,  setExporting]  = useState(false);
 
   useEffect(() => { const t = setTimeout(() => { setDebouncedQ(fSearch); setLogsPage(1); }, 350); return () => clearTimeout(t); }, [fSearch]);
 
-  // ── Loaders ──────────────────────────────────────────────────────────────
+  // ── Loaders ───────────────────────────────────────────────────────────────
   const loadDevices = useCallback(async () => {
     setDevLoading(true);
     try {
@@ -203,10 +215,7 @@ export default function DeviceManagement() {
       if (fStudentType) params.set("student_type", fStudentType);
       const res = await apiRequest<any>(`/students?${params}`, { auth: "school" });
       let list: any[] = Array.isArray(res) ? res : res?.data ?? [];
-      if (fDormitory) list = list.filter((s: any) => {
-        const dorms: any[] = s.student_dorm_assignments ?? [];
-        return dorms.some((d: any) => String(d.dormitory_id ?? d.id) === fDormitory);
-      });
+      if (fDormitory) list = list.filter((s: any) => (s.student_dorm_assignments ?? []).some((d: any) => String(d.dormitory_id ?? d.id) === fDormitory));
       return new Set(list.map((s: any) => String(s.student_id_number ?? s.id)));
     } catch { return null; }
     finally { setClientFiltLoading(false); }
@@ -221,12 +230,9 @@ export default function DeviceManagement() {
       const res = await fetchDeviceLogs({
         deviceId: selectedId, startDate: logsDate, endDate: logsDate,
         page: logsPage, limit: LOGS_PER_PAGE,
-        search: debouncedQ || undefined,
-        status: fStatus    || undefined,
-        method: fMethod    || undefined,
-        className: fClass  || undefined,
-        section: fSection  || undefined,
-        direction: fDirection || undefined,
+        search: debouncedQ || undefined, status: fStatus || undefined,
+        method: fMethod || undefined, className: fClass || undefined,
+        section: fSection || undefined, direction: fDirection || undefined,
       });
       let data = res.data as any[];
       if (fSession) data = data.filter(l => (l.sessionName ?? (l as any).attendance_period ?? "").toLowerCase().includes(fSession.toLowerCase()));
@@ -237,7 +243,7 @@ export default function DeviceManagement() {
     finally { setLogsLoad(false); }
   }, [selectedId, logsDate, logsPage, debouncedQ, fStatus, fMethod, fClass, fSection, fDirection, fSession, resolveClientStudentIds]);
 
-  // ── Effects ──────────────────────────────────────────────────────────────
+  // ── Effects ───────────────────────────────────────────────────────────────
   useEffect(() => { void loadDevices(); }, []);
   useEffect(() => {
     Promise.all([
@@ -252,8 +258,7 @@ export default function DeviceManagement() {
   }, []);
   useEffect(() => {
     if (!selectedId) return;
-    void loadStatus();
-    void loadSessions();
+    void loadStatus(); void loadSessions();
     setDeviceUsers([]); setLogs([]);
     const iv = setInterval(() => void loadStatus(true), STATUS_POLL_MS);
     return () => clearInterval(iv);
@@ -267,7 +272,7 @@ export default function DeviceManagement() {
     setADorm((d as any).dormitory_id ?? "");
   }, [selectedId, devices]);
 
-  // ── Derived ──────────────────────────────────────────────────────────────
+  // ── Derived ───────────────────────────────────────────────────────────────
   const selected  = devices.find(d => d.id === selectedId);
   const isOnline  = isLiveOnline(selected);
   const tabletId  = selected?.tablet_id ?? null;
@@ -287,9 +292,7 @@ export default function DeviceManagement() {
   const userMethods = useMemo(() => [...new Set(deviceUsers.flatMap(u => u.biometricMethods ?? []))].sort(), [deviceUsers]);
   const anyFilter   = Boolean(fSearch || fStatus || fMethod || fClass || fSection || fDirection || fSession || fGender || fStudentType || fDormitory);
   const anyClientFilter = Boolean(fGender || fStudentType || fDormitory);
-
-  // Stats for reports tab
-  const logsStats = useMemo(() => ({
+  const logsStats   = useMemo(() => ({
     total:   logs.length,
     present: logs.filter(l => l.status?.toLowerCase() === "present").length,
     late:    logs.filter(l => l.status?.toLowerCase() === "late").length,
@@ -297,17 +300,19 @@ export default function DeviceManagement() {
     entries: logs.filter(l => l.direction === "In").length,
     exits:   logs.filter(l => l.direction === "Out").length,
     unique:  new Set(logs.map(l => l.studentId)).size,
-    methods: logs.reduce((acc, l) => { const m = l.method ?? "unknown"; acc[m] = (acc[m] ?? 0) + 1; return acc; }, {} as Record<string, number>),
+    byMethod: logs.reduce((a, l) => { const m = l.method ?? "unknown"; a[m] = (a[m] ?? 0) + 1; return a; }, {} as Record<string, number>),
   }), [logs]);
 
-  // ── Actions ──────────────────────────────────────────────────────────────
-  const handlePullLogs   = async () => { if (!tabletId) { toast.error("Device not linked to tablet"); return; } try { const r = await tabletApi.pullLogs({ tabletId, readMark: 0 }); toast.success(`Pulled ${r.data?.savedCount ?? 0} log(s) — ${r.data?.duplicateCount ?? 0} duplicates`); void loadLogs(); } catch (e: any) { toast.error(e?.message ?? "Failed"); } };
-  const handleSyncTime   = async () => { if (!tabletId) { toast.error("Device not linked to tablet"); return; } try { await tabletApi.syncTime(tabletId); toast.success("Device time synced"); } catch (e: any) { toast.error(e?.message ?? "Failed"); } };
-  const handleGetUsers   = async () => { if (!tabletId) { toast.error("Device not linked to tablet"); return; } setUsersLoading(true); try { const r = await tabletApi.getUsers(tabletId); setDeviceUsers(r.data?.users ?? []); toast.success(`${r.data?.count ?? 0} enrolled user(s) on device`); } catch (e: any) { toast.error(e?.message ?? "Failed"); } finally { setUsersLoading(false); } };
-  const handleDeleteUser = async (uid: string) => { if (!tabletId) return; if (!window.confirm(`Remove user ${uid} from device?`)) return; try { await tabletApi.removeUser(tabletId, uid); toast.success("User removed"); setDeviceUsers(p => p.filter(u => (u.userId ?? u.id) !== uid)); } catch (e: any) { toast.error(e?.message ?? "Failed"); } };
-  const handleClearLogs  = async () => { if (!tabletId) { toast.error("Device not linked to tablet"); return; } if (!window.confirm(`Delete ALL attendance logs from "${selected?.name}"?\n\n⚠ Logs already pulled to the server are NOT affected.\n\nThis cannot be undone.`)) return; try { await tabletApi.clearLogs(tabletId); toast.success("All logs cleared from device memory"); void loadStatus(); } catch (e: any) { toast.error(e?.message ?? "Failed"); } };
-  const handleClearUsers = async () => { if (!tabletId) { toast.error("Device not linked to tablet"); return; } if (!window.confirm(`Delete ALL enrolled users from "${selected?.name}"?\n\n⚠ All fingerprints and face templates will be deleted.\nYou must re-push students to restore them.\n\nThis cannot be undone.`)) return; if (!window.confirm("Confirm — permanently delete all biometric data from device?")) return; try { await tabletApi.clearUsers(tabletId); toast.success("All users cleared. Re-push students to re-enroll."); setDeviceUsers([]); void loadStatus(); } catch (e: any) { toast.error(e?.message ?? "Failed"); } };
-  const handleReboot     = async () => { if (!tabletId) { toast.error("Device not linked to tablet"); return; } if (!window.confirm(`Reboot "${selected?.name}"?\n\nThe FK623 will restart and reconnect automatically within 30–60 seconds.`)) return; try { await tabletApi.resetDevice(tabletId); toast.success("Reset command sent — device will reboot automatically"); setTimeout(() => void loadStatus(true), 35_000); } catch (e: any) { toast.error(e?.message ?? "Failed"); } };
+  // ── Actions ───────────────────────────────────────────────────────────────
+  const act = async (fn: () => Promise<void>) => { try { await fn(); } catch (e: any) { toast.error(e?.message ?? "Operation failed"); } };
+
+  const handlePullLogs   = () => act(async () => { if (!tabletId) throw new Error("No tablet"); const r = await tabletApi.pullLogs({ tabletId, readMark: 0 }); toast.success(`Pulled ${r.data?.savedCount ?? 0} log(s) — ${r.data?.duplicateCount ?? 0} duplicates`); void loadLogs(); });
+  const handleSyncTime   = () => act(async () => { if (!tabletId) throw new Error("No tablet"); await tabletApi.syncTime(tabletId); toast.success("Device time synced to server"); });
+  const handleGetUsers   = async () => { if (!tabletId) { toast.error("No tablet linked"); return; } setUsersLoading(true); try { const r = await tabletApi.getUsers(tabletId); setDeviceUsers(r.data?.users ?? []); toast.success(`${r.data?.count ?? 0} enrolled users`); } catch (e: any) { toast.error(e?.message ?? "Failed"); } finally { setUsersLoading(false); } };
+  const handleDeleteUser = (uid: string) => act(async () => { if (!tabletId) throw new Error("No tablet"); if (!window.confirm(`Remove user ${uid} from device?`)) return; await tabletApi.removeUser(tabletId, uid); toast.success("User removed"); setDeviceUsers(p => p.filter(u => (u.userId ?? u.id) !== uid)); });
+  const handleClearLogs  = () => act(async () => { if (!tabletId) throw new Error("No tablet"); if (!window.confirm(`Delete ALL logs from "${selected?.name}"?\n\nLogs pulled to the server are kept. This cannot be undone.`)) return; await tabletApi.clearLogs(tabletId); toast.success("Logs cleared from device"); void loadStatus(); });
+  const handleClearUsers = () => act(async () => { if (!tabletId) throw new Error("No tablet"); if (!window.confirm(`Delete ALL enrolled users from "${selected?.name}"?\n\nAll fingerprints and face data will be lost. Re-push students to restore.`)) return; if (!window.confirm("Confirm — this is irreversible.")) return; await tabletApi.clearUsers(tabletId); toast.success("All users cleared"); setDeviceUsers([]); void loadStatus(); });
+  const handleReboot     = () => act(async () => { if (!tabletId) throw new Error("No tablet"); if (!window.confirm(`Reboot "${selected?.name}"? It will reconnect in ~30–60 seconds.`)) return; await tabletApi.resetDevice(tabletId); toast.success("Reboot command sent"); setTimeout(() => void loadStatus(true), 35_000); });
 
   const handlePushStudents = async () => {
     if (!selectedId) return;
@@ -323,7 +328,7 @@ export default function DeviceManagement() {
       const failed = (r as any).failed_count ?? 0;
       failed > 0 ? toast.warning(`Pushed ${r.pushed_count} — ${failed} failed`) : toast.success(`Pushed ${r.pushed_count} student(s) to device`);
       void loadStatus();
-    } catch (e: any) { toast.error(e?.message ?? "Failed to push"); }
+    } catch (e: any) { toast.error(e?.message ?? "Push failed"); }
     finally { setPushing(false); }
   };
 
@@ -337,7 +342,7 @@ export default function DeviceManagement() {
       const r = await apiRequest<any>(`/devices/${selectedId}/remove-students`, { method: "POST", auth: "school", body: JSON.stringify(payload) });
       toast.success(`Removed ${(r as any).removed_count ?? 0} student(s) from device`);
       void loadStatus();
-    } catch (e: any) { toast.error(e?.message ?? "Failed"); }
+    } catch (e: any) { toast.error(e?.message ?? "Remove failed"); }
     finally { setRemoving(false); }
   };
 
@@ -360,44 +365,28 @@ export default function DeviceManagement() {
     } catch (e: any) { toast.error(e?.message ?? "Failed"); }
     finally { setSaveSess(false); }
   };
-  const handleDeleteSession = async (sid: string) => { if (!window.confirm("Delete this attendance session?")) return; try { await apiRequest(`/devices/${selectedId}/sessions/${sid}`, { method: "DELETE", auth: "school" }); toast.success("Session deleted"); void loadSessions(); } catch (e: any) { toast.error(e?.message ?? "Failed"); } };
-  const handleToggleSession = async (sid: string, active: boolean) => { try { await apiRequest(`/devices/${selectedId}/sessions/${sid}/${active ? "deactivate" : "activate"}`, { method: "PATCH", auth: "school" }); toast.success(active ? "Deactivated" : "Activated"); void loadSessions(); } catch (e: any) { toast.error(e?.message ?? "Failed"); } };
+  const handleDeleteSession = (sid: string) => act(async () => { if (!window.confirm("Delete this attendance session?")) return; await apiRequest(`/devices/${selectedId}/sessions/${sid}`, { method: "DELETE", auth: "school" }); toast.success("Session deleted"); void loadSessions(); });
+  const handleToggleSession = (sid: string, active: boolean) => act(async () => { await apiRequest(`/devices/${selectedId}/sessions/${sid}/${active ? "deactivate" : "activate"}`, { method: "PATCH", auth: "school" }); toast.success(active ? "Deactivated" : "Activated"); void loadSessions(); });
 
-  // ── Export ────────────────────────────────────────────────────────────────
   const handleExportScans = async () => {
-    if (logs.length === 0) { toast.info("No scans to export — adjust filters first"); return; }
+    if (logs.length === 0) { toast.info("Load scans first"); return; }
     setExporting(true);
     try {
       const devName = selected?.name ?? "device";
-      await exportToExcel(
-        `attendance-scans-${devName}-${logsDate}.xlsx`,
-        "Attendance Scans",
+      await exportToExcel(`scans-${devName}-${logsDate}.xlsx`, "Attendance Scans",
         [
-          { header: "#",         key: "no",       width: 5  },
-          { header: "Student",   key: "name",     width: 26 },
-          { header: "Student ID",key: "sid",      width: 16 },
-          { header: "Class",     key: "cls",      width: 14 },
-          { header: "Section",   key: "section",  width: 14 },
-          { header: "Session",   key: "session",  width: 20 },
-          { header: "Time",      key: "time",     width: 10 },
-          { header: "Method",    key: "method",   width: 14 },
-          { header: "Direction", key: "direction",width: 10 },
-          { header: "Status",    key: "status",   width: 12 },
-          { header: "Device",    key: "device",   width: 18 },
+          { header: "#",         key: "no",      width: 5  },
+          { header: "Student",   key: "name",    width: 26 },
+          { header: "Student ID",key: "sid",     width: 16 },
+          { header: "Class",     key: "cls",     width: 14 },
+          { header: "Section",   key: "section", width: 14 },
+          { header: "Session",   key: "session", width: 20 },
+          { header: "Time",      key: "time",    width: 10 },
+          { header: "Method",    key: "method",  width: 14 },
+          { header: "Direction", key: "dir",     width: 10 },
+          { header: "Status",    key: "status",  width: 12 },
         ],
-        logs.map((l, i) => ({
-          no:        i + 1,
-          name:      l.studentName ?? "—",
-          sid:       l.studentId   ?? "—",
-          cls:       (l as any).className  ?? "—",
-          section:   (l as any).section    ?? "—",
-          session:   (l as any).sessionName ?? (l as any).attendance_period ?? "—",
-          time:      fmtTime(l.timestamp),
-          method:    l.method      ?? "—",
-          direction: l.direction   ?? "—",
-          status:    l.status      ?? "—",
-          device:    l.deviceId    ?? devName,
-        })),
+        logs.map((l, i) => ({ no: i+1, name: l.studentName ?? "—", sid: l.studentId ?? "—", cls: (l as any).className ?? "—", section: (l as any).section ?? "—", session: (l as any).sessionName ?? (l as any).attendance_period ?? "—", time: fmtTime(l.timestamp), method: l.method ?? "—", dir: l.direction ?? "—", status: l.status ?? "—" })),
         `Attendance Scans — ${devName} — ${logsDate}`
       );
       toast.success("Export complete");
@@ -405,110 +394,114 @@ export default function DeviceManagement() {
     finally { setExporting(false); }
   };
 
-  const handleExportDeviceSummary = async () => {
+  const handleExportAllDevices = async () => {
     setExporting(true);
     try {
-      // Fetch all logs for the report date across ALL devices
       const allLogs: any[] = [];
       for (const dev of devices) {
         try {
           const res = await fetchDeviceLogs({ deviceId: dev.id, startDate: reportDate, endDate: reportDate, limit: 1000 });
-          allLogs.push(...res.data.map(l => ({ ...l, deviceName: dev.name, deviceScope: (dev as any).location_scope ?? "—" })));
-        } catch { /* skip failed device */ }
+          allLogs.push(...res.data.map(l => ({ ...l, _deviceName: dev.name, _scope: (dev as any).location_scope ?? "—" })));
+        } catch { /* skip */ }
       }
-      if (allLogs.length === 0) { toast.info("No attendance data for this date"); setExporting(false); return; }
-
-      await exportToExcel(
-        `device-summary-${reportDate}.xlsx`,
-        "Device Summary",
+      if (allLogs.length === 0) { toast.info("No attendance data for this date"); return; }
+      await exportToExcel(`all-devices-${reportDate}.xlsx`, "All Devices",
         [
-          { header: "#",          key: "no",      width: 5  },
-          { header: "Device",     key: "device",  width: 20 },
-          { header: "Location",   key: "scope",   width: 14 },
-          { header: "Student",    key: "name",    width: 26 },
-          { header: "Student ID", key: "sid",     width: 16 },
-          { header: "Class",      key: "cls",     width: 14 },
-          { header: "Session",    key: "session", width: 20 },
-          { header: "Time",       key: "time",    width: 10 },
-          { header: "Method",     key: "method",  width: 14 },
-          { header: "Direction",  key: "dir",     width: 10 },
-          { header: "Status",     key: "status",  width: 12 },
+          { header: "#",         key: "no",     width: 5  },
+          { header: "Device",    key: "device", width: 20 },
+          { header: "Location",  key: "scope",  width: 14 },
+          { header: "Student",   key: "name",   width: 26 },
+          { header: "Student ID",key: "sid",    width: 16 },
+          { header: "Class",     key: "cls",    width: 14 },
+          { header: "Session",   key: "session",width: 20 },
+          { header: "Time",      key: "time",   width: 10 },
+          { header: "Method",    key: "method", width: 14 },
+          { header: "Direction", key: "dir",    width: 10 },
+          { header: "Status",    key: "status", width: 12 },
         ],
-        allLogs.map((l, i) => ({
-          no:      i + 1,
-          device:  l.deviceName,
-          scope:   l.deviceScope,
-          name:    l.studentName ?? "—",
-          sid:     l.studentId   ?? "—",
-          cls:     l.className   ?? "—",
-          session: l.sessionName ?? l.attendance_period ?? "—",
-          time:    fmtTime(l.timestamp),
-          method:  l.method      ?? "—",
-          dir:     l.direction   ?? "—",
-          status:  l.status      ?? "—",
-        })),
+        allLogs.map((l, i) => ({ no: i+1, device: l._deviceName, scope: l._scope, name: l.studentName ?? "—", sid: l.studentId ?? "—", cls: l.className ?? "—", session: l.sessionName ?? l.attendance_period ?? "—", time: fmtTime(l.timestamp), method: l.method ?? "—", dir: l.direction ?? "—", status: l.status ?? "—" })),
         `All Devices Attendance — ${reportDate}`
       );
-      toast.success("Device summary exported");
+      toast.success("All-device report exported");
     } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
     finally { setExporting(false); }
   };
 
-  const clearAllFilters = () => {
-    setFSearch(""); setFStatus(""); setFMethod(""); setFClass("");
-    setFSection(""); setFDirection(""); setFSession("");
-    setFGender(""); setFStudentType(""); setFDormitory("");
-    setLogsPage(1);
-  };
+  const clearAllFilters = () => { setFSearch(""); setFStatus(""); setFMethod(""); setFClass(""); setFSection(""); setFDirection(""); setFSession(""); setFGender(""); setFStudentType(""); setFDormitory(""); setLogsPage(1); };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Select helper ─────────────────────────────────────────────────────────
+  const Sel = ({ label, value, onChange, children }: { label: string; value: string; onChange: (v: string) => void; children: React.ReactNode }) => (
+    <div>
+      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value)} className="h-8 w-full rounded-lg border border-input bg-background px-2 text-xs">
+        {children}
+      </select>
+    </div>
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <AppLayout title="Device Management" subtitle="Manage biometric devices, push students, pull logs and view attendance">
 
-      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-        Tablets and biometric devices are registered and assigned by the platform administrator. Contact your platform admin to add or change devices.
+      {/* Info banner */}
+      <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <Info className="h-4 w-4 mt-0.5 shrink-0" />
+        <span>Tablets and biometric devices are registered by the <b>platform administrator</b>. Contact your platform admin to add or remove devices.</span>
       </div>
 
       {devLoading ? (
-        <div className="flex gap-5"><Skeleton className="h-96 w-56 shrink-0" /><Skeleton className="flex-1 h-96" /></div>
+        <div className="flex gap-5">
+          <div className="w-52 space-y-2"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /></div>
+          <div className="flex-1 space-y-4"><Skeleton className="h-40" /><Skeleton className="h-60" /></div>
+        </div>
       ) : devices.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card p-16 text-center">
-          <Shield className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
-          <p className="font-semibold text-lg">No devices registered</p>
-          <p className="mt-1 text-sm text-muted-foreground">Contact the platform administrator.</p>
+        <div className="rounded-xl border border-dashed border-border p-16 text-center">
+          <Shield className="h-14 w-14 mx-auto mb-4 text-muted-foreground/20" />
+          <p className="font-semibold text-lg text-foreground">No devices registered</p>
+          <p className="mt-1 text-sm text-muted-foreground max-w-xs mx-auto">No biometric devices have been assigned to your school yet. Contact the platform administrator.</p>
         </div>
       ) : (
-        <div className="flex gap-5 min-h-0">
+        <div className="flex gap-5 items-start">
 
-          {/* ── LEFT: device selector ── */}
-          <div className="w-52 shrink-0 flex flex-col gap-1">
-            <div className="flex items-center justify-between px-1 mb-1">
-              <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Devices ({devices.length})</span>
-              <button onClick={() => void loadDevices()} disabled={devLoading} title="Refresh" className="rounded p-1 hover:bg-muted disabled:opacity-50">
+          {/* ═══ LEFT SIDEBAR ═══ */}
+          <div className="w-52 shrink-0">
+            <div className="flex items-center justify-between mb-2 px-0.5">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Devices ({devices.length})</span>
+              <button onClick={() => void loadDevices()} disabled={devLoading} className="rounded-lg p-1.5 hover:bg-muted transition-colors" title="Refresh device list">
                 <RefreshCw className={`h-3.5 w-3.5 text-muted-foreground ${devLoading ? "animate-spin" : ""}`} />
               </button>
             </div>
-            <div className="flex flex-col gap-1 overflow-y-auto max-h-[calc(100vh-200px)]">
+
+            <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-200px)]">
               {devices.map(device => {
                 const online   = isLiveOnline(device);
                 const isActive = device.id === selectedId;
                 const scope    = (device as any).location_scope as string | undefined;
                 const lbl      = (device as any).location_label as string | undefined;
+                const err      = device.last_sync_error ?? (device as any).last_status_message;
                 return (
                   <button key={device.id} onClick={() => { setSelectedId(device.id); setActiveTab("overview"); }}
-                    className={`w-full rounded-xl border text-left transition-all ${isActive ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20" : "border-border bg-card hover:border-primary/40 hover:bg-muted/30"}`}>
-                    <div className="px-3.5 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className={`h-2 w-2 rounded-full shrink-0 ${online ? "bg-green-500 animate-pulse" : "bg-muted-foreground/30"}`} />
-                        <span className={`font-semibold text-sm truncate flex-1 ${isActive ? "text-primary" : ""}`}>{device.name}</span>
+                    className={`w-full rounded-xl border text-left transition-all duration-150 ${isActive ? "border-primary bg-primary/5 shadow-md ring-1 ring-primary/20" : "border-border bg-card hover:border-primary/30 hover:bg-muted/20 hover:shadow-sm"}`}
+                  >
+                    <div className="p-3.5">
+                      {/* Name + status */}
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div className={`h-2.5 w-2.5 rounded-full shrink-0 flex-none ${online ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)] animate-pulse" : "bg-gray-300"}`} />
+                        <span className={`font-semibold text-sm truncate flex-1 ${isActive ? "text-primary" : "text-foreground"}`}>{device.name}</span>
                         {isActive && <ChevronRight className="h-3.5 w-3.5 text-primary shrink-0" />}
                       </div>
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {scope ? <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${scopeColor(scope)}`}>{scope.replace("_"," ")}</span>
-                               : <span className="text-[10px] text-amber-600 font-medium">⚠ Unassigned</span>}
-                      </div>
-                      {lbl && <p className="mt-0.5 text-[10px] text-muted-foreground truncate">{lbl}</p>}
-                      <p className={`mt-1 text-[10px] font-medium ${online ? "text-green-600" : "text-muted-foreground/60"}`}>{online ? "● Online" : "○ Offline"}</p>
+                      {/* Scope badge */}
+                      {scope
+                        ? <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize ${scopeColor(scope)}`}>{scope.replace("_"," ")}</span>
+                        : <span className="text-[10px] text-amber-600 font-semibold">⚠ Not assigned</span>
+                      }
+                      {lbl && <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{lbl}</p>}
+                      {/* Online text */}
+                      <p className={`text-[10px] font-medium mt-1 ${online ? "text-green-600" : "text-muted-foreground"}`}>
+                        {online ? "● Connected" : "○ Offline"}
+                      </p>
+                      {/* Error chip */}
+                      {err && <div className="mt-1.5 rounded-lg bg-red-50 border border-red-200 px-2 py-1 text-[10px] text-red-600 leading-snug line-clamp-2">{err}</div>}
                     </div>
                   </button>
                 );
@@ -516,468 +509,574 @@ export default function DeviceManagement() {
             </div>
           </div>
 
-          {/* ── RIGHT: tabs + content ── */}
-          <div className="flex-1 min-w-0 flex flex-col gap-0 overflow-y-auto max-h-[calc(100vh-160px)]">
+          {/* ═══ RIGHT PANEL ═══ */}
+          <div className="flex-1 min-w-0 space-y-4">
+
             {!selected ? (
-              <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-border text-muted-foreground">
-                ← Select a device from the list
+              <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-dashed border-border text-center gap-2">
+                <ChevronRight className="h-8 w-8 text-muted-foreground/30 -rotate-180" />
+                <p className="font-medium text-muted-foreground">Select a device from the list</p>
+                <p className="text-xs text-muted-foreground/60">Click any device on the left to manage it</p>
               </div>
             ) : (
               <>
-                {/* ── Status bar (always visible above tabs) ── */}
-                <div className={`rounded-xl border overflow-hidden mb-4 ${isOnline ? "border-green-200" : "border-border"}`}>
-                  <div className={`px-5 py-3 ${isOnline ? "bg-green-50" : "bg-muted/20"}`}>
-                    <div className="flex items-center justify-between flex-wrap gap-2">
+                {/* ── Device header card ── */}
+                <Card>
+                  {/* Title row */}
+                  <div className={`px-5 py-4 ${isOnline ? "bg-gradient-to-r from-green-50 to-emerald-50/30" : "bg-muted/30"}`}>
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
                       <div className="flex items-center gap-3 min-w-0">
-                        {statusLoading ? <span className="h-3.5 w-3.5 rounded-full border-2 border-primary border-t-transparent animate-spin shrink-0" /> : <span className={`h-3.5 w-3.5 rounded-full shrink-0 ${isOnline ? "bg-green-500 animate-pulse" : "bg-muted-foreground/40"}`} />}
+                        {/* Status indicator */}
+                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${isOnline ? "bg-green-100" : "bg-gray-100"}`}>
+                          {statusLoading
+                            ? <RefreshCw className="h-5 w-5 text-primary animate-spin" />
+                            : isOnline
+                              ? <Wifi className="h-5 w-5 text-green-600" />
+                              : <WifiOff className="h-5 w-5 text-gray-400" />
+                          }
+                        </div>
                         <div className="min-w-0">
-                          <h2 className="font-bold leading-tight truncate">{selected.name}</h2>
-                          <p className="text-xs text-muted-foreground">{isOnline ? "Bridge online" : "Bridge offline"} · {fkStatus?.connected ? "FK623 connected" : "FK623 not detected"} · {(selected as any).location_label ?? selected.location ?? "No location"}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h2 className="font-bold text-lg leading-tight">{selected.name}</h2>
+                            {(selected as any).location_scope && (
+                              <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize ${scopeColor((selected as any).location_scope)}`}>
+                                {((selected as any).location_scope as string).replace("_"," ")}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {isOnline ? "Bridge online" : "Bridge offline"} ·{" "}
+                            {fkStatus?.connected ? <span className="text-green-600 font-medium">FK623 connected</span> : "FK623 not detected"}{" "}
+                            {(selected as any).location_label ? `· ${(selected as any).location_label}` : selected.location ? `· ${selected.location}` : ""}
+                          </p>
                         </div>
                       </div>
+
+                      {/* Action buttons */}
                       <div className="flex flex-wrap gap-1.5 shrink-0">
-                        <button onClick={() => void loadStatus()} disabled={statusLoading} className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"><Activity className="h-3.5 w-3.5" /> Check Status</button>
-                        <button onClick={handleSyncTime} disabled={!isOnline} className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"><Clock className="h-3.5 w-3.5" /> Sync Time</button>
-                        <button onClick={handleGetUsers} disabled={!isOnline} className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50"><Users className="h-3.5 w-3.5" /> Get Users</button>
-                        <button onClick={handlePullLogs} disabled={!isOnline} className="inline-flex items-center gap-1 rounded-lg bg-primary text-primary-foreground px-2.5 py-1.5 text-xs font-semibold hover:bg-primary/90 disabled:opacity-50"><Download className="h-3.5 w-3.5" /> Pull Logs</button>
-                        <div className="hidden sm:block h-4 w-px bg-border self-center mx-0.5" />
-                        <button onClick={handleReboot} disabled={!isOnline} className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 px-2.5 py-1.5 text-xs font-semibold hover:bg-amber-100 disabled:opacity-50"><RotateCcw className="h-3.5 w-3.5" /> Reset</button>
-                        <button onClick={handleClearLogs} disabled={!isOnline} className="inline-flex items-center gap-1 rounded-lg border border-destructive/30 bg-destructive/5 text-destructive px-2.5 py-1.5 text-xs font-semibold hover:bg-destructive/10 disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" /> Clear Logs</button>
-                        <button onClick={handleClearUsers} disabled={!isOnline} className="inline-flex items-center gap-1 rounded-lg border border-destructive/30 bg-destructive/5 text-destructive px-2.5 py-1.5 text-xs font-semibold hover:bg-destructive/10 disabled:opacity-50"><Users className="h-3.5 w-3.5" /> Clear Users</button>
+                        <button onClick={() => void loadStatus()} disabled={statusLoading}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 shadow-sm transition-all">
+                          <Activity className="h-3.5 w-3.5" /> Check Status
+                        </button>
+                        <button onClick={handleSyncTime} disabled={!isOnline}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 shadow-sm transition-all">
+                          <Clock className="h-3.5 w-3.5" /> Sync Time
+                        </button>
+                        <button onClick={handleGetUsers} disabled={!isOnline}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 shadow-sm transition-all">
+                          <Users className="h-3.5 w-3.5" /> Get Users
+                        </button>
+                        <button onClick={handlePullLogs} disabled={!isOnline}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-white px-3 py-1.5 text-xs font-semibold hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all">
+                          <Download className="h-3.5 w-3.5" /> Pull Logs
+                        </button>
+                        <div className="w-px h-6 bg-border self-center mx-1" />
+                        <button onClick={handleReboot} disabled={!isOnline}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 px-3 py-1.5 text-xs font-semibold hover:bg-amber-100 disabled:opacity-50 shadow-sm transition-all" title="Reboot FK623 device">
+                          <RotateCcw className="h-3.5 w-3.5" /> Reset
+                        </button>
+                        <button onClick={handleClearLogs} disabled={!isOnline}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 px-3 py-1.5 text-xs font-semibold hover:bg-red-100 disabled:opacity-50 shadow-sm transition-all" title="Delete all logs from FK623">
+                          <Trash2 className="h-3.5 w-3.5" /> Clear Logs
+                        </button>
+                        <button onClick={handleClearUsers} disabled={!isOnline}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 px-3 py-1.5 text-xs font-semibold hover:bg-red-100 disabled:opacity-50 shadow-sm transition-all" title="Delete all users from FK623">
+                          <Users className="h-3.5 w-3.5" /> Clear Users
+                        </button>
                       </div>
                     </div>
                   </div>
-                  {/* FK623 metrics tiles */}
-                  <div className="grid grid-cols-3 sm:grid-cols-6 divide-x divide-y sm:divide-y-0 divide-border bg-card">
+
+                  {/* FK623 metrics — 6 tiles */}
+                  <div className="grid grid-cols-3 sm:grid-cols-6 divide-x divide-y sm:divide-y-0 divide-border">
                     {[
-                      { icon: Users,       label: "Users",        val: fkStatus?.users        ?? selected.device_users_count ?? 0 },
-                      { icon: Fingerprint, label: "Fingerprints", val: fkStatus?.fingerprints ?? 0 },
-                      { icon: Smile,       label: "Faces",        val: fkStatus?.faces        ?? 0 },
-                      { icon: CreditCard,  label: "Cards",        val: fkStatus?.cards        ?? 0 },
-                      { icon: HardDrive,   label: "Logs",         val: fkStatus?.logs         ?? selected.device_logs_count ?? 0 },
-                      { icon: Key,         label: "Serial",       val: fkStatus?.serialNumber ?? "—" },
-                    ].map(({ icon: Icon, label, val }) => (
-                      <div key={label} className="flex flex-col items-center gap-1 py-3">
-                        <Icon className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-base font-bold leading-none">{val}</span>
-                        <span className="text-[9px] uppercase tracking-wide text-muted-foreground">{label}</span>
+                      { icon: Users,       label: "Users",        val: fkStatus?.users        ?? selected.device_users_count ?? 0, color: "text-blue-600"   },
+                      { icon: Fingerprint, label: "Fingerprints", val: fkStatus?.fingerprints ?? 0,                                color: "text-purple-600" },
+                      { icon: Smile,       label: "Faces",        val: fkStatus?.faces        ?? 0,                                color: "text-green-600"  },
+                      { icon: CreditCard,  label: "Cards",        val: fkStatus?.cards        ?? 0,                                color: "text-orange-600" },
+                      { icon: HardDrive,   label: "Log Records",  val: fkStatus?.logs         ?? selected.device_logs_count ?? 0, color: "text-indigo-600" },
+                      { icon: Key,         label: "Serial No.",   val: fkStatus?.serialNumber ?? "—",                             color: "text-gray-500"   },
+                    ].map(({ icon: Icon, label, val, color }) => (
+                      <div key={label} className="flex flex-col items-center justify-center gap-1 py-4 bg-card hover:bg-muted/10 transition-colors">
+                        <Icon className={`h-4 w-4 ${color}`} />
+                        <span className="text-xl font-bold leading-none text-foreground">{val}</span>
+                        <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-medium">{label}</span>
                       </div>
                     ))}
                   </div>
-                </div>
 
-                {/* ── Horizontal tab bar ── */}
-                <div className="flex gap-0 border-b border-border mb-4 overflow-x-auto">
+                  {/* Last sync info */}
+                  {(selected.last_sync_at || selected.last_sync_error) && (
+                    <div className="border-t border-border px-5 py-2 bg-muted/10 flex flex-wrap gap-x-6 text-xs text-muted-foreground">
+                      {selected.last_sync_at && <span>Last sync: <b className="text-foreground">{fmtFull(selected.last_sync_at)}</b> — {selected.last_sync_status ?? "—"}</span>}
+                      {selected.last_sync_error && <span className="text-red-600">{selected.last_sync_error}</span>}
+                    </div>
+                  )}
+                </Card>
+
+                {/* ── Tab navigation ── */}
+                <div className="flex border-b border-border overflow-x-auto -mb-0">
                   {TABS.map(tab => (
                     <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                      className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors ${
+                      className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold whitespace-nowrap border-b-2 transition-all ${
                         activeTab === tab.id
-                          ? "border-primary text-primary"
-                          : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+                          ? "border-primary text-primary bg-primary/5"
+                          : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30"
                       }`}>
-                      <tab.icon className="h-3.5 w-3.5" />
+                      <tab.icon className="h-4 w-4" />
                       {tab.label}
                     </button>
                   ))}
                 </div>
 
                 {/* ── Tab content ── */}
-                <div className="space-y-4 pb-8">
+                <div className="space-y-4">
 
-                  {/* ════ OVERVIEW tab ════ */}
+                  {/* ════ OVERVIEW ════ */}
                   {activeTab === "overview" && (
                     <>
-                      <Section title="Device Assignment" icon={MapPin}
+                      {/* Device Assignment */}
+                      <Collapse title="Device Assignment" icon={MapPin}
                         badge={(selected as any).location_scope
-                          ? <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${scopeColor((selected as any).location_scope)}`}>{((selected as any).location_scope as string).replace("_"," ")}</span>
-                          : <span className="ml-2 text-[10px] text-amber-600 font-medium">not assigned</span>
+                          ? <span className={`ml-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize ${scopeColor((selected as any).location_scope)}`}>{((selected as any).location_scope as string).replace("_"," ")}</span>
+                          : <span className="ml-2 text-[10px] text-amber-600 font-semibold">Not assigned</span>
                         }
                         defaultOpen={!(selected as any).location_scope}
                       >
-                        <p className="text-xs text-muted-foreground mb-3">Assign to a physical location. "Dormitory" automatically links scans to boarding attendance.</p>
-                        <div className="grid gap-3 sm:grid-cols-2">
+                        <p className="text-sm text-muted-foreground mb-4">Assign this device to a physical location. Setting <b>Dormitory</b> automatically links biometric scans to boarding attendance records.</p>
+                        <div className="grid gap-4 sm:grid-cols-2">
                           <div>
-                            <label className="mb-1 block text-xs font-semibold">Location Type</label>
-                            <select value={aScope} onChange={e => setAScope(e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
+                            <label className="mb-1.5 block text-xs font-semibold text-foreground">Location Type</label>
+                            <select value={aScope} onChange={e => setAScope(e.target.value)} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-sm">
                               {SCOPES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                             </select>
                           </div>
                           <div>
-                            <label className="mb-1 block text-xs font-semibold">Location Name <span className="font-normal text-muted-foreground">(e.g. "Main Gate", "Boys Hostel")</span></label>
-                            <input value={aLabel} onChange={e => setALabel(e.target.value)} placeholder={aScope === "gate" ? "Main Gate" : aScope === "dormitory" ? "Boys Hostel" : "Enter name"} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm" />
+                            <label className="mb-1.5 block text-xs font-semibold text-foreground">Location Name <span className="font-normal text-muted-foreground">(e.g. "Main Gate", "Boys Hostel")</span></label>
+                            <input value={aLabel} onChange={e => setALabel(e.target.value)} placeholder={aScope === "gate" ? "e.g. Main Gate" : aScope === "dormitory" ? "e.g. Boys Hostel Block A" : "Enter a descriptive name"} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-sm" />
                           </div>
                         </div>
                         {aScope === "dormitory" && (
-                          <div className="mt-3">
-                            <label className="mb-1 block text-xs font-semibold">Link to Dormitory</label>
-                            <select value={aDorm} onChange={e => setADorm(e.target.value)} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm">
-                              <option value="">— select dormitory —</option>
+                          <div className="mt-4">
+                            <label className="mb-1.5 block text-xs font-semibold text-foreground">Link to Dormitory <span className="font-normal text-muted-foreground">(enables automatic boarding attendance)</span></label>
+                            <select value={aDorm} onChange={e => setADorm(e.target.value)} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-sm">
+                              <option value="">— select a dormitory —</option>
                               {dormitories.map(d => <option key={d.id} value={d.id}>{d.name}{d.block_name ? ` (${d.block_name})` : ""}</option>)}
                             </select>
-                            {dormitories.length === 0 && <p className="mt-1 text-xs text-amber-600">No dormitories found. Create them in Boarding → Dormitories first.</p>}
+                            {dormitories.length === 0 && <p className="mt-1.5 text-xs text-amber-600">No dormitories found. Create them in Boarding → Dormitories first.</p>}
                           </div>
                         )}
-                        <button onClick={handleAssignLocation} disabled={assigning} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-                          {assigning ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Save Location
+                        <button onClick={handleAssignLocation} disabled={assigning} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all">
+                          {assigning ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save Location
                         </button>
-                      </Section>
+                      </Collapse>
 
-                      <Section title="Attendance Sessions" icon={Zap}
-                        badge={<span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">{sessions.length}</span>}
+                      {/* Attendance Sessions */}
+                      <Collapse title="Attendance Sessions" icon={Zap}
+                        badge={<span className="ml-2 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-bold text-primary">{sessions.length}</span>}
+                        defaultOpen
                       >
-                        <p className="text-xs text-muted-foreground mb-3">Sessions define time windows. The system auto-activates the matching session at the configured time.</p>
-                        {sessLoad ? <div className="space-y-2 mb-3"><Skeleton className="h-10" /><Skeleton className="h-10" /></div>
-                        : sessions.length === 0 ? <p className="mb-3 text-xs text-muted-foreground italic">No sessions yet — create one below.</p>
-                        : (
-                          <div className="mb-4 space-y-2">
+                        <p className="text-sm text-muted-foreground mb-4">Sessions define time windows for attendance. The system <b>auto-activates</b> the matching session when the current time falls within a window.</p>
+
+                        {sessLoad ? (
+                          <div className="space-y-2 mb-4"><Skeleton className="h-14" /><Skeleton className="h-14" /></div>
+                        ) : sessions.length === 0 ? (
+                          <div className="mb-4 rounded-xl border border-dashed border-border p-6 text-center">
+                            <Zap className="h-8 w-8 mx-auto mb-2 text-muted-foreground/30" />
+                            <p className="text-sm text-muted-foreground">No sessions configured yet</p>
+                            <p className="text-xs text-muted-foreground/70 mt-0.5">Create one below to start tracking attendance windows</p>
+                          </div>
+                        ) : (
+                          <div className="mb-5 space-y-2">
                             {sessions.map(s => (
-                              <div key={s.id} className={`flex items-center gap-3 rounded-lg border p-3 ${s.is_active ? "border-green-200 bg-green-50/50" : "border-border"}`}>
-                                <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${s.is_active ? "bg-green-500 animate-pulse" : "bg-muted-foreground/30"}`} />
+                              <div key={s.id} className={`flex items-center gap-3 rounded-xl border p-4 transition-colors ${s.is_active ? "border-green-200 bg-green-50" : "border-border bg-muted/20"}`}>
+                                <div className={`h-3 w-3 rounded-full shrink-0 ${s.is_active ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse" : "bg-gray-300"}`} />
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span className="font-semibold text-sm">{s.name}</span>
-                                    {s.is_active && <span className="rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-[10px] font-bold uppercase">Active</span>}
+                                    {s.is_active && <span className="rounded-full bg-green-100 border border-green-300 px-2 py-0.5 text-[10px] font-bold text-green-700 uppercase tracking-wide">Active</span>}
                                   </div>
-                                  {s.windows.length > 0 && <p className="mt-0.5 text-xs text-muted-foreground">{s.windows.map(w => `${w.label}: ${w.start_time}–${w.end_time}${w.grace_minutes ? ` (+${w.grace_minutes}m)` : ""}`).join(" · ")}</p>}
-                                  {s.is_active && s.activated_at && <p className="text-[10px] text-green-600 mt-0.5">Since {fmtFull(s.activated_at)}</p>}
+                                  {s.windows.length > 0 && (
+                                    <p className="text-xs text-muted-foreground mt-0.5">{s.windows.map(w => `${w.label}: ${w.start_time}–${w.end_time}${w.grace_minutes ? ` (+${w.grace_minutes}m grace)` : ""}`).join(" · ")}</p>
+                                  )}
+                                  {s.is_active && s.activated_at && <p className="text-[10px] text-green-600 mt-0.5">Active since {fmtFull(s.activated_at)}</p>}
                                 </div>
-                                <div className="flex gap-1.5 shrink-0">
-                                  <button onClick={() => handleToggleSession(s.id, s.is_active)} className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold ${s.is_active ? "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100" : "border-border hover:bg-muted"}`}>
-                                    {s.is_active ? <ZapOff className="h-3 w-3" /> : <Zap className="h-3 w-3" />}
-                                    {s.is_active ? "Deactivate" : "Activate"}
+                                <div className="flex gap-2 shrink-0">
+                                  <button onClick={() => handleToggleSession(s.id, s.is_active)}
+                                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${s.is_active ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100" : "border-border bg-white hover:bg-gray-50"}`}>
+                                    {s.is_active ? <><ZapOff className="h-3.5 w-3.5" /> Deactivate</> : <><Zap className="h-3.5 w-3.5" /> Activate</>}
                                   </button>
-                                  <button onClick={() => handleDeleteSession(s.id)} className="inline-flex items-center rounded-lg border border-border px-2 py-1.5 text-[10px] text-destructive hover:bg-destructive/10">
-                                    <Trash2 className="h-3 w-3" />
+                                  <button onClick={() => handleDeleteSession(s.id)} className="rounded-lg border border-border bg-white p-1.5 text-red-500 hover:bg-red-50 transition-all">
+                                    <Trash2 className="h-3.5 w-3.5" />
                                   </button>
                                 </div>
                               </div>
                             ))}
                           </div>
                         )}
-                        <div className="rounded-lg border border-dashed border-border p-3 space-y-2">
-                          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">New Session</p>
-                          <div className="grid gap-2 sm:grid-cols-3">
-                            <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Name</label><input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Morning" className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm" /></div>
-                            <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">Start</label><input type="time" value={newStart} onChange={e => setNewStart(e.target.value)} className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm" /></div>
-                            <div><label className="mb-1 block text-[10px] font-semibold text-muted-foreground">End</label><input type="time" value={newEnd} onChange={e => setNewEnd(e.target.value)} className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm" /></div>
+
+                        {/* New session form */}
+                        <div className="rounded-xl border border-dashed border-border bg-muted/10 p-4">
+                          <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-3">New Session</p>
+                          <div className="grid gap-3 sm:grid-cols-3">
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold text-muted-foreground">Session Name</label>
+                              <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Morning Arrival" className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-sm" />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold text-muted-foreground">Start Time</label>
+                              <input type="time" value={newStart} onChange={e => setNewStart(e.target.value)} className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-sm" />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold text-muted-foreground">End Time</label>
+                              <input type="time" value={newEnd} onChange={e => setNewEnd(e.target.value)} className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-sm" />
+                            </div>
                           </div>
-                          <button onClick={handleCreateSession} disabled={saveSess || !newName.trim()} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50">
-                            <Plus className="h-3.5 w-3.5" /> Add Session
+                          <button onClick={handleCreateSession} disabled={saveSess || !newName.trim()} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-border bg-white px-4 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50 shadow-sm transition-all">
+                            <Plus className="h-4 w-4" /> Add Session
                           </button>
                         </div>
-                      </Section>
+                      </Collapse>
 
                       {/* Danger Zone */}
-                      <Section title="Danger Zone" icon={AlertTriangle} danger defaultOpen={false}>
-                        <p className="text-xs text-muted-foreground mb-4">These actions affect the physical FK623 device directly and <strong>cannot be undone</strong>.</p>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
-                            <p className="text-xs font-semibold text-amber-800">Reset / Reboot Device</p>
-                            <p className="text-[10px] text-amber-700">Reboots the FK623. It reconnects automatically within 30–60 seconds.</p>
-                            <button onClick={handleReboot} disabled={!isOnline} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-200 disabled:opacity-50"><RotateCcw className="h-3.5 w-3.5" /> Reset</button>
-                          </div>
-                          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
-                            <p className="text-xs font-semibold text-destructive">Clear Device Logs</p>
-                            <p className="text-[10px] text-destructive/80">Deletes all logs stored on the FK623. Server records are kept.</p>
-                            <button onClick={handleClearLogs} disabled={!isOnline} className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50"><HardDrive className="h-3.5 w-3.5" /> Clear Logs</button>
-                          </div>
-                          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 space-y-2">
-                            <p className="text-xs font-semibold text-destructive">Delete All Users</p>
-                            <p className="text-[10px] text-destructive/80">Removes every enrolled user and their biometric data from the FK623.</p>
-                            <button onClick={handleClearUsers} disabled={!isOnline} className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50"><Users className="h-3.5 w-3.5" /> Delete All Users</button>
-                          </div>
+                      <Collapse title="Danger Zone" icon={AlertTriangle} danger>
+                        <p className="text-sm text-muted-foreground mb-5">These actions affect the <b>physical FK623 device</b> directly and <b>cannot be undone</b>. Use with caution.</p>
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          {[
+                            { title: "Reset / Reboot Device", desc: "Reboots the FK623. It will reconnect automatically within 30–60 seconds.", action: handleReboot, label: "Reset Device", icon: RotateCcw, color: "border-amber-200 bg-amber-50" as const, btnColor: "border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200" as const },
+                            { title: "Clear Device Logs",     desc: "Deletes all attendance logs stored on the FK623. Records already pulled to the server are not affected.", action: handleClearLogs, label: "Clear Logs", icon: HardDrive, color: "border-red-200 bg-red-50" as const, btnColor: "border-red-300 bg-red-100 text-red-800 hover:bg-red-200" as const },
+                            { title: "Delete All Users",      desc: "Removes every enrolled user and their biometric data. You must re-push students to restore access.", action: handleClearUsers, label: "Delete All Users", icon: Users, color: "border-red-300 bg-red-50" as const, btnColor: "border-red-400 bg-red-100 text-red-900 hover:bg-red-200" as const },
+                          ].map(({ title, desc, action, label, icon: Icon, color, btnColor }) => (
+                            <div key={title} className={`rounded-xl border p-4 space-y-3 ${color}`}>
+                              <div className="flex items-center gap-2">
+                                <Icon className="h-4 w-4 text-red-600 shrink-0" />
+                                <p className="text-sm font-semibold text-foreground">{title}</p>
+                              </div>
+                              <p className="text-xs text-muted-foreground">{desc}</p>
+                              <button onClick={action} disabled={!isOnline} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:opacity-50 transition-all ${btnColor}`}>
+                                <Icon className="h-3.5 w-3.5" /> {label}
+                              </button>
+                            </div>
+                          ))}
                         </div>
-                      </Section>
+                      </Collapse>
                     </>
                   )}
 
-                  {/* ════ PUSH / REMOVE tab ════ */}
+                  {/* ════ PUSH / REMOVE ════ */}
                   {activeTab === "push" && (
                     <>
-                      <Section title="Push Students to Device" icon={Upload}>
-                        <p className="text-xs text-muted-foreground mb-3">Sends student records to the FK623 biometric device. Uses your school's real class and section data.</p>
-                        <div className="flex flex-wrap items-end gap-3">
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold text-muted-foreground">Push</label>
-                            <select value={pushMode} onChange={e => { setPushMode(e.target.value as any); setPushClassId(""); setPushSectionId(""); }} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
-                              <option value="all">All active students</option>
-                              <option value="boarding">Boarding students only</option>
-                              <option value="day">Day students only</option>
-                              <option value="class">By class</option>
-                              <option value="section">By section</option>
-                            </select>
+                      <Card>
+                        <CardHeader title="Push Students to Device" subtitle="Send student records to the FK623 biometric device" icon={Upload} />
+                        <div className="px-5 py-5">
+                          <p className="text-sm text-muted-foreground mb-4">Students are pushed to the device so they can scan in using their fingerprint or face. All options below use your school's real data.</p>
+                          <div className="flex flex-wrap items-end gap-3">
+                            <div>
+                              <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Push Mode</label>
+                              <select value={pushMode} onChange={e => { setPushMode(e.target.value as any); setPushClassId(""); setPushSectionId(""); }} className="h-10 rounded-lg border border-input bg-background px-3 text-sm shadow-sm">
+                                <option value="all">All active students</option>
+                                <option value="boarding">Boarding students only</option>
+                                <option value="day">Day students only</option>
+                                <option value="class">By class</option>
+                                <option value="section">By section</option>
+                              </select>
+                            </div>
+                            {(pushMode === "class" || pushMode === "section") && (
+                              <div>
+                                <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Class</label>
+                                <select value={pushClassId} onChange={e => { setPushClassId(e.target.value); setPushSectionId(""); }} className="h-10 min-w-40 rounded-lg border border-input bg-background px-3 text-sm shadow-sm">
+                                  <option value="">All classes</option>
+                                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                              </div>
+                            )}
+                            {pushMode === "section" && (
+                              <div>
+                                <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Section</label>
+                                <select value={pushSectionId} onChange={e => setPushSectionId(e.target.value)} className="h-10 min-w-44 rounded-lg border border-input bg-background px-3 text-sm shadow-sm">
+                                  <option value="">Select section</option>
+                                  {filteredSections.map(s => <option key={s.id} value={s.id}>{s.full_name || s.name}</option>)}
+                                </select>
+                              </div>
+                            )}
+                            <button onClick={handlePushStudents} disabled={pushing || (pushMode === "section" && !pushSectionId)}
+                              className="h-10 inline-flex items-center gap-2 rounded-lg bg-primary text-white px-5 text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all">
+                              {pushing ? <><RefreshCw className="h-4 w-4 animate-spin" /> Pushing…</> : <><Upload className="h-4 w-4" /> Push Students</>}
+                            </button>
                           </div>
-                          {(pushMode === "class" || pushMode === "section") && (
-                            <div>
-                              <label className="mb-1 block text-xs font-semibold text-muted-foreground">Class</label>
-                              <select value={pushClassId} onChange={e => { setPushClassId(e.target.value); setPushSectionId(""); }} className="h-9 min-w-36 rounded-md border border-input bg-background px-3 text-sm">
-                                <option value="">All classes</option>
-                                {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                              </select>
-                            </div>
-                          )}
-                          {pushMode === "section" && (
-                            <div>
-                              <label className="mb-1 block text-xs font-semibold text-muted-foreground">Section</label>
-                              <select value={pushSectionId} onChange={e => setPushSectionId(e.target.value)} className="h-9 min-w-40 rounded-md border border-input bg-background px-3 text-sm">
-                                <option value="">Select section</option>
-                                {filteredSections.map(s => <option key={s.id} value={s.id}>{s.full_name || s.name}</option>)}
-                              </select>
-                            </div>
-                          )}
-                          <button onClick={handlePushStudents} disabled={pushing || (pushMode === "section" && !pushSectionId)}
-                            className="h-9 inline-flex items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-                            {pushing ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Pushing…</> : <><Upload className="h-3.5 w-3.5" /> Push Students</>}
-                          </button>
+                          {!isOnline && <div className="mt-3 flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"><AlertTriangle className="h-4 w-4 shrink-0" /> Device appears offline. The system will retry automatically for up to 5 minutes.</div>}
                         </div>
-                        {!isOnline && <p className="mt-2 text-xs text-amber-600">⚠ Device appears offline. The system will retry automatically for up to 5 minutes.</p>}
-                      </Section>
+                      </Card>
 
-                      <Section title="Remove Students from Device" icon={X}>
-                        <p className="text-xs text-muted-foreground mb-3">Removes student records and fingerprints from the FK623 device only. Does <b>not</b> delete them from the school system.</p>
-                        <div className="flex flex-wrap items-end gap-3">
-                          <div>
-                            <label className="mb-1 block text-xs font-semibold text-muted-foreground">Remove</label>
-                            <select value={removeMode} onChange={e => { setRemoveMode(e.target.value as any); setRmClassId(""); }} className="h-9 rounded-md border border-input bg-background px-3 text-sm">
-                              <option value="all">All students</option>
-                              <option value="class">By class</option>
-                            </select>
-                          </div>
-                          {removeMode === "class" && (
+                      <Card>
+                        <CardHeader title="Remove Students from Device" subtitle="Remove student fingerprints from the FK623 (does not delete from school)" icon={X} />
+                        <div className="px-5 py-5">
+                          <p className="text-sm text-muted-foreground mb-4">This removes student records and biometric data <b>from the physical device only</b>. Students remain in the school system and can be re-pushed at any time.</p>
+                          <div className="flex flex-wrap items-end gap-3">
                             <div>
-                              <label className="mb-1 block text-xs font-semibold text-muted-foreground">Class</label>
-                              <select value={rmClassId} onChange={e => setRmClassId(e.target.value)} className="h-9 min-w-36 rounded-md border border-input bg-background px-3 text-sm">
-                                <option value="">Select class</option>
-                                {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                              <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Remove</label>
+                              <select value={removeMode} onChange={e => { setRemoveMode(e.target.value as any); setRmClassId(""); }} className="h-10 rounded-lg border border-input bg-background px-3 text-sm shadow-sm">
+                                <option value="all">All students</option>
+                                <option value="class">By class</option>
                               </select>
                             </div>
-                          )}
-                          <button onClick={handleRemoveStudents} disabled={removing || (removeMode === "class" && !rmClassId)}
-                            className="h-9 inline-flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/5 px-4 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50">
-                            {removing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                            {removing ? "Removing…" : "Remove Students"}
-                          </button>
+                            {removeMode === "class" && (
+                              <div>
+                                <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Class</label>
+                                <select value={rmClassId} onChange={e => setRmClassId(e.target.value)} className="h-10 min-w-40 rounded-lg border border-input bg-background px-3 text-sm shadow-sm">
+                                  <option value="">Select class</option>
+                                  {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                              </div>
+                            )}
+                            <button onClick={handleRemoveStudents} disabled={removing || (removeMode === "class" && !rmClassId)}
+                              className="h-10 inline-flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 text-red-700 px-5 text-sm font-semibold hover:bg-red-100 disabled:opacity-50 shadow-sm transition-all">
+                              {removing ? <><RefreshCw className="h-4 w-4 animate-spin" /> Removing…</> : <><Trash2 className="h-4 w-4" /> Remove Students</>}
+                            </button>
+                          </div>
                         </div>
-                      </Section>
+                      </Card>
                     </>
                   )}
 
-                  {/* ════ ENROLLED USERS tab ════ */}
+                  {/* ════ ENROLLED USERS ════ */}
                   {activeTab === "users" && (
-                    <div className="rounded-xl border border-border bg-card overflow-hidden">
-                      <div className="px-5 py-4 border-b border-border">
-                        <h3 className="font-semibold text-sm flex items-center gap-2 mb-3">
-                          <Users className="h-4 w-4 text-primary" /> Enrolled Users on Device
-                        </h3>
-                        <div className="flex gap-2 flex-wrap items-end">
+                    <Card>
+                      <CardHeader
+                        title="Enrolled Users on Device"
+                        subtitle={deviceUsers.length > 0 ? `${filteredUsers.length} of ${deviceUsers.length} users shown` : "Fetch live user list from the FK623 device"}
+                        icon={Users}
+                        badge={deviceUsers.length > 0 ? <span className="rounded-full bg-blue-100 border border-blue-200 px-2 py-0.5 text-[10px] font-bold text-blue-700">{deviceUsers.length}</span> : undefined}
+                        action={
                           <button onClick={handleGetUsers} disabled={usersLoading || !isOnline}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50">
+                            className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 shadow-sm transition-all">
                             <RefreshCw className={`h-3.5 w-3.5 ${usersLoading ? "animate-spin" : ""}`} />
-                            {usersLoading ? "Loading…" : "Fetch from device"}
+                            {usersLoading ? "Loading…" : "Fetch from Device"}
                           </button>
-                          {deviceUsers.length > 0 && (
-                            <>
-                              <div className="relative flex-1 min-w-44">
-                                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                                <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search name or device user ID…" className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-xs" />
-                              </div>
-                              {userMethods.length > 0 && (
-                                <select value={userMethodFil} onChange={e => setUserMethodFil(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
-                                  <option value="">All Biometric Methods</option>
-                                  {userMethods.map(m => <option key={m} value={m}>{m}</option>)}
-                                </select>
-                              )}
-                            </>
+                        }
+                      />
+
+                      {/* Search + method filter */}
+                      {deviceUsers.length > 0 && (
+                        <div className="px-5 py-3 border-b border-border flex flex-wrap gap-2 items-end bg-muted/10">
+                          <div className="relative flex-1 min-w-52">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                            <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search by name or device user ID…" className="h-8 w-full rounded-lg border border-input bg-background pl-8 pr-3 text-xs shadow-sm" />
+                          </div>
+                          {userMethods.length > 0 && (
+                            <select value={userMethodFil} onChange={e => setUserMethodFil(e.target.value)} className="h-8 rounded-lg border border-input bg-background px-2 text-xs shadow-sm">
+                              <option value="">All Biometric Methods</option>
+                              {userMethods.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                          )}
+                          {(userSearch || userMethodFil) && (
+                            <button onClick={() => { setUserSearch(""); setUserMethodFil(""); }} className="h-8 inline-flex items-center gap-1 rounded-lg border border-border bg-white px-2.5 text-xs text-muted-foreground hover:bg-gray-50">
+                              <X className="h-3 w-3" /> Clear
+                            </button>
                           )}
                         </div>
-                      </div>
-                      {usersLoading ? <div className="p-4 space-y-2"><Skeleton className="h-10" /><Skeleton className="h-10" /><Skeleton className="h-10" /></div>
-                      : deviceUsers.length === 0 ? <p className="px-5 py-10 text-center text-sm text-muted-foreground italic">Click "Fetch from device" to load enrolled users.</p>
-                      : (
+                      )}
+
+                      {usersLoading ? (
+                        <div className="p-5 space-y-2"><Skeleton className="h-12" /><Skeleton className="h-12" /><Skeleton className="h-12" /></div>
+                      ) : deviceUsers.length === 0 ? (
+                        <div className="px-5 py-12 text-center">
+                          <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
+                          <p className="font-medium text-muted-foreground">No users loaded yet</p>
+                          <p className="text-xs text-muted-foreground/70 mt-1">Click "Fetch from Device" above to load the enrolled user list from the FK623</p>
+                        </div>
+                      ) : (
                         <>
-                          {filteredUsers.length === 0 && (userSearch || userMethodFil) && <p className="px-5 py-3 text-xs text-muted-foreground">No users match the current filters.</p>}
+                          {filteredUsers.length === 0 && (userSearch || userMethodFil) && (
+                            <p className="px-5 py-3 text-sm text-muted-foreground italic">No users match the current filters.</p>
+                          )}
                           <div className="divide-y divide-border">
                             {filteredUsers.map(u => {
                               const uid = u.userId ?? u.id ?? "?";
                               return (
-                                <div key={uid} className="flex items-center gap-3 px-5 py-3 hover:bg-muted/20 transition-colors">
+                                <div key={uid} className="flex items-center gap-3 px-5 py-3.5 hover:bg-muted/20 transition-colors">
                                   <Avatar name={u.name || uid} size="sm" />
                                   <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-sm truncate">{u.name || "—"}</div>
+                                    <div className="font-medium text-sm">{u.name || "—"}</div>
                                     <div className="text-xs text-muted-foreground font-mono">Device ID: {uid}</div>
                                   </div>
                                   <div className="flex items-center gap-2 shrink-0">
-                                    {(u.biometricMethods ?? []).map((m: string) => <span key={m} className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium capitalize">{m}</span>)}
-                                    <button onClick={() => handleDeleteUser(uid)} className="rounded-lg border border-destructive/30 p-1.5 text-destructive hover:bg-destructive/10"><Trash2 className="h-3.5 w-3.5" /></button>
+                                    {(u.biometricMethods ?? []).map((m: string) => (
+                                      <span key={m} className="rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-semibold text-blue-700 capitalize">{m}</span>
+                                    ))}
+                                    {u.enabled === false && <span className="rounded-full bg-gray-100 border border-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-500">Disabled</span>}
+                                    <button onClick={() => handleDeleteUser(uid)} className="rounded-lg border border-red-200 p-1.5 text-red-500 hover:bg-red-50 hover:border-red-300 transition-all" title="Remove from device">
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
                                   </div>
                                 </div>
                               );
                             })}
                           </div>
-                          <div className="px-5 py-2 border-t border-border text-xs text-muted-foreground">
+                          <div className="px-5 py-2 border-t border-border bg-muted/10 text-xs text-muted-foreground">
                             Showing {filteredUsers.length} of {deviceUsers.length} enrolled users
                           </div>
                         </>
                       )}
-                    </div>
+                    </Card>
                   )}
 
-                  {/* ════ ATTENDANCE SCANS tab ════ */}
+                  {/* ════ ATTENDANCE SCANS ════ */}
                   {activeTab === "scans" && (
-                    <div className="rounded-xl border border-border bg-card overflow-hidden">
-                      <div className="border-b border-border px-5 py-4">
-                        <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
-                          <h3 className="font-semibold text-sm flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Attendance Scans — {selected.name}</h3>
+                    <Card>
+                      <div className="px-5 py-4 border-b border-border">
+                        <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+                          <div>
+                            <h3 className="font-semibold text-sm flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Attendance Scans — {selected.name}</h3>
+                            <p className="text-xs text-muted-foreground mt-0.5">Filter and view scan records from this device</p>
+                          </div>
                           <div className="flex items-center gap-2">
-                            <input type="date" value={logsDate} onChange={e => { setLogsDate(e.target.value); setLogsPage(1); }} className="h-8 rounded-md border border-input bg-background px-2 text-sm" />
-                            <button onClick={() => void loadLogs()} disabled={logsLoad || clientFiltLoading} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50">
+                            <input type="date" value={logsDate} onChange={e => { setLogsDate(e.target.value); setLogsPage(1); }} className="h-9 rounded-lg border border-input bg-background px-3 text-sm shadow-sm" />
+                            <button onClick={() => void loadLogs()} disabled={logsLoad || clientFiltLoading}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 shadow-sm">
                               <RefreshCw className={`h-3.5 w-3.5 ${logsLoad || clientFiltLoading ? "animate-spin" : ""}`} /> Reload
                             </button>
                             {logs.length > 0 && (
-                              <button onClick={handleExportScans} disabled={exporting} className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50">
-                                <FileSpreadsheet className="h-3.5 w-3.5 text-green-600" /> Export
+                              <button onClick={handleExportScans} disabled={exporting}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 text-green-700 px-3 py-1.5 text-xs font-semibold hover:bg-green-100 disabled:opacity-50 shadow-sm">
+                                <FileSpreadsheet className="h-3.5 w-3.5" /> Export
                               </button>
                             )}
                           </div>
                         </div>
 
-                        {/* Filter row 1: search + status + method + direction */}
-                        <div className="flex flex-wrap gap-2 items-end">
+                        {/* Filter row 1 */}
+                        <div className="flex flex-wrap gap-2 mb-3">
                           <div className="relative flex-1 min-w-52">
                             <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                            <input value={fSearch} onChange={e => setFSearch(e.target.value)} placeholder="Search name · student ID · device user ID…" className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-xs" />
+                            <input value={fSearch} onChange={e => setFSearch(e.target.value)} placeholder="Search name · student ID · device user ID…" className="h-8 w-full rounded-lg border border-input bg-background pl-8 pr-3 text-xs shadow-sm" />
                           </div>
-                          <select value={fStatus} onChange={e => { setFStatus(e.target.value); setLogsPage(1); }} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
-                            <option value="">All Statuses</option>
-                            <option value="present">Present</option>
-                            <option value="late">Late</option>
-                            <option value="absent">Absent</option>
-                          </select>
-                          <select value={fMethod} onChange={e => { setFMethod(e.target.value); setLogsPage(1); }} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
-                            <option value="">All Methods</option>
-                            <option value="fingerprint">Fingerprint</option>
-                            <option value="face">Face</option>
-                            <option value="nfc">NFC / RFID</option>
-                            <option value="qr">QR Code</option>
-                            <option value="manual">Manual</option>
-                          </select>
-                          <select value={fDirection} onChange={e => { setFDirection(e.target.value); setLogsPage(1); }} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
-                            <option value="">All Directions</option>
-                            <option value="in">Entry (In)</option>
-                            <option value="out">Exit (Out)</option>
-                          </select>
+                          {[
+                            { val: fStatus, set: setFStatus, opts: [["","All Statuses"],["present","Present"],["late","Late"],["absent","Absent"]] },
+                            { val: fMethod, set: setFMethod, opts: [["","All Methods"],["fingerprint","Fingerprint"],["face","Face"],["nfc","NFC/RFID"],["qr","QR Code"],["manual","Manual"]] },
+                            { val: fDirection, set: setFDirection, opts: [["","All Directions"],["in","Entry (In)"],["out","Exit (Out)"]] },
+                          ].map(({ val, set, opts }, idx) => (
+                            <select key={idx} value={val} onChange={e => { set(e.target.value); setLogsPage(1); }} className="h-8 rounded-lg border border-input bg-background px-2 text-xs shadow-sm">
+                              {opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                            </select>
+                          ))}
                         </div>
 
-                        {/* Filter row 2: class + section + session + student type + gender + dormitory */}
-                        <div className="mt-2 flex flex-wrap gap-2 items-end">
-                          <div>
-                            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Class</label>
-                            <select value={fClass} onChange={e => { setFClass(e.target.value); setLogsPage(1); }} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
-                              <option value="">All Classes</option>
-                              {classes.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                              {logClassNames.filter(n => !classes.some(c => c.name === n)).map(n => <option key={n} value={n}>{n}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Section</label>
-                            <select value={fSection} onChange={e => { setFSection(e.target.value); setLogsPage(1); }} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
-                              <option value="">All Sections</option>
-                              {sections.filter(s => !fClass || s.full_name.startsWith(fClass)).map(s => <option key={s.id} value={s.full_name}>{s.full_name}</option>)}
-                              {logSectionNames.filter(n => !sections.some(s => s.full_name === n)).map(n => <option key={n} value={n}>{n}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Session</label>
-                            <select value={fSession} onChange={e => { setFSession(e.target.value); setLogsPage(1); }} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
-                              <option value="">All Sessions</option>
-                              {sessionNames.map(n => <option key={n} value={n}>{n}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Student Type</label>
-                            <select value={fStudentType} onChange={e => { setFStudentType(e.target.value); setLogsPage(1); }} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
-                              <option value="">All Types</option>
-                              <option value="boarding">Boarding</option>
-                              <option value="day">Day</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Gender</label>
-                            <select value={fGender} onChange={e => { setFGender(e.target.value); setLogsPage(1); }} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
-                              <option value="">Boys & Girls</option>
-                              <option value="male">Boys only</option>
-                              <option value="female">Girls only</option>
-                            </select>
-                          </div>
+                        {/* Filter row 2 */}
+                        <div className="flex flex-wrap gap-2 items-end">
+                          <Sel label="Class" value={fClass} onChange={v => { setFClass(v); setLogsPage(1); }}>
+                            <option value="">All Classes</option>
+                            {classes.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                            {logClassNames.filter(n => !classes.some(c => c.name === n)).map(n => <option key={n} value={n}>{n}</option>)}
+                          </Sel>
+                          <Sel label="Section" value={fSection} onChange={v => { setFSection(v); setLogsPage(1); }}>
+                            <option value="">All Sections</option>
+                            {sections.filter(s => !fClass || s.full_name.startsWith(fClass)).map(s => <option key={s.id} value={s.full_name}>{s.full_name}</option>)}
+                            {logSectionNames.filter(n => !sections.some(s => s.full_name === n)).map(n => <option key={n} value={n}>{n}</option>)}
+                          </Sel>
+                          <Sel label="Session" value={fSession} onChange={v => { setFSession(v); setLogsPage(1); }}>
+                            <option value="">All Sessions</option>
+                            {sessionNames.map(n => <option key={n} value={n}>{n}</option>)}
+                          </Sel>
+                          <Sel label="Student Type" value={fStudentType} onChange={v => { setFStudentType(v); setLogsPage(1); }}>
+                            <option value="">All Types</option>
+                            <option value="boarding">Boarding</option>
+                            <option value="day">Day</option>
+                          </Sel>
+                          <Sel label="Gender" value={fGender} onChange={v => { setFGender(v); setLogsPage(1); }}>
+                            <option value="">Boys & Girls</option>
+                            <option value="male">Boys only</option>
+                            <option value="female">Girls only</option>
+                          </Sel>
                           {dormitories.length > 0 && (
-                            <div>
-                              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Dormitory</label>
-                              <select value={fDormitory} onChange={e => { setFDormitory(e.target.value); setLogsPage(1); }} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
-                                <option value="">All Dormitories</option>
-                                {dormitories.map(d => <option key={d.id} value={d.id}>{d.name}{d.block_name ? ` — ${d.block_name}` : ""}</option>)}
-                              </select>
-                            </div>
+                            <Sel label="Dormitory" value={fDormitory} onChange={v => { setFDormitory(v); setLogsPage(1); }}>
+                              <option value="">All Dormitories</option>
+                              {dormitories.map(d => <option key={d.id} value={d.id}>{d.name}{d.block_name ? ` — ${d.block_name}` : ""}</option>)}
+                            </Sel>
                           )}
                           {anyFilter && (
-                            <button onClick={clearAllFilters} className="h-8 inline-flex items-center gap-1 rounded-md border border-border px-2.5 text-xs text-muted-foreground hover:bg-muted">
+                            <button onClick={clearAllFilters} className="h-8 inline-flex items-center gap-1 rounded-lg border border-border bg-white px-2.5 text-xs text-muted-foreground hover:bg-gray-50 shadow-sm self-end">
                               <X className="h-3 w-3" /> Clear All
                             </button>
                           )}
                         </div>
 
                         {anyClientFilter && (
-                          <div className="mt-2 flex items-center gap-2 text-[11px] text-primary">
-                            <Filter className="h-3 w-3" />
-                            Client-side filter active — matching students fetched from school database
-                            {clientFiltLoading && <RefreshCw className="h-3 w-3 animate-spin" />}
-                            {clientStudentIds && !clientFiltLoading && <span className="text-muted-foreground">({clientStudentIds.size} matching students)</span>}
+                          <div className="mt-2 flex items-center gap-2 text-xs text-primary bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
+                            <Filter className="h-3.5 w-3.5 shrink-0" />
+                            <span>Filtering by student attributes — matching {clientStudentIds?.size ?? "…"} student(s) from school database</span>
+                            {clientFiltLoading && <RefreshCw className="h-3 w-3 animate-spin ml-auto" />}
                           </div>
                         )}
 
-                        {/* Stats */}
+                        {/* Stats row */}
                         {!logsLoad && logs.length > 0 && (
-                          <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
-                            <span className="font-semibold text-foreground">{logsMeta.total} total</span>
-                            <span className="text-success font-medium">{logsStats.present} present</span>
-                            <span className="text-amber-600 font-medium">{logsStats.late} late</span>
-                            <span className="text-destructive font-medium">{logsStats.absent} absent</span>
-                            <span>{logsStats.entries} entries · {logsStats.exits} exits</span>
-                            <span>{logsStats.unique} unique students</span>
+                          <div className="mt-3 flex flex-wrap gap-4 text-xs">
+                            {[
+                              { label: "Total",   val: logsMeta.total,    cls: "text-foreground font-bold" },
+                              { label: "Present", val: logsStats.present, cls: "text-green-600 font-semibold" },
+                              { label: "Late",    val: logsStats.late,    cls: "text-amber-600 font-semibold" },
+                              { label: "Absent",  val: logsStats.absent,  cls: "text-red-600 font-semibold" },
+                              { label: "Entries", val: logsStats.entries, cls: "text-gray-600" },
+                              { label: "Exits",   val: logsStats.exits,   cls: "text-gray-600" },
+                              { label: "Unique",  val: logsStats.unique,  cls: "text-blue-600 font-semibold" },
+                            ].map(({ label, val, cls }) => (
+                              <span key={label} className={cls}>{val} <span className="font-normal text-muted-foreground">{label}</span></span>
+                            ))}
                           </div>
                         )}
                       </div>
 
+                      {/* Table */}
                       {logsLoad || clientFiltLoading ? (
-                        <div className="p-4 space-y-2">{[1,2,3,4,5].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>
+                        <div className="p-5 space-y-2">{[1,2,3,4,5].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
                       ) : logs.length === 0 ? (
-                        <div className="px-5 py-12 text-center">
-                          <BarChart3 className="h-8 w-8 mx-auto mb-2 text-muted-foreground/20" />
-                          <p className="text-muted-foreground text-sm">No attendance scans found for this device on {logsDate}.</p>
-                          {anyFilter && <p className="mt-1 text-xs text-muted-foreground">Try clearing the filters.</p>}
+                        <div className="py-14 text-center">
+                          <BarChart3 className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
+                          <p className="font-medium text-muted-foreground">No scans found</p>
+                          <p className="text-xs text-muted-foreground/70 mt-1">No attendance scans for {selected.name} on {logsDate}{anyFilter ? " — try clearing filters" : ""}</p>
                         </div>
                       ) : (
                         <>
                           <div className="overflow-x-auto">
                             <table className="w-full text-sm">
-                              <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
-                                <tr>{["#","Student","Student ID","Class","Section","Session","Time","Method","Direction","Status"].map(h => <th key={h} className="px-4 py-3 text-left whitespace-nowrap font-semibold">{h}</th>)}</tr>
+                              <thead className="bg-muted/30 border-b border-border">
+                                <tr>
+                                  {["#","Student","Student ID","Class","Section","Session","Time","Method","Direction","Status"].map(h => (
+                                    <th key={h} className="px-4 py-3 text-left whitespace-nowrap text-xs font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>
+                                  ))}
+                                </tr>
                               </thead>
-                              <tbody>
+                              <tbody className="divide-y divide-border">
                                 {logs.map((log, i) => {
                                   const l = log as any;
                                   const sess = l.sessionName ?? l.attendance_period ?? null;
                                   return (
-                                    <tr key={log.id} className="border-t border-border hover:bg-muted/20 transition-colors">
-                                      <td className="px-4 py-2.5 text-muted-foreground text-xs w-10">{(logsPage-1)*LOGS_PER_PAGE+i+1}</td>
-                                      <td className="px-4 py-2.5"><div className="flex items-center gap-2"><Avatar name={log.studentName} size="sm" /><span className="font-medium whitespace-nowrap">{log.studentName}</span></div></td>
-                                      <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground whitespace-nowrap">{log.studentId}</td>
-                                      <td className="px-4 py-2.5 text-xs">{l.className ?? "—"}</td>
-                                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{l.section ?? "—"}</td>
-                                      <td className="px-4 py-2.5 text-xs">{sess ? <span className="rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[10px] font-semibold">{sess}</span> : <span className="text-muted-foreground">—</span>}</td>
-                                      <td className="px-4 py-2.5 text-xs font-medium whitespace-nowrap">{fmtTime(log.timestamp)}</td>
-                                      <td className="px-4 py-2.5 text-xs capitalize text-muted-foreground">{log.method ?? "—"}</td>
-                                      <td className="px-4 py-2.5">{log.direction ? <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${log.direction === "In" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{log.direction === "In" ? "Entry" : "Exit"}</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
-                                      <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${statusPill(log.status ?? "")}`}>{log.status ?? "—"}</span></td>
+                                    <tr key={log.id} className="hover:bg-muted/10 transition-colors">
+                                      <td className="px-4 py-3 text-muted-foreground text-xs">{(logsPage-1)*LOGS_PER_PAGE+i+1}</td>
+                                      <td className="px-4 py-3">
+                                        <div className="flex items-center gap-2">
+                                          <Avatar name={log.studentName} size="sm" />
+                                          <span className="font-medium whitespace-nowrap">{log.studentName}</span>
+                                        </div>
+                                      </td>
+                                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground whitespace-nowrap">{log.studentId}</td>
+                                      <td className="px-4 py-3 text-xs">{l.className ?? "—"}</td>
+                                      <td className="px-4 py-3 text-xs text-muted-foreground">{l.section ?? "—"}</td>
+                                      <td className="px-4 py-3 text-xs">
+                                        {sess ? <span className="rounded-full bg-blue-50 border border-blue-200 text-blue-700 px-2 py-0.5 text-[10px] font-semibold">{sess}</span> : <span className="text-muted-foreground">—</span>}
+                                      </td>
+                                      <td className="px-4 py-3 text-xs font-semibold whitespace-nowrap">{fmtTime(log.timestamp)}</td>
+                                      <td className="px-4 py-3 text-xs capitalize text-muted-foreground">{log.method ?? "—"}</td>
+                                      <td className="px-4 py-3">
+                                        {log.direction
+                                          ? <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${log.direction === "In" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700"}`}>{log.direction === "In" ? "Entry" : "Exit"}</span>
+                                          : <span className="text-muted-foreground text-xs">—</span>
+                                        }
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${statusPill(log.status ?? "")}`}>{log.status ?? "—"}</span>
+                                      </td>
                                     </tr>
                                   );
                                 })}
@@ -985,98 +1084,92 @@ export default function DeviceManagement() {
                             </table>
                           </div>
                           {logsMeta.totalPages > 1 && (
-                            <div className="flex items-center justify-between px-5 py-3 border-t border-border">
+                            <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/10">
                               <span className="text-xs text-muted-foreground">{(logsPage-1)*LOGS_PER_PAGE+1}–{Math.min(logsPage*LOGS_PER_PAGE, logsMeta.total)} of {logsMeta.total}</span>
                               <div className="flex gap-2 items-center">
-                                <button onClick={() => setLogsPage(p => p-1)} disabled={logsPage<=1} className="rounded-md border border-border px-3 py-1 text-xs disabled:opacity-50 hover:bg-muted">Previous</button>
-                                <span className="text-xs text-muted-foreground px-1">{logsPage} / {logsMeta.totalPages}</span>
-                                <button onClick={() => setLogsPage(p => p+1)} disabled={logsPage>=logsMeta.totalPages} className="rounded-md border border-border px-3 py-1 text-xs disabled:opacity-50 hover:bg-muted">Next</button>
+                                <button onClick={() => setLogsPage(p => p-1)} disabled={logsPage<=1} className="rounded-lg border border-border bg-white px-3 py-1 text-xs disabled:opacity-40 hover:bg-gray-50 shadow-sm">Previous</button>
+                                <span className="text-xs text-muted-foreground font-medium">{logsPage} / {logsMeta.totalPages}</span>
+                                <button onClick={() => setLogsPage(p => p+1)} disabled={logsPage>=logsMeta.totalPages} className="rounded-lg border border-border bg-white px-3 py-1 text-xs disabled:opacity-40 hover:bg-gray-50 shadow-sm">Next</button>
                               </div>
                             </div>
                           )}
                         </>
                       )}
-                    </div>
+                    </Card>
                   )}
 
-                  {/* ════ REPORTS & EXPORT tab ════ */}
+                  {/* ════ REPORTS & EXPORT ════ */}
                   {activeTab === "reports" && (
                     <div className="space-y-4">
-                      {/* Stats summary */}
+                      {/* Quick stats */}
                       {logs.length > 0 && (
-                        <div className="rounded-xl border border-border bg-card p-5">
-                          <h3 className="font-semibold text-sm mb-4 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Attendance Summary — {selected.name} — {logsDate}</h3>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                            {[
-                              { label: "Total Scans",      val: logsStats.total,   color: "text-foreground" },
-                              { label: "Present",          val: logsStats.present, color: "text-success" },
-                              { label: "Late",             val: logsStats.late,    color: "text-amber-600" },
-                              { label: "Absent",           val: logsStats.absent,  color: "text-destructive" },
-                              { label: "Unique Students",  val: logsStats.unique,  color: "text-blue-600" },
-                              { label: "Entries (In)",     val: logsStats.entries, color: "text-emerald-600" },
-                              { label: "Exits (Out)",      val: logsStats.exits,   color: "text-amber-600" },
-                            ].map(({ label, val, color }) => (
-                              <div key={label} className="rounded-lg border border-border bg-muted/20 p-3 text-center">
-                                <div className={`text-2xl font-bold ${color}`}>{val}</div>
-                                <div className="text-xs text-muted-foreground mt-0.5">{label}</div>
-                              </div>
-                            ))}
-                          </div>
-                          {Object.keys(logsStats.methods).length > 0 && (
-                            <div>
-                              <p className="text-xs font-semibold text-muted-foreground mb-2">By Scan Method</p>
-                              <div className="flex flex-wrap gap-2">
-                                {Object.entries(logsStats.methods).map(([m, count]) => (
-                                  <span key={m} className="rounded-full bg-muted px-3 py-1 text-xs font-medium capitalize">{m}: <b>{count}</b></span>
-                                ))}
-                              </div>
+                        <Card>
+                          <CardHeader title="Attendance Summary" subtitle={`${selected.name} — ${logsDate} — ${logs.length} records loaded`} icon={BarChart3} />
+                          <div className="px-5 py-5">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                              {[
+                                { label: "Total Scans",     val: logsStats.total,   color: "bg-blue-50   border-blue-200   text-blue-800"   },
+                                { label: "Present",         val: logsStats.present, color: "bg-green-50  border-green-200  text-green-800"  },
+                                { label: "Late",            val: logsStats.late,    color: "bg-amber-50  border-amber-200  text-amber-800"  },
+                                { label: "Absent",          val: logsStats.absent,  color: "bg-red-50    border-red-200    text-red-800"    },
+                                { label: "Unique Students", val: logsStats.unique,  color: "bg-violet-50 border-violet-200 text-violet-800" },
+                                { label: "Entries",         val: logsStats.entries, color: "bg-emerald-50 border-emerald-200 text-emerald-800" },
+                                { label: "Exits",           val: logsStats.exits,   color: "bg-orange-50 border-orange-200 text-orange-800" },
+                              ].map(({ label, val, color }) => (
+                                <div key={label} className={`rounded-xl border p-4 text-center ${color}`}>
+                                  <div className="text-2xl font-bold">{val}</div>
+                                  <div className="text-xs font-medium mt-0.5 opacity-80">{label}</div>
+                                </div>
+                              ))}
                             </div>
-                          )}
-                        </div>
+                            {Object.keys(logsStats.byMethod).length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">By Scan Method</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {Object.entries(logsStats.byMethod).map(([m, count]) => (
+                                    <span key={m} className="rounded-full bg-gray-100 border border-gray-200 px-3 py-1.5 text-xs font-medium capitalize text-gray-700">{m}: <b className="text-foreground">{count}</b></span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </Card>
                       )}
 
-                      {/* Export cards */}
+                      {/* Export options */}
                       <div className="grid gap-4 sm:grid-cols-2">
-                        {/* Export current device scans */}
-                        <div className="rounded-xl border border-border bg-card p-5 space-y-3">
-                          <div className="flex items-center gap-2">
-                            <FileSpreadsheet className="h-5 w-5 text-green-600" />
-                            <h3 className="font-semibold text-sm">Export This Device's Scans</h3>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Exports attendance scans for <b>{selected.name}</b> for the date currently loaded in the Scans tab, with all active filters applied.
-                          </p>
-                          <div className="text-xs text-muted-foreground">
-                            {logs.length > 0 ? <span className="text-green-600 font-medium">{logs.length} records ready to export</span> : <span className="text-amber-600">Go to Scans tab and load data first</span>}
-                          </div>
-                          <button onClick={handleExportScans} disabled={exporting || logs.length === 0}
-                            className="inline-flex items-center gap-2 rounded-lg bg-green-600 text-white px-4 py-2 text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
-                            {exporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
-                            {exporting ? "Exporting…" : "Export Scans (.xlsx)"}
-                          </button>
-                        </div>
-
-                        {/* Export all devices summary */}
-                        <div className="rounded-xl border border-border bg-card p-5 space-y-3">
-                          <div className="flex items-center gap-2">
-                            <FileSpreadsheet className="h-5 w-5 text-blue-600" />
-                            <h3 className="font-semibold text-sm">Export All Devices Summary</h3>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Exports attendance scans from <b>all {devices.length} device(s)</b> for the selected date into one Excel file — useful for daily reporting.
-                          </p>
-                          <div className="flex items-end gap-2">
-                            <div>
-                              <label className="mb-1 block text-xs font-semibold text-muted-foreground">Date</label>
-                              <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="h-8 rounded-md border border-input bg-background px-2 text-sm" />
+                        {/* This device */}
+                        <Card>
+                          <CardHeader title="Export This Device's Scans" subtitle="Current filters applied" icon={FileSpreadsheet} />
+                          <div className="px-5 py-5 space-y-3">
+                            <p className="text-sm text-muted-foreground">Export attendance scans for <b>{selected.name}</b> for the date loaded in the Scans tab, with all active filters applied.</p>
+                            <div className={`rounded-lg border px-3 py-2 text-xs font-medium ${logs.length > 0 ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
+                              {logs.length > 0 ? `✓ ${logs.length} records ready to export` : "⚠ Load data in the Scans tab first"}
                             </div>
+                            <button onClick={handleExportScans} disabled={exporting || logs.length === 0}
+                              className="inline-flex items-center gap-2 rounded-lg bg-green-600 text-white px-5 py-2.5 text-sm font-semibold hover:bg-green-700 disabled:opacity-50 shadow-sm transition-all">
+                              {exporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                              {exporting ? "Exporting…" : "Export Scans (.xlsx)"}
+                            </button>
                           </div>
-                          <button onClick={handleExportDeviceSummary} disabled={exporting}
-                            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
-                            {exporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
-                            {exporting ? "Exporting…" : "Export All Devices (.xlsx)"}
-                          </button>
-                        </div>
+                        </Card>
+
+                        {/* All devices */}
+                        <Card>
+                          <CardHeader title="All Devices Daily Summary" subtitle={`${devices.length} device(s) in this school`} icon={FileSpreadsheet} />
+                          <div className="px-5 py-5 space-y-3">
+                            <p className="text-sm text-muted-foreground">Export attendance scans from <b>all {devices.length} device(s)</b> for a selected date into one combined Excel file.</p>
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold text-muted-foreground">Report Date</label>
+                              <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="h-9 rounded-lg border border-input bg-background px-3 text-sm shadow-sm" />
+                            </div>
+                            <button onClick={handleExportAllDevices} disabled={exporting}
+                              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 text-white px-5 py-2.5 text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 shadow-sm transition-all">
+                              {exporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                              {exporting ? "Exporting…" : "Export All Devices (.xlsx)"}
+                            </button>
+                          </div>
+                        </Card>
                       </div>
                     </div>
                   )}

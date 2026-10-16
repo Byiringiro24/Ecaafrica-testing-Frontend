@@ -28,6 +28,9 @@ export type DeviceLogQuery = {
   status?: string;
   syncState?: string;
   search?: string;
+  className?: string;    // server-side: filter on denormalised class_name column
+  section?: string;      // server-side: filter on denormalised section column
+  direction?: string;    // server-side: entry | exit
 };
 
 export type PullAllResult = {
@@ -64,6 +67,9 @@ export async function fetchDeviceLogs(params: DeviceLogQuery & {
   if (params.status) q.append('status', params.status);
   if (params.syncState) q.append('syncState', params.syncState);
   if (params.search) q.append('search', params.search);
+  if (params.className) q.append('className', params.className);
+  if (params.section) q.append('section', params.section);
+  if (params.direction) q.append('direction', params.direction);
 
   const response = await apiRequest<{ data: DeviceLog[]; meta: any }>(
     `/attendance/records/device-logs?${q.toString()}`,

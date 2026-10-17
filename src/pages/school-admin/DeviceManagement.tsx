@@ -1,7 +1,7 @@
-/**
- * Device Management — School Admin
+﻿/**
+ * Device Management â€” School Admin
  * Professional layout with left device sidebar + tabbed right panel.
- * Everything comes from real school data — no hardcoded values.
+ * Everything comes from real school data â€” no hardcoded values.
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
@@ -23,18 +23,43 @@ import { localDateInputValue } from "@/lib/dateInput";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { exportToExcel } from "@/lib/exportExcel";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 type Tab          = "overview" | "push" | "users" | "scans" | "reports";
+type ConnTier     = "full" | "bridge" | "offline"; // three-tier connection state
 type ClassRecord  = { id: string; name: string };
 type SectionRecord= { id: string; name: string; full_name: string; class_id: string };
 type Dormitory    = { id: string; name: string; block_name?: string | null };
 type DeviceUser   = { userId?: string; id?: string; name?: string; privilege?: number; enabled?: boolean; biometricMethods?: string[] };
 type DeviceSession= { id: string; name: string; is_active: boolean; activated_at?: string | null; windows: { id?: string; label: string; start_time: string; end_time: string; grace_minutes?: number }[] };
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-const fmtTime = (ts?: string | null) => { if (!ts) return "—"; const d = new Date(ts); return isNaN(d.getTime()) ? "—" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }); };
-const fmtFull = (ts?: string | null) => { if (!ts) return "—"; const d = new Date(ts); return isNaN(d.getTime()) ? "—" : d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); };
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const fmtTime = (ts?: string | null) => { if (!ts) return "â€”"; const d = new Date(ts); return isNaN(d.getTime()) ? "â€”" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }); };
+const fmtFull = (ts?: string | null) => { if (!ts) return "â€”"; const d = new Date(ts); return isNaN(d.getTime()) ? "â€”" : d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); };
 const isLiveOnline = (d?: Device | null) => { if (!d) return false; if (d.last_seen_at && Date.now() - new Date(d.last_seen_at).getTime() < 90_000) return true; return Boolean(d.is_connected || d.is_online || d.status === "online"); };
+
+/** Get the three-tier connection status from live status data */
+const getConnectionTier = (status: any): ConnTier => {
+  if (!status) return "offline";
+  if (status.connection_tier) return status.connection_tier as ConnTier;
+  // Fallback: infer from available fields
+  if (status.fk623_connected || status.device_status?.connected) return "full";
+  if (status.bridge_reachable || status.is_online) return "bridge";
+  return "offline";
+};
+
+/** Dot color + label for each tier */
+const tierStyle = (tier: ConnTier) => ({
+  full:    { dot: "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.7)] animate-pulse", text: "text-green-600", label: "Connected",    desc: "FK623 + Tablet + WireGuard active" },
+  bridge:  { dot: "bg-yellow-400 shadow-[0_0_8px_rgba(234,179,8,0.6)] animate-pulse", text: "text-yellow-600", label: "Bridge only", desc: "Tablet reachable â€” FK623 not connected" },
+  offline: { dot: "bg-gray-300",                                                      text: "text-muted-foreground",  label: "Offline",      desc: "Bridge not reachable via WireGuard" },
+});
+
+/** Sidebar dot color per device (uses cached last_seen_at) */
+const deviceDotClass = (d: Device) => {
+  if (!isLiveOnline(d)) return "bg-gray-300";
+  return "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)] animate-pulse";
+};
+
 const scopeColor  = (s?: string) => { if (s === "gate") return "bg-emerald-100 text-emerald-700 border-emerald-200"; if (s === "dormitory") return "bg-blue-100 text-blue-700 border-blue-200"; if (s === "dining_hall") return "bg-amber-100 text-amber-700 border-amber-200"; if (s === "classroom") return "bg-violet-100 text-violet-700 border-violet-200"; return "bg-gray-100 text-gray-600 border-gray-200"; };
 const statusPill  = (s: string) => { const l = (s ?? "").toLowerCase(); if (l === "present") return "bg-green-100 text-green-700"; if (l === "late") return "bg-amber-100 text-amber-700"; if (l === "absent") return "bg-red-100 text-red-700"; return "bg-gray-100 text-gray-600"; };
 
@@ -57,7 +82,7 @@ const TABS: { id: Tab; label: string; icon: typeof Activity; desc: string }[] = 
   { id: "reports",  label: "Reports & Export", icon: FileSpreadsheet,desc: "Export attendance data" },
 ];
 
-// ─── Card wrapper ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Card wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <div className={`rounded-xl border border-border bg-card shadow-sm overflow-hidden ${className}`}>{children}</div>;
 }
@@ -76,7 +101,7 @@ function CardHeader({ title, subtitle, icon: Icon, action, badge }: { title: str
   );
 }
 
-// ─── Collapsible ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Collapsible â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Collapse({ title, icon: Icon, children, open: controlledOpen, onToggle, badge, danger = false, defaultOpen = false }: {
   title: string; icon: typeof Activity; children: React.ReactNode;
   open?: boolean; onToggle?: () => void;
@@ -99,7 +124,7 @@ function Collapse({ title, icon: Icon, children, open: controlledOpen, onToggle,
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function DeviceManagement() {
   const [activeTab,  setActiveTab]  = useState<Tab>("overview");
   const [devices,    setDevices]    = useState<Device[]>([]);
@@ -171,7 +196,7 @@ export default function DeviceManagement() {
 
   useEffect(() => { const t = setTimeout(() => { setDebouncedQ(fSearch); setLogsPage(1); }, 350); return () => clearTimeout(t); }, [fSearch]);
 
-  // ── Loaders ───────────────────────────────────────────────────────────────
+  // â”€â”€ Loaders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const loadDevices = useCallback(async () => {
     setDevLoading(true);
     try {
@@ -243,7 +268,7 @@ export default function DeviceManagement() {
     finally { setLogsLoad(false); }
   }, [selectedId, logsDate, logsPage, debouncedQ, fStatus, fMethod, fClass, fSection, fDirection, fSession, resolveClientStudentIds]);
 
-  // ── Effects ───────────────────────────────────────────────────────────────
+  // â”€â”€ Effects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => { void loadDevices(); }, []);
   useEffect(() => {
     Promise.all([
@@ -272,11 +297,16 @@ export default function DeviceManagement() {
     setADorm((d as any).dormitory_id ?? "");
   }, [selectedId, devices]);
 
-  // ── Derived ───────────────────────────────────────────────────────────────
+  // â”€â”€ Derived â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const selected  = devices.find(d => d.id === selectedId);
   const isOnline  = isLiveOnline(selected);
   const tabletId  = selected?.tablet_id ?? null;
   const fkStatus  = status?.device_status ?? status?.data ?? null;
+  const connTier  = getConnectionTier(status);
+  const tierInfo  = tierStyle(connTier);
+  // Push is only available when FK623 + Tablet + WireGuard are all active
+  const canPush   = connTier === "full";
+  const canAction = connTier !== "offline"; // sync time, get users etc work if bridge is reachable
 
   const filteredSections = useMemo(() => sections.filter(s => !pushClassId || s.class_id === pushClassId), [sections, pushClassId]);
   const sessionNames     = useMemo(() => [...new Set([...sessions.map(s => s.name), ...logs.map(l => (l as any).sessionName).filter(Boolean)])].sort(), [sessions, logs]);
@@ -303,19 +333,25 @@ export default function DeviceManagement() {
     byMethod: logs.reduce((a, l) => { const m = l.method ?? "unknown"; a[m] = (a[m] ?? 0) + 1; return a; }, {} as Record<string, number>),
   }), [logs]);
 
-  // ── Actions ───────────────────────────────────────────────────────────────
+  // â”€â”€ Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const act = async (fn: () => Promise<void>) => { try { await fn(); } catch (e: any) { toast.error(e?.message ?? "Operation failed"); } };
 
-  const handlePullLogs   = () => act(async () => { if (!tabletId) throw new Error("No tablet"); const r = await tabletApi.pullLogs({ tabletId, readMark: 0 }); toast.success(`Pulled ${r.data?.savedCount ?? 0} log(s) — ${r.data?.duplicateCount ?? 0} duplicates`); void loadLogs(); });
+  const handlePullLogs   = () => act(async () => { if (!tabletId) throw new Error("No tablet"); const r = await tabletApi.pullLogs({ tabletId, readMark: 0 }); toast.success(`Pulled ${r.data?.savedCount ?? 0} log(s) â€” ${r.data?.duplicateCount ?? 0} duplicates`); void loadLogs(); });
   const handleSyncTime   = () => act(async () => { if (!tabletId) throw new Error("No tablet"); await tabletApi.syncTime(tabletId); toast.success("Device time synced to server"); });
   const handleGetUsers   = async () => { if (!tabletId) { toast.error("No tablet linked"); return; } setUsersLoading(true); try { const r = await tabletApi.getUsers(tabletId); setDeviceUsers(r.data?.users ?? []); toast.success(`${r.data?.count ?? 0} enrolled users`); } catch (e: any) { toast.error(e?.message ?? "Failed"); } finally { setUsersLoading(false); } };
   const handleDeleteUser = (uid: string) => act(async () => { if (!tabletId) throw new Error("No tablet"); if (!window.confirm(`Remove user ${uid} from device?`)) return; await tabletApi.removeUser(tabletId, uid); toast.success("User removed"); setDeviceUsers(p => p.filter(u => (u.userId ?? u.id) !== uid)); });
   const handleClearLogs  = () => act(async () => { if (!tabletId) throw new Error("No tablet"); if (!window.confirm(`Delete ALL logs from "${selected?.name}"?\n\nLogs pulled to the server are kept. This cannot be undone.`)) return; await tabletApi.clearLogs(tabletId); toast.success("Logs cleared from device"); void loadStatus(); });
-  const handleClearUsers = () => act(async () => { if (!tabletId) throw new Error("No tablet"); if (!window.confirm(`Delete ALL enrolled users from "${selected?.name}"?\n\nAll fingerprints and face data will be lost. Re-push students to restore.`)) return; if (!window.confirm("Confirm — this is irreversible.")) return; await tabletApi.clearUsers(tabletId); toast.success("All users cleared"); setDeviceUsers([]); void loadStatus(); });
-  const handleReboot     = () => act(async () => { if (!tabletId) throw new Error("No tablet"); if (!window.confirm(`Reboot "${selected?.name}"? It will reconnect in ~30–60 seconds.`)) return; await tabletApi.resetDevice(tabletId); toast.success("Reboot command sent"); setTimeout(() => void loadStatus(true), 35_000); });
+  const handleClearUsers = () => act(async () => { if (!tabletId) throw new Error("No tablet"); if (!window.confirm(`Delete ALL enrolled users from "${selected?.name}"?\n\nAll fingerprints and face data will be lost. Re-push students to restore.`)) return; if (!window.confirm("Confirm â€” this is irreversible.")) return; await tabletApi.clearUsers(tabletId); toast.success("All users cleared"); setDeviceUsers([]); void loadStatus(); });
+  const handleReboot     = () => act(async () => { if (!tabletId) throw new Error("No tablet"); if (!window.confirm(`Reboot "${selected?.name}"? It will reconnect in ~30â€“60 seconds.`)) return; await tabletApi.resetDevice(tabletId); toast.success("Reboot command sent"); setTimeout(() => void loadStatus(true), 35_000); });
 
   const handlePushStudents = async () => {
     if (!selectedId) return;
+    // Warn if not fully connected, but still allow (retry runs for 5 min)
+    if (connTier === "offline") {
+      toast.warning("Device is offline. Push command will be sent and retried for up to 5 minutes once the bridge comes back online.");
+    } else if (connTier === "bridge") {
+      toast.warning("FK623 device not physically connected. Push will be sent and retried for up to 5 minutes.");
+    }
     setPushing(true);
     try {
       const payload: any = {};
@@ -326,9 +362,21 @@ export default function DeviceManagement() {
       else payload.mode = "all";
       const r = await deviceApi.pushStudents(selectedId, payload);
       const failed = (r as any).failed_count ?? 0;
-      failed > 0 ? toast.warning(`Pushed ${r.pushed_count} — ${failed} failed`) : toast.success(`Pushed ${r.pushed_count} student(s) to device`);
+      failed > 0
+        ? toast.warning(`Pushed ${r.pushed_count}/${(r as any).selected_count ?? r.pushed_count + failed} â€” ${failed} failed. Check device connection.`)
+        : toast.success(`Pushed ${r.pushed_count} student(s) to device successfully`);
       void loadStatus();
-    } catch (e: any) { toast.error(e?.message ?? "Push failed"); }
+    } catch (e: any) {
+      const msg = e?.message ?? "Push failed";
+      // Distinguish "no tablet configured" from network errors
+      if (msg.includes("no API URL") || msg.includes("no tablet") || msg.includes("tablet connection configured")) {
+        toast.error("Device has no tablet bridge configured. Set the tablet IP/port in Device Assignment first.");
+      } else if (msg.includes("ECONNREFUSED") || msg.includes("ETIMEDOUT") || msg.includes("No response") || msg.includes("timed out")) {
+        toast.error("Push timed out after 5 minutes â€” bridge was unreachable. Check WireGuard VPN and tablet power.");
+      } else {
+        toast.error(msg);
+      }
+    }
     finally { setPushing(false); }
   };
 
@@ -386,8 +434,8 @@ export default function DeviceManagement() {
           { header: "Direction", key: "dir",     width: 10 },
           { header: "Status",    key: "status",  width: 12 },
         ],
-        logs.map((l, i) => ({ no: i+1, name: l.studentName ?? "—", sid: l.studentId ?? "—", cls: (l as any).className ?? "—", section: (l as any).section ?? "—", session: (l as any).sessionName ?? (l as any).attendance_period ?? "—", time: fmtTime(l.timestamp), method: l.method ?? "—", dir: l.direction ?? "—", status: l.status ?? "—" })),
-        `Attendance Scans — ${devName} — ${logsDate}`
+        logs.map((l, i) => ({ no: i+1, name: l.studentName ?? "â€”", sid: l.studentId ?? "â€”", cls: (l as any).className ?? "â€”", section: (l as any).section ?? "â€”", session: (l as any).sessionName ?? (l as any).attendance_period ?? "â€”", time: fmtTime(l.timestamp), method: l.method ?? "â€”", dir: l.direction ?? "â€”", status: l.status ?? "â€”" })),
+        `Attendance Scans â€” ${devName} â€” ${logsDate}`
       );
       toast.success("Export complete");
     } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
@@ -401,7 +449,7 @@ export default function DeviceManagement() {
       for (const dev of devices) {
         try {
           const res = await fetchDeviceLogs({ deviceId: dev.id, startDate: reportDate, endDate: reportDate, limit: 1000 });
-          allLogs.push(...res.data.map(l => ({ ...l, _deviceName: dev.name, _scope: (dev as any).location_scope ?? "—" })));
+          allLogs.push(...res.data.map(l => ({ ...l, _deviceName: dev.name, _scope: (dev as any).location_scope ?? "â€”" })));
         } catch { /* skip */ }
       }
       if (allLogs.length === 0) { toast.info("No attendance data for this date"); return; }
@@ -419,8 +467,8 @@ export default function DeviceManagement() {
           { header: "Direction", key: "dir",    width: 10 },
           { header: "Status",    key: "status", width: 12 },
         ],
-        allLogs.map((l, i) => ({ no: i+1, device: l._deviceName, scope: l._scope, name: l.studentName ?? "—", sid: l.studentId ?? "—", cls: l.className ?? "—", session: l.sessionName ?? l.attendance_period ?? "—", time: fmtTime(l.timestamp), method: l.method ?? "—", dir: l.direction ?? "—", status: l.status ?? "—" })),
-        `All Devices Attendance — ${reportDate}`
+        allLogs.map((l, i) => ({ no: i+1, device: l._deviceName, scope: l._scope, name: l.studentName ?? "â€”", sid: l.studentId ?? "â€”", cls: l.className ?? "â€”", session: l.sessionName ?? l.attendance_period ?? "â€”", time: fmtTime(l.timestamp), method: l.method ?? "â€”", dir: l.direction ?? "â€”", status: l.status ?? "â€”" })),
+        `All Devices Attendance â€” ${reportDate}`
       );
       toast.success("All-device report exported");
     } catch (e: any) { toast.error(e?.message ?? "Export failed"); }
@@ -429,7 +477,7 @@ export default function DeviceManagement() {
 
   const clearAllFilters = () => { setFSearch(""); setFStatus(""); setFMethod(""); setFClass(""); setFSection(""); setFDirection(""); setFSession(""); setFGender(""); setFStudentType(""); setFDormitory(""); setLogsPage(1); };
 
-  // ── Select helper ─────────────────────────────────────────────────────────
+  // â”€â”€ Select helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const Sel = ({ label, value, onChange, children }: { label: string; value: string; onChange: (v: string) => void; children: React.ReactNode }) => (
     <div>
       <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</label>
@@ -439,7 +487,7 @@ export default function DeviceManagement() {
     </div>
   );
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <AppLayout title="Device Management" subtitle="Manage biometric devices, push students, pull logs and view attendance">
 
@@ -463,7 +511,7 @@ export default function DeviceManagement() {
       ) : (
         <div className="flex gap-5 items-start">
 
-          {/* ═══ LEFT SIDEBAR ═══ */}
+          {/* â•â•â• LEFT SIDEBAR â•â•â• */}
           <div className="w-52 shrink-0">
             <div className="flex items-center justify-between mb-2 px-0.5">
               <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Devices ({devices.length})</span>
@@ -486,19 +534,19 @@ export default function DeviceManagement() {
                     <div className="p-3.5">
                       {/* Name + status */}
                       <div className="flex items-center gap-2 mb-1.5">
-                        <div className={`h-2.5 w-2.5 rounded-full shrink-0 flex-none ${online ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)] animate-pulse" : "bg-gray-300"}`} />
+                        <div className={`h-2.5 w-2.5 rounded-full shrink-0 flex-none ${deviceDotClass(device)}`} />
                         <span className={`font-semibold text-sm truncate flex-1 ${isActive ? "text-primary" : "text-foreground"}`}>{device.name}</span>
                         {isActive && <ChevronRight className="h-3.5 w-3.5 text-primary shrink-0" />}
                       </div>
                       {/* Scope badge */}
                       {scope
                         ? <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize ${scopeColor(scope)}`}>{scope.replace("_"," ")}</span>
-                        : <span className="text-[10px] text-amber-600 font-semibold">⚠ Not assigned</span>
+                        : <span className="text-[10px] text-amber-600 font-semibold">âš  Not assigned</span>
                       }
                       {lbl && <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{lbl}</p>}
                       {/* Online text */}
                       <p className={`text-[10px] font-medium mt-1 ${online ? "text-green-600" : "text-muted-foreground"}`}>
-                        {online ? "● Connected" : "○ Offline"}
+                        {online ? "â— Connected" : "â—‹ Offline"}
                       </p>
                       {/* Error chip */}
                       {err && <div className="mt-1.5 rounded-lg bg-red-50 border border-red-200 px-2 py-1 text-[10px] text-red-600 leading-snug line-clamp-2">{err}</div>}
@@ -509,7 +557,7 @@ export default function DeviceManagement() {
             </div>
           </div>
 
-          {/* ═══ RIGHT PANEL ═══ */}
+          {/* â•â•â• RIGHT PANEL â•â•â• */}
           <div className="flex-1 min-w-0 space-y-4">
 
             {!selected ? (
@@ -520,19 +568,21 @@ export default function DeviceManagement() {
               </div>
             ) : (
               <>
-                {/* ── Device header card ── */}
+                {/* â”€â”€ Device header card â”€â”€ */}
                 <Card>
                   {/* Title row */}
-                  <div className={`px-5 py-4 ${isOnline ? "bg-gradient-to-r from-green-50 to-emerald-50/30" : "bg-muted/30"}`}>
+                  <div className={`px-5 py-4 ${connTier === "full" ? "bg-gradient-to-r from-green-50 to-emerald-50/30" : connTier === "bridge" ? "bg-gradient-to-r from-yellow-50 to-amber-50/20" : "bg-muted/30"}`}>
                     <div className="flex items-start justify-between gap-4 flex-wrap">
                       <div className="flex items-center gap-3 min-w-0">
-                        {/* Status indicator */}
-                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${isOnline ? "bg-green-100" : "bg-gray-100"}`}>
+                        {/* Three-tier status icon */}
+                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${connTier === "full" ? "bg-green-100" : connTier === "bridge" ? "bg-yellow-100" : "bg-gray-100"}`}>
                           {statusLoading
                             ? <RefreshCw className="h-5 w-5 text-primary animate-spin" />
-                            : isOnline
+                            : connTier === "full"
                               ? <Wifi className="h-5 w-5 text-green-600" />
-                              : <WifiOff className="h-5 w-5 text-gray-400" />
+                              : connTier === "bridge"
+                                ? <Wifi className="h-5 w-5 text-yellow-500" />
+                                : <WifiOff className="h-5 w-5 text-gray-400" />
                           }
                         </div>
                         <div className="min-w-0">
@@ -543,12 +593,20 @@ export default function DeviceManagement() {
                                 {((selected as any).location_scope as string).replace("_"," ")}
                               </span>
                             )}
+                            {/* Connection tier badge */}
+                            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                              connTier === "full"   ? "bg-green-100 border-green-300 text-green-700" :
+                              connTier === "bridge" ? "bg-yellow-100 border-yellow-300 text-yellow-700" :
+                              "bg-gray-100 border-gray-200 text-gray-500"
+                            }`}>
+                              <span className={`h-1.5 w-1.5 rounded-full ${tierInfo.dot.replace("animate-pulse","")}`} />
+                              {tierInfo.label}
+                            </span>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {isOnline ? "Bridge online" : "Bridge offline"} ·{" "}
-                            {fkStatus?.connected ? <span className="text-green-600 font-medium">FK623 connected</span> : "FK623 not detected"}{" "}
-                            {(selected as any).location_label ? `· ${(selected as any).location_label}` : selected.location ? `· ${selected.location}` : ""}
-                          </p>
+                          <p className={`text-xs mt-0.5 font-medium ${tierInfo.text}`}>{tierInfo.desc}</p>
+                          {status?.last_status_message && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{status.last_status_message}</p>
+                          )}
                         </div>
                       </div>
 
@@ -558,28 +616,28 @@ export default function DeviceManagement() {
                           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 shadow-sm transition-all">
                           <Activity className="h-3.5 w-3.5" /> Check Status
                         </button>
-                        <button onClick={handleSyncTime} disabled={!isOnline}
+                        <button onClick={handleSyncTime} disabled={connTier === "offline"}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 shadow-sm transition-all">
                           <Clock className="h-3.5 w-3.5" /> Sync Time
                         </button>
-                        <button onClick={handleGetUsers} disabled={!isOnline}
+                        <button onClick={handleGetUsers} disabled={connTier === "offline"}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 shadow-sm transition-all">
                           <Users className="h-3.5 w-3.5" /> Get Users
                         </button>
-                        <button onClick={handlePullLogs} disabled={!isOnline}
+                        <button onClick={handlePullLogs} disabled={connTier === "offline"}
                           className="inline-flex items-center gap-1.5 rounded-lg bg-primary text-white px-3 py-1.5 text-xs font-semibold hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all">
                           <Download className="h-3.5 w-3.5" /> Pull Logs
                         </button>
                         <div className="w-px h-6 bg-border self-center mx-1" />
-                        <button onClick={handleReboot} disabled={!isOnline}
+                        <button onClick={handleReboot} disabled={connTier === "offline"}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 px-3 py-1.5 text-xs font-semibold hover:bg-amber-100 disabled:opacity-50 shadow-sm transition-all" title="Reboot FK623 device">
                           <RotateCcw className="h-3.5 w-3.5" /> Reset
                         </button>
-                        <button onClick={handleClearLogs} disabled={!isOnline}
+                        <button onClick={handleClearLogs} disabled={connTier === "offline"}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 px-3 py-1.5 text-xs font-semibold hover:bg-red-100 disabled:opacity-50 shadow-sm transition-all" title="Delete all logs from FK623">
                           <Trash2 className="h-3.5 w-3.5" /> Clear Logs
                         </button>
-                        <button onClick={handleClearUsers} disabled={!isOnline}
+                        <button onClick={handleClearUsers} disabled={connTier === "offline"}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 text-red-600 px-3 py-1.5 text-xs font-semibold hover:bg-red-100 disabled:opacity-50 shadow-sm transition-all" title="Delete all users from FK623">
                           <Users className="h-3.5 w-3.5" /> Clear Users
                         </button>
@@ -587,7 +645,7 @@ export default function DeviceManagement() {
                     </div>
                   </div>
 
-                  {/* FK623 metrics — 6 tiles */}
+                  {/* FK623 metrics â€” 6 tiles */}
                   <div className="grid grid-cols-3 sm:grid-cols-6 divide-x divide-y sm:divide-y-0 divide-border">
                     {[
                       { icon: Users,       label: "Users",        val: fkStatus?.users        ?? selected.device_users_count ?? 0, color: "text-blue-600"   },
@@ -595,7 +653,7 @@ export default function DeviceManagement() {
                       { icon: Smile,       label: "Faces",        val: fkStatus?.faces        ?? 0,                                color: "text-green-600"  },
                       { icon: CreditCard,  label: "Cards",        val: fkStatus?.cards        ?? 0,                                color: "text-orange-600" },
                       { icon: HardDrive,   label: "Log Records",  val: fkStatus?.logs         ?? selected.device_logs_count ?? 0, color: "text-indigo-600" },
-                      { icon: Key,         label: "Serial No.",   val: fkStatus?.serialNumber ?? "—",                             color: "text-gray-500"   },
+                      { icon: Key,         label: "Serial No.",   val: fkStatus?.serialNumber ?? "â€”",                             color: "text-gray-500"   },
                     ].map(({ icon: Icon, label, val, color }) => (
                       <div key={label} className="flex flex-col items-center justify-center gap-1 py-4 bg-card hover:bg-muted/10 transition-colors">
                         <Icon className={`h-4 w-4 ${color}`} />
@@ -608,13 +666,13 @@ export default function DeviceManagement() {
                   {/* Last sync info */}
                   {(selected.last_sync_at || selected.last_sync_error) && (
                     <div className="border-t border-border px-5 py-2 bg-muted/10 flex flex-wrap gap-x-6 text-xs text-muted-foreground">
-                      {selected.last_sync_at && <span>Last sync: <b className="text-foreground">{fmtFull(selected.last_sync_at)}</b> — {selected.last_sync_status ?? "—"}</span>}
+                      {selected.last_sync_at && <span>Last sync: <b className="text-foreground">{fmtFull(selected.last_sync_at)}</b> â€” {selected.last_sync_status ?? "â€”"}</span>}
                       {selected.last_sync_error && <span className="text-red-600">{selected.last_sync_error}</span>}
                     </div>
                   )}
                 </Card>
 
-                {/* ── Tab navigation ── */}
+                {/* â”€â”€ Tab navigation â”€â”€ */}
                 <div className="flex border-b border-border overflow-x-auto -mb-0">
                   {TABS.map(tab => (
                     <button key={tab.id} onClick={() => setActiveTab(tab.id)}
@@ -629,10 +687,10 @@ export default function DeviceManagement() {
                   ))}
                 </div>
 
-                {/* ── Tab content ── */}
+                {/* â”€â”€ Tab content â”€â”€ */}
                 <div className="space-y-4">
 
-                  {/* ════ OVERVIEW ════ */}
+                  {/* â•â•â•â• OVERVIEW â•â•â•â• */}
                   {activeTab === "overview" && (
                     <>
                       {/* Device Assignment */}
@@ -660,10 +718,10 @@ export default function DeviceManagement() {
                           <div className="mt-4">
                             <label className="mb-1.5 block text-xs font-semibold text-foreground">Link to Dormitory <span className="font-normal text-muted-foreground">(enables automatic boarding attendance)</span></label>
                             <select value={aDorm} onChange={e => setADorm(e.target.value)} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-sm">
-                              <option value="">— select a dormitory —</option>
+                              <option value="">â€” select a dormitory â€”</option>
                               {dormitories.map(d => <option key={d.id} value={d.id}>{d.name}{d.block_name ? ` (${d.block_name})` : ""}</option>)}
                             </select>
-                            {dormitories.length === 0 && <p className="mt-1.5 text-xs text-amber-600">No dormitories found. Create them in Boarding → Dormitories first.</p>}
+                            {dormitories.length === 0 && <p className="mt-1.5 text-xs text-amber-600">No dormitories found. Create them in Boarding â†’ Dormitories first.</p>}
                           </div>
                         )}
                         <button onClick={handleAssignLocation} disabled={assigning} className="mt-4 inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all">
@@ -697,7 +755,7 @@ export default function DeviceManagement() {
                                     {s.is_active && <span className="rounded-full bg-green-100 border border-green-300 px-2 py-0.5 text-[10px] font-bold text-green-700 uppercase tracking-wide">Active</span>}
                                   </div>
                                   {s.windows.length > 0 && (
-                                    <p className="text-xs text-muted-foreground mt-0.5">{s.windows.map(w => `${w.label}: ${w.start_time}–${w.end_time}${w.grace_minutes ? ` (+${w.grace_minutes}m grace)` : ""}`).join(" · ")}</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">{s.windows.map(w => `${w.label}: ${w.start_time}â€“${w.end_time}${w.grace_minutes ? ` (+${w.grace_minutes}m grace)` : ""}`).join(" Â· ")}</p>
                                   )}
                                   {s.is_active && s.activated_at && <p className="text-[10px] text-green-600 mt-0.5">Active since {fmtFull(s.activated_at)}</p>}
                                 </div>
@@ -743,7 +801,7 @@ export default function DeviceManagement() {
                         <p className="text-sm text-muted-foreground mb-5">These actions affect the <b>physical FK623 device</b> directly and <b>cannot be undone</b>. Use with caution.</p>
                         <div className="grid gap-4 sm:grid-cols-3">
                           {[
-                            { title: "Reset / Reboot Device", desc: "Reboots the FK623. It will reconnect automatically within 30–60 seconds.", action: handleReboot, label: "Reset Device", icon: RotateCcw, color: "border-amber-200 bg-amber-50" as const, btnColor: "border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200" as const },
+                            { title: "Reset / Reboot Device", desc: "Reboots the FK623. It will reconnect automatically within 30â€“60 seconds.", action: handleReboot, label: "Reset Device", icon: RotateCcw, color: "border-amber-200 bg-amber-50" as const, btnColor: "border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200" as const },
                             { title: "Clear Device Logs",     desc: "Deletes all attendance logs stored on the FK623. Records already pulled to the server are not affected.", action: handleClearLogs, label: "Clear Logs", icon: HardDrive, color: "border-red-200 bg-red-50" as const, btnColor: "border-red-300 bg-red-100 text-red-800 hover:bg-red-200" as const },
                             { title: "Delete All Users",      desc: "Removes every enrolled user and their biometric data. You must re-push students to restore access.", action: handleClearUsers, label: "Delete All Users", icon: Users, color: "border-red-300 bg-red-50" as const, btnColor: "border-red-400 bg-red-100 text-red-900 hover:bg-red-200" as const },
                           ].map(({ title, desc, action, label, icon: Icon, color, btnColor }) => (
@@ -753,7 +811,7 @@ export default function DeviceManagement() {
                                 <p className="text-sm font-semibold text-foreground">{title}</p>
                               </div>
                               <p className="text-xs text-muted-foreground">{desc}</p>
-                              <button onClick={action} disabled={!isOnline} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:opacity-50 transition-all ${btnColor}`}>
+                              <button onClick={action} disabled={connTier === "offline"} className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:opacity-50 transition-all ${btnColor}`}>
                                 <Icon className="h-3.5 w-3.5" /> {label}
                               </button>
                             </div>
@@ -763,7 +821,7 @@ export default function DeviceManagement() {
                     </>
                   )}
 
-                  {/* ════ PUSH / REMOVE ════ */}
+                  {/* â•â•â•â• PUSH / REMOVE â•â•â•â• */}
                   {activeTab === "push" && (
                     <>
                       <Card>
@@ -801,7 +859,7 @@ export default function DeviceManagement() {
                             )}
                             <button onClick={handlePushStudents} disabled={pushing || (pushMode === "section" && !pushSectionId)}
                               className="h-10 inline-flex items-center gap-2 rounded-lg bg-primary text-white px-5 text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all">
-                              {pushing ? <><RefreshCw className="h-4 w-4 animate-spin" /> Pushing…</> : <><Upload className="h-4 w-4" /> Push Students</>}
+                              {pushing ? <><RefreshCw className="h-4 w-4 animate-spin" /> Pushingâ€¦</> : <><Upload className="h-4 w-4" /> Push Students</>}
                             </button>
                           </div>
                           {!isOnline && <div className="mt-3 flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2"><AlertTriangle className="h-4 w-4 shrink-0" /> Device appears offline. The system will retry automatically for up to 5 minutes.</div>}
@@ -831,7 +889,7 @@ export default function DeviceManagement() {
                             )}
                             <button onClick={handleRemoveStudents} disabled={removing || (removeMode === "class" && !rmClassId)}
                               className="h-10 inline-flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 text-red-700 px-5 text-sm font-semibold hover:bg-red-100 disabled:opacity-50 shadow-sm transition-all">
-                              {removing ? <><RefreshCw className="h-4 w-4 animate-spin" /> Removing…</> : <><Trash2 className="h-4 w-4" /> Remove Students</>}
+                              {removing ? <><RefreshCw className="h-4 w-4 animate-spin" /> Removingâ€¦</> : <><Trash2 className="h-4 w-4" /> Remove Students</>}
                             </button>
                           </div>
                         </div>
@@ -839,7 +897,7 @@ export default function DeviceManagement() {
                     </>
                   )}
 
-                  {/* ════ ENROLLED USERS ════ */}
+                  {/* â•â•â•â• ENROLLED USERS â•â•â•â• */}
                   {activeTab === "users" && (
                     <Card>
                       <CardHeader
@@ -851,7 +909,7 @@ export default function DeviceManagement() {
                           <button onClick={handleGetUsers} disabled={usersLoading || !isOnline}
                             className="inline-flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold hover:bg-gray-50 disabled:opacity-50 shadow-sm transition-all">
                             <RefreshCw className={`h-3.5 w-3.5 ${usersLoading ? "animate-spin" : ""}`} />
-                            {usersLoading ? "Loading…" : "Fetch from Device"}
+                            {usersLoading ? "Loadingâ€¦" : "Fetch from Device"}
                           </button>
                         }
                       />
@@ -861,7 +919,7 @@ export default function DeviceManagement() {
                         <div className="px-5 py-3 border-b border-border flex flex-wrap gap-2 items-end bg-muted/10">
                           <div className="relative flex-1 min-w-52">
                             <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                            <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search by name or device user ID…" className="h-8 w-full rounded-lg border border-input bg-background pl-8 pr-3 text-xs shadow-sm" />
+                            <input value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search by name or device user IDâ€¦" className="h-8 w-full rounded-lg border border-input bg-background pl-8 pr-3 text-xs shadow-sm" />
                           </div>
                           {userMethods.length > 0 && (
                             <select value={userMethodFil} onChange={e => setUserMethodFil(e.target.value)} className="h-8 rounded-lg border border-input bg-background px-2 text-xs shadow-sm">
@@ -897,7 +955,7 @@ export default function DeviceManagement() {
                                 <div key={uid} className="flex items-center gap-3 px-5 py-3.5 hover:bg-muted/20 transition-colors">
                                   <Avatar name={u.name || uid} size="sm" />
                                   <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-sm">{u.name || "—"}</div>
+                                    <div className="font-medium text-sm">{u.name || "â€”"}</div>
                                     <div className="text-xs text-muted-foreground font-mono">Device ID: {uid}</div>
                                   </div>
                                   <div className="flex items-center gap-2 shrink-0">
@@ -921,13 +979,13 @@ export default function DeviceManagement() {
                     </Card>
                   )}
 
-                  {/* ════ ATTENDANCE SCANS ════ */}
+                  {/* â•â•â•â• ATTENDANCE SCANS â•â•â•â• */}
                   {activeTab === "scans" && (
                     <Card>
                       <div className="px-5 py-4 border-b border-border">
                         <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
                           <div>
-                            <h3 className="font-semibold text-sm flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Attendance Scans — {selected.name}</h3>
+                            <h3 className="font-semibold text-sm flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Attendance Scans â€” {selected.name}</h3>
                             <p className="text-xs text-muted-foreground mt-0.5">Filter and view scan records from this device</p>
                           </div>
                           <div className="flex items-center gap-2">
@@ -949,7 +1007,7 @@ export default function DeviceManagement() {
                         <div className="flex flex-wrap gap-2 mb-3">
                           <div className="relative flex-1 min-w-52">
                             <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                            <input value={fSearch} onChange={e => setFSearch(e.target.value)} placeholder="Search name · student ID · device user ID…" className="h-8 w-full rounded-lg border border-input bg-background pl-8 pr-3 text-xs shadow-sm" />
+                            <input value={fSearch} onChange={e => setFSearch(e.target.value)} placeholder="Search name Â· student ID Â· device user IDâ€¦" className="h-8 w-full rounded-lg border border-input bg-background pl-8 pr-3 text-xs shadow-sm" />
                           </div>
                           {[
                             { val: fStatus, set: setFStatus, opts: [["","All Statuses"],["present","Present"],["late","Late"],["absent","Absent"]] },
@@ -991,7 +1049,7 @@ export default function DeviceManagement() {
                           {dormitories.length > 0 && (
                             <Sel label="Dormitory" value={fDormitory} onChange={v => { setFDormitory(v); setLogsPage(1); }}>
                               <option value="">All Dormitories</option>
-                              {dormitories.map(d => <option key={d.id} value={d.id}>{d.name}{d.block_name ? ` — ${d.block_name}` : ""}</option>)}
+                              {dormitories.map(d => <option key={d.id} value={d.id}>{d.name}{d.block_name ? ` â€” ${d.block_name}` : ""}</option>)}
                             </Sel>
                           )}
                           {anyFilter && (
@@ -1004,7 +1062,7 @@ export default function DeviceManagement() {
                         {anyClientFilter && (
                           <div className="mt-2 flex items-center gap-2 text-xs text-primary bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
                             <Filter className="h-3.5 w-3.5 shrink-0" />
-                            <span>Filtering by student attributes — matching {clientStudentIds?.size ?? "…"} student(s) from school database</span>
+                            <span>Filtering by student attributes â€” matching {clientStudentIds?.size ?? "â€¦"} student(s) from school database</span>
                             {clientFiltLoading && <RefreshCw className="h-3 w-3 animate-spin ml-auto" />}
                           </div>
                         )}
@@ -1034,7 +1092,7 @@ export default function DeviceManagement() {
                         <div className="py-14 text-center">
                           <BarChart3 className="h-12 w-12 mx-auto mb-3 text-muted-foreground/20" />
                           <p className="font-medium text-muted-foreground">No scans found</p>
-                          <p className="text-xs text-muted-foreground/70 mt-1">No attendance scans for {selected.name} on {logsDate}{anyFilter ? " — try clearing filters" : ""}</p>
+                          <p className="text-xs text-muted-foreground/70 mt-1">No attendance scans for {selected.name} on {logsDate}{anyFilter ? " â€” try clearing filters" : ""}</p>
                         </div>
                       ) : (
                         <>
@@ -1061,21 +1119,21 @@ export default function DeviceManagement() {
                                         </div>
                                       </td>
                                       <td className="px-4 py-3 font-mono text-xs text-muted-foreground whitespace-nowrap">{log.studentId}</td>
-                                      <td className="px-4 py-3 text-xs">{l.className ?? "—"}</td>
-                                      <td className="px-4 py-3 text-xs text-muted-foreground">{l.section ?? "—"}</td>
+                                      <td className="px-4 py-3 text-xs">{l.className ?? "â€”"}</td>
+                                      <td className="px-4 py-3 text-xs text-muted-foreground">{l.section ?? "â€”"}</td>
                                       <td className="px-4 py-3 text-xs">
-                                        {sess ? <span className="rounded-full bg-blue-50 border border-blue-200 text-blue-700 px-2 py-0.5 text-[10px] font-semibold">{sess}</span> : <span className="text-muted-foreground">—</span>}
+                                        {sess ? <span className="rounded-full bg-blue-50 border border-blue-200 text-blue-700 px-2 py-0.5 text-[10px] font-semibold">{sess}</span> : <span className="text-muted-foreground">â€”</span>}
                                       </td>
                                       <td className="px-4 py-3 text-xs font-semibold whitespace-nowrap">{fmtTime(log.timestamp)}</td>
-                                      <td className="px-4 py-3 text-xs capitalize text-muted-foreground">{log.method ?? "—"}</td>
+                                      <td className="px-4 py-3 text-xs capitalize text-muted-foreground">{log.method ?? "â€”"}</td>
                                       <td className="px-4 py-3">
                                         {log.direction
                                           ? <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${log.direction === "In" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-amber-50 border-amber-200 text-amber-700"}`}>{log.direction === "In" ? "Entry" : "Exit"}</span>
-                                          : <span className="text-muted-foreground text-xs">—</span>
+                                          : <span className="text-muted-foreground text-xs">â€”</span>
                                         }
                                       </td>
                                       <td className="px-4 py-3">
-                                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${statusPill(log.status ?? "")}`}>{log.status ?? "—"}</span>
+                                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${statusPill(log.status ?? "")}`}>{log.status ?? "â€”"}</span>
                                       </td>
                                     </tr>
                                   );
@@ -1085,7 +1143,7 @@ export default function DeviceManagement() {
                           </div>
                           {logsMeta.totalPages > 1 && (
                             <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-muted/10">
-                              <span className="text-xs text-muted-foreground">{(logsPage-1)*LOGS_PER_PAGE+1}–{Math.min(logsPage*LOGS_PER_PAGE, logsMeta.total)} of {logsMeta.total}</span>
+                              <span className="text-xs text-muted-foreground">{(logsPage-1)*LOGS_PER_PAGE+1}â€“{Math.min(logsPage*LOGS_PER_PAGE, logsMeta.total)} of {logsMeta.total}</span>
                               <div className="flex gap-2 items-center">
                                 <button onClick={() => setLogsPage(p => p-1)} disabled={logsPage<=1} className="rounded-lg border border-border bg-white px-3 py-1 text-xs disabled:opacity-40 hover:bg-gray-50 shadow-sm">Previous</button>
                                 <span className="text-xs text-muted-foreground font-medium">{logsPage} / {logsMeta.totalPages}</span>
@@ -1098,13 +1156,13 @@ export default function DeviceManagement() {
                     </Card>
                   )}
 
-                  {/* ════ REPORTS & EXPORT ════ */}
+                  {/* â•â•â•â• REPORTS & EXPORT â•â•â•â• */}
                   {activeTab === "reports" && (
                     <div className="space-y-4">
                       {/* Quick stats */}
                       {logs.length > 0 && (
                         <Card>
-                          <CardHeader title="Attendance Summary" subtitle={`${selected.name} — ${logsDate} — ${logs.length} records loaded`} icon={BarChart3} />
+                          <CardHeader title="Attendance Summary" subtitle={`${selected.name} â€” ${logsDate} â€” ${logs.length} records loaded`} icon={BarChart3} />
                           <div className="px-5 py-5">
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                               {[
@@ -1144,12 +1202,12 @@ export default function DeviceManagement() {
                           <div className="px-5 py-5 space-y-3">
                             <p className="text-sm text-muted-foreground">Export attendance scans for <b>{selected.name}</b> for the date loaded in the Scans tab, with all active filters applied.</p>
                             <div className={`rounded-lg border px-3 py-2 text-xs font-medium ${logs.length > 0 ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>
-                              {logs.length > 0 ? `✓ ${logs.length} records ready to export` : "⚠ Load data in the Scans tab first"}
+                              {logs.length > 0 ? `âœ“ ${logs.length} records ready to export` : "âš  Load data in the Scans tab first"}
                             </div>
                             <button onClick={handleExportScans} disabled={exporting || logs.length === 0}
                               className="inline-flex items-center gap-2 rounded-lg bg-green-600 text-white px-5 py-2.5 text-sm font-semibold hover:bg-green-700 disabled:opacity-50 shadow-sm transition-all">
                               {exporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
-                              {exporting ? "Exporting…" : "Export Scans (.xlsx)"}
+                              {exporting ? "Exportingâ€¦" : "Export Scans (.xlsx)"}
                             </button>
                           </div>
                         </Card>
@@ -1166,7 +1224,7 @@ export default function DeviceManagement() {
                             <button onClick={handleExportAllDevices} disabled={exporting}
                               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 text-white px-5 py-2.5 text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 shadow-sm transition-all">
                               {exporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
-                              {exporting ? "Exporting…" : "Export All Devices (.xlsx)"}
+                              {exporting ? "Exportingâ€¦" : "Export All Devices (.xlsx)"}
                             </button>
                           </div>
                         </Card>

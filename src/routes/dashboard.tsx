@@ -323,9 +323,28 @@ function DashboardPage() {
         const totalStudents = studentMeta.meta?.total || records.length;
         const eveningDeviceLogs = todayDeviceLogData.filter(isEveningDeviceLog);
         const eveningSummary = summarizeDeviceAttendance(eveningDeviceLogs, totalStudents);
+
+        // Fetch gate_logs-backed accurate present count (deduplicated at DB level)
+        // This is the authoritative source — gate_logs uses ON CONFLICT DO NOTHING
+        // so retried SSE events never inflate the count.
+        const gateStats = await apiRequest<{ gatePresent?: number; uniqueStudents?: number }>(
+          "/attendance/records/device-logs/stats",
+          { auth: "school" }
+        ).catch(() => null);
+
+        const deviceSummary = summarizeDeviceAttendance(todayDeviceLogData, totalStudents);
+        // Prefer gate_logs count (accurate dedup) over in-memory count from attendance_logs
+        const presentCount = gateStats?.gatePresent ?? deviceSummary.present;
+
         setCounts(
           isSchoolDay
-            ? { ...summarizeDeviceAttendance(todayDeviceLogData, totalStudents), eveningPresent: eveningSummary.present }
+            ? {
+                total: totalStudents,
+                present: presentCount,
+                eveningPresent: eveningSummary.present,
+                absent: Math.max(0, totalStudents - presentCount - deviceSummary.late),
+                late: deviceSummary.late,
+              }
             : { total: totalStudents, present: 0, eveningPresent: 0, absent: 0, late: 0 }
         );
 

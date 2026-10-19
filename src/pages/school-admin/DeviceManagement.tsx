@@ -1114,8 +1114,8 @@ export default function DeviceManagement() {
                                       <td className="px-4 py-3 text-muted-foreground text-xs">{(logsPage-1)*LOGS_PER_PAGE+i+1}</td>
                                       <td className="px-4 py-3">
                                         <div className="flex items-center gap-2">
-                                          <Avatar name={log.studentName} size="sm" />
-                                          <span className="font-medium whitespace-nowrap">{log.studentName}</span>
+                                          <Avatar name={log.studentName || log.studentId || "?"} size="sm" />
+                                          <span className="font-medium whitespace-nowrap">{log.studentName || log.studentId || "Unknown"}</span>
                                         </div>
                                       </td>
                                       <td className="px-4 py-3 font-mono text-xs text-muted-foreground whitespace-nowrap">{log.studentId}</td>

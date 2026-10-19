@@ -1239,12 +1239,12 @@ function AssignTab({ tablets, devices, schools, onRefresh }: {
                     </td>
                     <td className="px-4 py-3">
                       <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold",
-                        d.is_connected ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
-                        {d.is_connected ? "Online" : "Offline"}
+                        (deviceLiveStatus[d.id] ?? d.is_connected) ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
+                        {(deviceLiveStatus[d.id] ?? d.is_connected) ? "Online" : "Offline"}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {linkedTablet && !d.is_connected ? (
+                      {linkedTablet && !(deviceLiveStatus[d.id] ?? d.is_connected) ? (
                         <button
                           onClick={() => void handleConnectFK623(d)}
                           disabled={connecting === d.id}

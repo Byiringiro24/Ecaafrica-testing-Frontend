@@ -20,18 +20,25 @@ export type DeviceRecord = {
 /**
  * Determine if a device is actually online right now.
  *
+ * Single source of truth used by ALL roles: school admin, DOD, boarding, gate-keeper.
+ * Uses 10-minute grace window to avoid flickering when no student has scanned recently.
+ *
  * Priority:
- *  1. `is_online` / `is_connected` field set by the status check endpoint
- *  2. `last_seen_at` within the last 5 minutes (device was pinging recently)
- *  3. Fall back to offline
+ *  1. `is_online` field set by the backend heartbeat job / status check endpoint
+ *  2. `is_connected` field (from DB — reset to false by heartbeat when tablet unreachable)
+ *  3. `last_seen_at` within the last 10 minutes (matches backend grace window)
+ *  4. Fall back to offline
  *
  * We deliberately do NOT use `is_active` — that is a registration flag
  * ("this device is configured"), not a real-time connectivity indicator.
  */
 export function isDeviceOnline(device: DeviceRecord): boolean {
-  // Explicit real-time status from /devices/:id/status or bridge-sse update
-  if (device.is_online === true || device.is_connected === true) return true;
-  if (device.is_online === false || device.is_connected === false) return false;
+  // Explicit real-time fields — backend heartbeat sets is_connected=false
+  // when the tablet is unreachable so this is authoritative
+  if (device.is_online === true) return true;
+  if (device.is_online === false) return false;
+  if (device.is_connected === true) return true;
+  if (device.is_connected === false) return false;
   // Fall back to last_seen_at within 10 minutes (matches backend grace window)
   if (device.last_seen_at) {
     const age = Date.now() - new Date(device.last_seen_at).getTime();

@@ -17,6 +17,7 @@ import { deviceApi, type Device } from "@/lib/deviceApi";
 import { tabletApi } from "@/lib/tabletApi";
 import { fetchDeviceLogs } from "@/lib/device-logs-api";
 import type { DeviceLog } from "@/lib/device-logs-types";
+import { isDeviceOnline } from "@/components/ui-kit/DeviceStatusCards";
 import { Avatar } from "@/components/ui-kit/Avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { localDateInputValue } from "@/lib/dateInput";
@@ -35,7 +36,7 @@ type DeviceSession= { id: string; name: string; is_active: boolean; activated_at
 // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const fmtTime = (ts?: string | null) => { if (!ts) return "â€”"; const d = new Date(ts); return isNaN(d.getTime()) ? "â€”" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false }); };
 const fmtFull = (ts?: string | null) => { if (!ts) return "â€”"; const d = new Date(ts); return isNaN(d.getTime()) ? "â€”" : d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }); };
-const isLiveOnline = (d?: Device | null) => { if (!d) return false; if (d.last_seen_at && Date.now() - new Date(d.last_seen_at).getTime() < 90_000) return true; return Boolean(d.is_connected || d.is_online || d.status === "online"); };
+const isLiveOnline = (d?: Device | null) => !d ? false : isDeviceOnline(d as any);
 
 /** Get the three-tier connection status from live status data */
 const getConnectionTier = (status: any): ConnTier => {

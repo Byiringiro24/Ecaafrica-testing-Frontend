@@ -161,6 +161,14 @@ const formatPeriodRange = (start?: string | null, end?: string | null) => {
   return `${from} – ${to}`;
 };
 
+/** Adds calendar days to a date-input value without converting it to UTC. */
+const addDaysToDateInput = (value: string, days: number) => {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+  return localDateInputValue(date);
+};
+
 const buildAttendanceChartImage = (counts: Record<UiStatus, number>) => {
   const canvas = document.createElement("canvas");
   canvas.width = 700;
@@ -364,14 +372,13 @@ function ManualAttendancePage() {
   };
 
   const loadSummaryReport = async () => {
-    const end = new Date(`${dateFilter}T00:00:00`);
     const days = summaryPeriod === "daily" ? 0 : summaryPeriod === "weekly" ? 6 : summaryPeriod === "monthly" ? 29 : 89;
-    const start = new Date(end);
-    start.setDate(start.getDate() - days);
+    const startDate = addDaysToDateInput(dateFilter, -days);
+    const endDate = addDaysToDateInput(dateFilter, 1);
     setSummaryLoading(true);
     try {
       const report = await apiRequest<AttendanceSummary>(
-        `/attendance/records/summary?start_date=${start.toISOString().slice(0, 10)}&end_date=${new Date(end.getTime() + 86400000).toISOString().slice(0, 10)}`,
+        `/attendance/records/summary?start_date=${startDate}&end_date=${endDate}`,
         { auth: "school" }
       );
       setSummaryReport(report);

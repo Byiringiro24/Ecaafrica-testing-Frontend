@@ -753,6 +753,7 @@ export default function DeviceManagement() {
                       >
                         <p className="text-sm text-muted-foreground mb-4">
                           The tablet must be reachable via <b>WireGuard VPN</b>. Enter the tablet's VPN IP (e.g. <code className="bg-muted px-1 rounded text-xs">10.0.0.2</code>) and click <b>Update & Reconnect</b>. The FK623 device connects automatically through the tablet bridge.
+                          <br /><span className="text-[11px] text-amber-600 font-medium mt-1 block">⚠ This is the tablet's WireGuard VPN IP — not the FK623 biometric device IP. To change the FK623 IP, open the Developer modal on the tablet browser at <code className="bg-muted px-1 rounded">http://localhost:3000</code>.</span>
                         </p>
                         {tabletId ? (
                           <TabletIpForm

@@ -32,10 +32,10 @@ export function isDeviceOnline(device: DeviceRecord): boolean {
   // Explicit real-time status from /devices/:id/status or bridge-sse update
   if (device.is_online === true || device.is_connected === true) return true;
   if (device.is_online === false || device.is_connected === false) return false;
-  // Fall back to last_seen_at within 5 minutes
+  // Fall back to last_seen_at within 10 minutes (matches backend grace window)
   if (device.last_seen_at) {
     const age = Date.now() - new Date(device.last_seen_at).getTime();
-    return age < 5 * 60 * 1000;
+    return age < 10 * 60 * 1000;
   }
   return false;
 }

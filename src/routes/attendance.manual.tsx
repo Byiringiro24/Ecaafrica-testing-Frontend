@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { localDateInputValue } from "@/lib/dateInput";
 import { studentSearchText, studentIdNumber } from "@/lib/studentIdentity";
-import { formatAttendanceDateTime, formatAttendanceTime } from "@/lib/attendanceTime";
+import { formatAttendanceDateTime } from "@/lib/attendanceTime";
 
 export const Route = createFileRoute("/attendance/manual")({
   component: ManualAttendancePage,
@@ -140,11 +140,25 @@ const formatLongDate = (value: string) => {
   });
 };
 
-const formatTime = (value?: string | null, status?: ApiStatus) => {
-  if (!value || status === "absent") return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return formatAttendanceTime(value);
+/** Renders a timetable time as "8:00 AM" from an HH:mm, HH:mm:ss, or ISO value. */
+const formatPeriodTime = (value?: string | null) => {
+  if (!value) return "";
+  const match = /(\d{1,2}):(\d{2})/.exec(
+    value.includes("T") ? value.slice(value.indexOf("T") + 1) : value
+  );
+  if (!match) return "";
+  const hours = Number(match[1]);
+  const minutes = match[2];
+  const suffix = hours >= 12 ? "PM" : "AM";
+  const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+  return `${hour12}:${minutes} ${suffix}`;
+};
+
+const formatPeriodRange = (start?: string | null, end?: string | null) => {
+  const from = formatPeriodTime(start);
+  const to = formatPeriodTime(end);
+  if (!from && !to) return "—";
+  return `${from} – ${to}`;
 };
 
 const buildAttendanceChartImage = (counts: Record<UiStatus, number>) => {
@@ -546,6 +560,7 @@ function ManualAttendancePage() {
   const todayLabel = useMemo(() => formatLongDate(dateFilter), [dateFilter]);
 
   const sessionMap = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);
+  const periodMap = useMemo(() => new Map(periodRecords.map((period) => [period.id, period])), [periodRecords]);
 
   const rows = useMemo<AttendanceRow[]>(() => {
     return records.map((record) => {
@@ -557,7 +572,8 @@ function ManualAttendancePage() {
         : "Unknown student";
       const cardId = studentIdNumber(student);
       const status = STATUS_LABEL[record.status];
-      const timeIn = formatTime(record.scanned_at ?? record.created_at, record.status);
+      const period = session?.period_id ? periodMap.get(session.period_id) : undefined;
+      const timeIn = formatPeriodRange(period?.start_time, period?.end_time);
       const className =
         sectionId
           ? classLabelForSection(sectionId)
@@ -590,7 +606,7 @@ function ManualAttendancePage() {
         residency
       };
     });
-  }, [records, sessionMap, studentsById, classMap, sectionMap]);
+  }, [records, sessionMap, periodMap, studentsById, classMap, sectionMap]);
 
   const filtered = useMemo(() => {
     return rows.filter((row) => {
@@ -697,7 +713,7 @@ function ManualAttendancePage() {
         "Session Date",
         "Teacher",
         "Period",
-        "Time In",
+        "Time",
         "Status",
         "Residency"
       ];
@@ -893,7 +909,7 @@ function ManualAttendancePage() {
                     <th className="text-left px-5 py-3">Teacher</th>
                     <th className="text-left px-5 py-3">Period</th>
                     <th className="text-left px-5 py-3">Subject</th>
-                    <th className="text-left px-5 py-3">Time In</th>
+                    <th className="text-left px-5 py-3">Time</th>
                     <th className="text-left px-5 py-3">Status</th>
                     <th className="text-left px-5 py-3">Residency</th>
                   </tr>

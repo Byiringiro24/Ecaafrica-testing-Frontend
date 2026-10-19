@@ -408,6 +408,16 @@ function ClassesPage() {
         throw new Error("Unable to resolve class record");
       }
 
+      // Combinations belong to the class (not an individual section). Always
+      // send the full selection on edit so unchecked combinations are removed.
+      if (target?.classId) {
+        await apiRequest(`/classes/${target.classId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ combination_ids: payload.combinationIds ?? [] }),
+          auth: "school"
+        });
+      }
+
       const sectionPayload = {
         class_id: classRecord.id,
         name: sectionName,
@@ -529,6 +539,15 @@ function ClassesPage() {
                   <div className="mt-1 text-sm text-muted-foreground">{c.level} — Section {c.section}</div>
                   <div className="mt-1.5 flex items-center gap-2 text-sm text-muted-foreground"><User className="h-3.5 w-3.5" />{c.teacher}</div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground"><DoorOpen className="h-3.5 w-3.5" />{c.room || "—"}</div>
+                  {c.combinations?.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {c.combinations.map((combination) => (
+                        <span key={combination.id} className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary" title={combination.name}>
+                          {combination.code}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
                 <div className="mt-4">
                   <div className="flex justify-between text-xs mb-1.5">
@@ -763,6 +782,15 @@ function ClassDetailDrawer({ cls, onClose }: { cls: ClassInfo; onClose: () => vo
           <div>
             <div className="font-display font-bold text-lg">{cls.name} — {cls.level} Section {cls.section}</div>
             <div className="text-xs text-muted-foreground mt-0.5">{cls.teacher} • {roomLabel}</div>
+            {cls.combinations?.length ? (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {cls.combinations.map((combination) => (
+                  <span key={combination.id} className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary" title={combination.name}>
+                    {combination.code} — {combination.name}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
           <button onClick={onClose} className="rounded-md p-1.5 hover:bg-muted"><X className="h-5 w-5" /></button>
         </div>

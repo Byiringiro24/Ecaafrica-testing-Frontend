@@ -83,6 +83,49 @@ const TABS: { id: Tab; label: string; icon: typeof Activity; desc: string }[] = 
 ];
 
 // â”€â”€â”€ Card wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// TabletIpForm — update tablet WireGuard IP and trigger immediate FK623 reconnect
+function TabletIpForm({ tabletId, currentIp, onReconnected }: {
+  tabletId: string; currentIp: string; onReconnected: () => void;
+}) {
+  const [ip,     setIp]    = useState(currentIp || "");
+  const [port,   setPort]  = useState(5000);
+  const [saving, setSaving]= useState(false);
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ip.trim()) { toast.error("Enter a valid IP address"); return; }
+    setSaving(true);
+    try {
+      await apiRequest(`/tablets/${tabletId}`, { method: "PATCH", body: JSON.stringify({ ip: ip.trim(), port }), auth: "school" });
+      toast.success(`Tablet IP updated to ${ip.trim()}:${port}`);
+      try {
+        await apiRequest(`/tablets/${tabletId}/device/connect`, { method: "POST", body: JSON.stringify({}), auth: "school" });
+        toast.success("Reconnected to FK623 device");
+      } catch { toast("IP saved. Bridge will reconnect automatically.", { icon: "ℹ️" }); }
+      onReconnected();
+    } catch (e: any) { toast.error(e?.message ?? "Failed to update IP"); }
+    finally { setSaving(false); }
+  };
+  return (
+    <form onSubmit={handleSave} className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="sm:col-span-2">
+          <label className="mb-1.5 block text-xs font-semibold text-foreground">Tablet WireGuard IP <span className="text-red-500">*</span></label>
+          <input value={ip} onChange={e => setIp(e.target.value)} placeholder="e.g. 10.0.0.2" required className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm font-mono shadow-sm" />
+          <p className="mt-1 text-[11px] text-muted-foreground">Run <code className="bg-muted px-1 rounded">wg show</code> on the server or check the tablet WireGuard wizard to find this IP.</p>
+        </div>
+        <div>
+          <label className="mb-1.5 block text-xs font-semibold text-foreground">Bridge Port</label>
+          <input type="number" value={port} onChange={e => setPort(Number(e.target.value))} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm shadow-sm" />
+        </div>
+      </div>
+      <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all">
+        {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Wifi className="h-4 w-4" />}
+        {saving ? "Saving..." : "Update & Reconnect"}
+      </button>
+    </form>
+  );
+}
+
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <div className={`rounded-xl border border-border bg-card shadow-sm overflow-hidden ${className}`}>{children}</div>;
 }
@@ -693,6 +736,36 @@ export default function DeviceManagement() {
                   {/* â•â•â•â• OVERVIEW â•â•â•â• */}
                   {activeTab === "overview" && (
                     <>
+                      {/* ── Tablet Connection (IP Update + Reconnect) ── */}
+                      <Collapse title="Tablet Connection" icon={Wifi}
+                        badge={
+                          <span className={`ml-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                            connTier === "full"   ? "bg-green-100 border-green-300 text-green-700" :
+                            connTier === "bridge" ? "bg-yellow-100 border-yellow-300 text-yellow-700" :
+                            "bg-gray-100 border-gray-200 text-gray-500"
+                          }`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${tierInfo.dot.replace("animate-pulse","")}`} />
+                            {tierInfo.label}
+                          </span>
+                        }
+                        defaultOpen={connTier === "offline"}
+                      >
+                        <p className="text-sm text-muted-foreground mb-4">
+                          The tablet must be reachable via <b>WireGuard VPN</b>. Enter the tablet's VPN IP (e.g. <code className="bg-muted px-1 rounded text-xs">10.0.0.2</code>) and click <b>Update & Reconnect</b>. The FK623 device connects automatically through the tablet bridge.
+                        </p>
+                        {tabletId ? (
+                          <TabletIpForm
+                            tabletId={tabletId}
+                            currentIp={(selected as any).tablet?.ip ?? (selected as any).tablet_ip ?? ""}
+                            onReconnected={() => { void loadStatus(); void loadDevices(); }}
+                          />
+                        ) : (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                            No tablet linked to this device. Contact the platform administrator to register a tablet and link it here.
+                          </div>
+                        )}
+                      </Collapse>
+
                       {/* Device Assignment */}
                       <Collapse title="Device Assignment" icon={MapPin}
                         badge={(selected as any).location_scope

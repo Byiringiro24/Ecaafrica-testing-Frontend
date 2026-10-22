@@ -136,7 +136,7 @@ function DodPatronsPage() {
                 <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/20"
                   onClick={() => setExpandedId(expanded ? null : s.id)}>
                   <div className="grid h-10 w-10 place-items-center rounded-full bg-primary/10 text-primary font-bold text-sm shrink-0">
-                    {s.name.split(" ").map((w: string) => w[0]).join("").slice(0,2).toUpperCase()}
+                    {s.name ? s.name.split(" ").map((w: string) => w[0] ?? "").join("").slice(0,2).toUpperCase() : "?"}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">

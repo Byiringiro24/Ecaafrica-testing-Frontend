@@ -163,16 +163,20 @@ export const isBoardingRole = (role?: string | null) => {
 export const roleHome = (role?: string | null): string => {
   const r = (role ?? getActiveRole() ?? "").trim().toLowerCase();
   switch (r) {
-    case "school_admin":           return "/dashboard";
-    case "director_of_discipline": return "/dod/dashboard";
-    case "director_of_studies":    return "/dos/dashboard";
+    case "school_admin":
+    case "school admin":              return "/dashboard";
+    case "director_of_discipline":
+    case "dod":                       return "/dod/dashboard";
+    case "director_of_studies":
+    case "dos":                       return "/dos/dashboard";
     case "patron":
-    case "matron":                 return "/patron/dashboard";
-    case "gate_keeper":            return "/gate-keeper/dashboard";
-    case "teacher":                return "/teacher/dashboard";
-    case "finance_officer":        return "/finance";
-    case "staff":                  return "/staff/dashboard";
-    default:                       return "/dashboard";
+    case "matron":                    return "/patron/dashboard";
+    case "gate_keeper":
+    case "gatekeeper":                return "/gate-keeper/dashboard";
+    case "teacher":                   return "/teacher/dashboard";
+    case "finance_officer":           return "/finance";
+    case "staff":                     return "/staff/dashboard";
+    default:                          return "/dashboard";
   }
 };
 

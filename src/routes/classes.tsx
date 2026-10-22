@@ -70,6 +70,7 @@ type TeacherRecord = {
   id: string;
   name?: string | null;
   role?: string | null;
+  roles?: Array<{ slug: string }>;
 };
 
 type ClassFormPayload = {
@@ -276,7 +277,10 @@ function ClassesPage() {
       const users = await apiRequest<TeacherRecord[]>("/users?role=teacher&limit=200", {
         auth: "school"
       });
-      setTeachers(users);
+      // Include anyone whose primary role is teacher OR who has teacher as a secondary role
+      setTeachers((users ?? []).filter(u =>
+        u.role === "teacher" || (u.roles ?? []).some((r: any) => (r.slug ?? r) === "teacher")
+      ));
     } catch (error: any) {
       toast.error(error?.message ?? "Failed to load teachers");
     }

@@ -109,12 +109,23 @@ export async function apiRequest<T>(
     }
 
     // Refresh failed — clear stored auth and send user to login
+    // IMPORTANT: Only force-navigate if the document is visible (user is active).
+    // Background polling (VPN status, device heartbeat) can get 401s when the
+    // token expires while the tab is open — we must NOT redirect in those cases
+    // as it logs the user out mid-work. Instead just throw so the caller can
+    // show a toast or silently fail.
+    const isUserVisible = typeof document !== "undefined" && document.visibilityState === "visible";
+    const isNotBackground = !document.hidden;
     if (authMode === "school") {
       clearSchoolAuth();
-      if (typeof window !== "undefined") window.location.href = "/login";
+      if (typeof window !== "undefined" && isUserVisible && isNotBackground) {
+        window.location.href = "/login";
+      }
     } else {
       clearPlatformAuth();
-      if (typeof window !== "undefined") window.location.href = "/login?mode=platform";
+      if (typeof window !== "undefined" && isUserVisible && isNotBackground) {
+        window.location.href = "/login?mode=platform";
+      }
     }
     throw { status: 401, message: "Session expired. Please log in again." } as ApiError;
   }

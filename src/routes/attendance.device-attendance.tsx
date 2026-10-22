@@ -58,7 +58,8 @@ const METHOD_OPTIONS = [
   { value: "all",         label: "All Methods"     },
   { value: "fingerprint", label: "Fingerprint"     },
   { value: "face",        label: "Face Recognition"},
-  { value: "card",        label: "RFID Card"       },
+  { value: "nfc",         label: "NFC / RFID"      },
+  { value: "qr",          label: "QR Code"         },
   { value: "manual",      label: "Manual"          },
 ];
 

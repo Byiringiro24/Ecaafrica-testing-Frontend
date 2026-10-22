@@ -40,7 +40,9 @@ const isLiveOnline = (d?: Device | null) => { if (!d) return false; if (d.last_s
 /** Get the three-tier connection status from live status data */
 const getConnectionTier = (status: any): ConnTier => {
   if (!status) return "offline";
-  if (status.connection_tier) return status.connection_tier as ConnTier;
+  if (status.connection_tier === "full" || status.connection_tier === "bridge" || status.connection_tier === "offline") {
+    return status.connection_tier;
+  }
   // Fallback: infer from available fields
   if (status.fk623_connected || status.device_status?.connected) return "full";
   if (status.bridge_reachable || status.is_online) return "bridge";
@@ -600,7 +602,7 @@ export default function DeviceManagement() {
                               connTier === "bridge" ? "bg-yellow-100 border-yellow-300 text-yellow-700" :
                               "bg-gray-100 border-gray-200 text-gray-500"
                             }`}>
-                              <span className={`h-1.5 w-1.5 rounded-full ${tierInfo.dot.replace("animate-pulse","")}`} />
+                              <span className={`h-1.5 w-1.5 rounded-full ${String(tierInfo.dot ?? "").replace("animate-pulse", "")}`} />
                               {tierInfo.label}
                             </span>
                           </div>

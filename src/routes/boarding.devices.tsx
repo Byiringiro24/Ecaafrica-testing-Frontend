@@ -48,6 +48,7 @@ import {
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { apiRequest } from "@/lib/api";
+import { isDeviceOnline } from "@/components/ui-kit/DeviceStatusCards";
 import { localDateInputValue } from "@/lib/dateInput";
 import { studentSearchText, studentIdNumber } from "@/lib/studentIdentity";
 import { DEFAULT_FK623_CONFIG } from "@/lib/tabletApi";
@@ -179,15 +180,8 @@ type PushMode = "selected" | "class" | "all";
 const STATUS_POLL_MS = 15_000;   // check device status every 15 seconds
 const SLOW_REFRESH_MS = 5 * 60_000; // refresh page data every 5 minutes
 
-// A device is "live-online" if last_seen_at was within the last 90 seconds.
-// The auto-pull job updates last_seen_at on every successful pull (every 10s).
-const isDeviceLiveOnline = (device: Device): boolean => {
-  if (device.last_seen_at) {
-    const age = Date.now() - new Date(device.last_seen_at).getTime();
-    if (age < 90_000) return true;
-  }
-  return Boolean(device.is_connected || device.status === "online");
-};
+// isDeviceOnline is imported from DeviceStatusCards — single source of truth
+// shared with school admin, DOD, gate-keeper (10-minute window, matches backend)
 
 const getDeviceSyncStatus = (status?: string | null) => {
   const normalized = status?.trim().toLowerCase();
@@ -412,7 +406,7 @@ function ServerCommandCenter() {
             cardCount: nextLogs.filter((log) => log.scan_method === "nfc").length,
             passwordCount: nextLogs.filter((log) => log.scan_method === "manual").length,
             totalDevices: nextDevices.length,
-            onlineDevices: nextDevices.filter(isDeviceLiveOnline).length,
+            onlineDevices: nextDevices.filter(isDeviceOnline).length,
           });
         }
         if (sessionsResult.status === "fulfilled") setSessions(sessionsResult.value.sessions ?? []);
@@ -422,7 +416,7 @@ function ServerCommandCenter() {
         ...current,
         totalStudents: nextStudents.length,
         totalDevices: nextDevices.length,
-        onlineDevices: nextDevices.filter(isDeviceLiveOnline).length,
+        onlineDevices: nextDevices.filter(isDeviceOnline).length,
         attendanceToday: current.totalLogs ? current.attendanceToday : logs.filter((log) => log.scanned_at?.startsWith(today)).length,
       }));
     } catch (error: any) {
@@ -1026,7 +1020,7 @@ function ServerCommandCenter() {
     }
   }
 
-  const connected = isDeviceLiveOnline(selectedDevice ?? {} as Device);
+  const connected = isDeviceOnline(selectedDevice ?? {} as Device);
 
   // ── Socket-backed live monitor ──────────────────────────────────────────
   const handleGateEvent = useCallback((event: GateSocketEvent) => {
@@ -1240,7 +1234,7 @@ function ServerCommandCenter() {
                           <div className="font-semibold text-foreground">{device.name}</div>
                           <div className="text-xs text-muted-foreground">{device.location ?? "No location"}</div>
                         </div>
-                        <StatusPill value={isDeviceLiveOnline(device) ? "online" : "offline"} />
+                        <StatusPill value={isDeviceOnline(device) ? "online" : "offline"} />
                       </div>
                       <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
                         <span>Users on device: {device.device_users_count ?? 0}</span>

@@ -1239,12 +1239,12 @@ function AssignTab({ tablets, devices, schools, onRefresh }: {
                     </td>
                     <td className="px-4 py-3">
                       <span className={cn("inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold",
-                        d.is_connected ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
-                        {d.is_connected ? "Online" : "Offline"}
+                        (deviceLiveStatus[d.id] ?? d.is_connected) ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground")}>
+                        {(deviceLiveStatus[d.id] ?? d.is_connected) ? "Online" : "Offline"}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {linkedTablet && !d.is_connected ? (
+                      {linkedTablet && !(deviceLiveStatus[d.id] ?? d.is_connected) ? (
                         <button
                           onClick={() => void handleConnectFK623(d)}
                           disabled={connecting === d.id}
@@ -1340,7 +1340,7 @@ function FixPeerPanel({ serverStatus, onFixed }: { serverStatus: VpnServerStatus
     setFixing(true);
     try {
       // Find which peer currently has this VPN IP so we can remove the wrong key
-      const oldPeer = serverStatus?.peers.find(p => p.allowedIps.startsWith(vpnIp.trim()));
+      const oldPeer = serverStatus?.peers.find(p => (p.allowedIps ?? "").startsWith(vpnIp.trim()));
       await apiRequest("/platform/hardware/vpn/fix-peer", {
         method: "POST", auth: "platform",
         body: JSON.stringify({
@@ -1374,7 +1374,7 @@ function FixPeerPanel({ serverStatus, onFixed }: { serverStatus: VpnServerStatus
           placeholder="10.0.0.3"
           className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs" />
         {serverStatus?.peers && vpnIp && (() => {
-          const existing = serverStatus.peers.find(p => p.allowedIps.startsWith(vpnIp.trim()));
+          const existing = serverStatus.peers.find(p => (p.allowedIps ?? "").startsWith(vpnIp.trim()));
           return existing ? (
             <p className="mt-1 text-xs text-amber-600">
               Currently registered: <span className="font-mono">{existing.publicKey.slice(0, 20)}…</span> — will be replaced
@@ -1599,7 +1599,7 @@ function VpnSetupTab({ tablets = [], onPeerAdded }: { tablets?: PlatformTablet[]
                   <span className="ml-2 font-normal normal-case text-muted-foreground/70">— auto-refreshing every 10s</span>
                 </p>
                 {serverStatus.peers.map((p, i) => {
-                  const peerIp = p.allowedIps.split("/")[0];
+                  const peerIp = (p.allowedIps ?? "").split("/")[0];
                   const isEditing = editingPeer === p.publicKey;
                   const isDeleting = deletingPeer === p.publicKey;
                   // Match registered tablet by VPN IP
@@ -1743,7 +1743,7 @@ function VpnSetupTab({ tablets = [], onPeerAdded }: { tablets?: PlatformTablet[]
               {serverStatus && serverStatus.peers.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {serverStatus.peers.map((p, i) => {
-                    const ip = p.allowedIps.split("/")[0];
+                    const ip = (p.allowedIps ?? "").split("/")[0];
                     return (
                       <button key={i} onClick={() => { setPingTarget(ip); setPingResult(null); }}
                         className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-mono hover:border-primary hover:text-primary transition">

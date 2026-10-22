@@ -651,7 +651,7 @@ function SchoolDetailPage() {
         <div className="flex flex-wrap gap-4 items-start justify-between">
           <div className="flex gap-4">
             <div className="grid h-16 w-16 place-items-center rounded-xl bg-amber-100 text-amber-800 font-bold text-lg">
-              {school.name.split(" ").map(p => p[0]).join("").slice(0, 2)}
+              {school.name ? school.name.split(" ").map(p => p[0] ?? "").join("").slice(0, 2) : "?"}
             </div>
             <div>
               <h2 className="font-display text-xl font-bold">{school.name}</h2>

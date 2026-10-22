@@ -18,7 +18,7 @@ function ProgressPage() {
   const rows = useMemo(() => {
     return studentsInClass(cls).map((s, i) => {
       const att = s.attendanceRate;
-      const marks = 35 + ((s.id.charCodeAt(5) * 7) % 60);
+      const marks = 35 + (((s.id?.charCodeAt(5) ?? 0) * 7) % 60);
       const trend = ["up", "down", "flat"][i % 3] as "up" | "down" | "flat";
       const status = marks < 50 || att < 50 ? "Critical" : marks < 60 || att < 70 ? "At Risk" : marks < 75 ? "Good" : "Excellent";
       return { ...s, att, marks, trend, status };
@@ -76,14 +76,14 @@ function ProgressPage() {
 }
 
 function StudentDrawer({ student, onClose }: { student: any; onClose: () => void }) {
-  const trend = Array.from({ length: 6 }, (_, i) => ({ exam: `E${i + 1}`, score: 50 + ((i * student.id.charCodeAt(5)) % 40) }));
+  const trend = Array.from({ length: 6 }, (_, i) => ({ exam: `E${i + 1}`, score: 50 + ((i * (student.id?.charCodeAt(5) ?? 0)) % 40) }));
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
       <aside className="fixed right-0 top-0 z-50 h-screen w-full max-w-lg bg-background shadow-2xl overflow-y-auto animate-in slide-in-from-right">
         <div className="sticky top-0 bg-background z-10 px-6 py-5 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary font-bold">{student.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2)}</div>
+            <div className="grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary font-bold">{student.name ? student.name.split(" ").map((n: string) => n[0] ?? "").join("").slice(0, 2) : "?"}</div>
             <div><div className="font-display text-lg font-bold">{student.name}</div><div className="text-xs text-muted-foreground">{student.class}</div></div>
           </div>
           <button onClick={onClose} className="rounded-md p-2 hover:bg-muted"><X className="h-5 w-5" /></button>

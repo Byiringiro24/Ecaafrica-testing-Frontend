@@ -14,8 +14,9 @@ export function Avatar({
   size?: "sm" | "md" | "lg";
   src?: string | null;
 }) {
-  const initials = name.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase();
-  const code = name.charCodeAt(0) % COLORS.length;
+  const safe = name ?? "";
+  const initials = safe.split(" ").filter(Boolean).map(n => n[0]).slice(0, 2).join("").toUpperCase() || "?";
+  const code = (safe.charCodeAt(0) || 0) % COLORS.length;
   const sizes = {
     sm: "h-8 w-8 text-xs",
     md: "h-10 w-10 text-sm",

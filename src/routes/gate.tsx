@@ -70,16 +70,16 @@ type Tab = (typeof TABS)[number];
 const PAGE_SIZE = 25;
 
 const fmt = (ts?: string | null) => {
-  if (!ts) return "—";
+  if (!ts) return "ï¿½";
   const d = new Date(ts);
-  if (isNaN(d.getTime())) return "—";
+  if (isNaN(d.getTime())) return "ï¿½";
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
 };
 
 const fmtFull = (ts?: string | null) => {
-  if (!ts) return "—";
+  if (!ts) return "ï¿½";
   const d = new Date(ts);
-  if (isNaN(d.getTime())) return "—";
+  if (isNaN(d.getTime())) return "ï¿½";
   return d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
@@ -218,7 +218,7 @@ function GatePage() {
           className: event.className ?? null,
           section: event.section ?? null,
           deviceId: event.deviceId,
-          status: event.status.charAt(0).toUpperCase() + event.status.slice(1),
+          status: event.status ? event.status.charAt(0).toUpperCase() + event.status.slice(1) : "Present",
           syncState: "Synced",
           sessionName: event.sessionName ?? null,
           flagged: false,
@@ -246,7 +246,7 @@ function GatePage() {
       const saved = (res as any)?.totalSaved ?? 0;
       setSyncSaved(saved);
       setLastSync(new Date());
-      toast.success(`Synced — ${saved} new logs pulled`);
+      toast.success(`Synced ï¿½ ${saved} new logs pulled`);
       await Promise.all([fetchLogs(true), fetchStats(), fetchStudentsOnCampus()]);
       if (tab === "Live Monitor") await fetchLiveLogs();
     } catch (e: any) {
@@ -284,7 +284,7 @@ function GatePage() {
       {lastSync && (
         <div className="mb-4 flex items-center gap-3 rounded-xl border border-success/40 bg-success/10 px-4 py-2.5 text-sm text-success">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>Last sync: {lastSync.toLocaleTimeString()} — {syncSaved} new logs pulled from devices</span>
+          <span>Last sync: {lastSync.toLocaleTimeString()} ï¿½ {syncSaved} new logs pulled from devices</span>
         </div>
       )}
 
@@ -310,7 +310,7 @@ function GatePage() {
           disabled={syncing}
           className="h-10 inline-flex items-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          {syncing ? <><Loader2 className="h-4 w-4 animate-spin" /> Syncing…</> : <><Wifi className="h-4 w-4" /> Sync Now</>}
+          {syncing ? <><Loader2 className="h-4 w-4 animate-spin" /> Syncingï¿½</> : <><Wifi className="h-4 w-4" /> Sync Now</>}
         </button>
       </div>
 
@@ -408,7 +408,7 @@ function OverviewTab({ stats, logs, tablets, loading, studentsOnCampus, date, on
                   <Avatar name={log.studentName} size="sm" />
                   <div>
                     <div className="text-sm font-semibold">{log.studentName}</div>
-                    <div className="text-xs text-muted-foreground">{log.className ?? "—"} · {log.method}</div>
+                    <div className="text-xs text-muted-foreground">{log.className ?? "ï¿½"} ï¿½ {log.method}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 text-right">
@@ -491,7 +491,7 @@ function LiveMonitorTab({ logs, loading, search, onSearch, dirFilter, onDirFilte
           <input
             value={search}
             onChange={e => onSearch(e.target.value)}
-            placeholder="Search student name or ID…"
+            placeholder="Search student name or IDï¿½"
             className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm"
           />
         </div>
@@ -516,7 +516,7 @@ function LiveMonitorTab({ logs, loading, search, onSearch, dirFilter, onDirFilte
 
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="px-5 py-3 border-b border-border flex items-center justify-between">
-          <h3 className="font-display font-bold">Live Attendance — Today</h3>
+          <h3 className="font-display font-bold">Live Attendance ï¿½ Today</h3>
           <div className="flex items-center gap-1.5 text-xs text-success font-semibold">
             <span className="inline-block h-2 w-2 rounded-full bg-success animate-pulse" />
             Live
@@ -533,7 +533,7 @@ function LiveMonitorTab({ logs, loading, search, onSearch, dirFilter, onDirFilte
             </thead>
             <tbody>
               {loading && deduped.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">Loading…</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">Loadingï¿½</td></tr>
               ) : deduped.length === 0 ? (
                 <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No attendance records for today yet.</td></tr>
               ) : deduped.map(log => (
@@ -547,7 +547,7 @@ function LiveMonitorTab({ logs, loading, search, onSearch, dirFilter, onDirFilte
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm">{log.className ?? "—"}</td>
+                  <td className="px-4 py-3 text-sm">{log.className ?? "ï¿½"}</td>
                   <td className="px-4 py-3">
                     <span className={cn(
                       "rounded-full px-2.5 py-0.5 text-xs font-semibold",
@@ -611,7 +611,7 @@ function StudentsTab({ studentsOnCampus, logs, loading }: {
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search students on campus…"
+          placeholder="Search students on campusï¿½"
           className="h-10 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm"
         />
       </div>
@@ -619,7 +619,7 @@ function StudentsTab({ studentsOnCampus, logs, loading }: {
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="px-5 py-3 border-b border-border">
           <h3 className="font-display font-bold">Students Currently On Campus</h3>
-          <p className="text-xs text-muted-foreground">Based on latest gate scan — entry without a matching exit</p>
+          <p className="text-xs text-muted-foreground">Based on latest gate scan ï¿½ entry without a matching exit</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -633,7 +633,7 @@ function StudentsTab({ studentsOnCampus, logs, loading }: {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Loading…</td></tr>
+                <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Loadingï¿½</td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No students currently on campus.</td></tr>
               ) : filtered.map(s => (
@@ -644,7 +644,7 @@ function StudentsTab({ studentsOnCampus, logs, loading }: {
                       <span className="font-semibold">{s.first_name} {s.last_name}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-xs">{s.admission_no ?? "—"}</td>
+                  <td className="px-4 py-3 text-xs">{s.admission_no ?? "ï¿½"}</td>
                   <td className="px-4 py-3 font-mono text-xs">{fmt(lastScan.get(s.id))}</td>
                   <td className="px-4 py-3">
                     <span className="rounded-full bg-success/15 text-success px-2.5 py-0.5 text-xs font-semibold">On Campus</span>
@@ -704,7 +704,7 @@ function DevicesTab({ tablets, onRefresh }: { tablets: Tablet[]; onRefresh: () =
                 <div>
                   <div className="font-semibold text-sm">{t.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {[t.ip, t.port ? String(t.port) : null, t.location].filter(Boolean).join(" · ")}
+                    {[t.ip, t.port ? String(t.port) : null, t.location].filter(Boolean).join(" ï¿½ ")}
                   </div>
                 </div>
               </div>
@@ -738,7 +738,7 @@ function ReportsTab({ logs, stats, hourDist, methods, date }: {
   methods: string[];
   date: string;
 }) {
-  const peakSlot = hourDist.reduce((best, h) => h.count > best.count ? h : best, { slot: "—", count: 0 });
+  const peakSlot = hourDist.reduce((best, h) => h.count > best.count ? h : best, { slot: "ï¿½", count: 0 });
   const avgHour = logs.length > 0
     ? Math.round(logs.reduce((s, l) => s + new Date(l.timestamp).getHours(), 0) / logs.length)
     : 0;
@@ -761,7 +761,7 @@ function ReportsTab({ logs, stats, hourDist, methods, date }: {
             </div>
             {peakSlot.count > 0 && (
               <div className="rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-bold">
-                Peak: {peakSlot.slot} — {peakSlot.count} scans
+                Peak: {peakSlot.slot} ï¿½ {peakSlot.count} scans
               </div>
             )}
           </div>
@@ -786,8 +786,8 @@ function ReportsTab({ logs, stats, hourDist, methods, date }: {
               { label: "Fingerprint", value: stats?.fingerprintCount ?? 0 },
               { label: "Face", value: stats?.faceCount ?? 0 },
               { label: "Card / RFID", value: stats?.cardCount ?? 0 },
-              { label: "Peak Hour", value: peakSlot.count > 0 ? peakSlot.slot : "—" },
-              { label: "Avg. Hour", value: logs.length > 0 ? `${String(avgHour).padStart(2, "0")}:00` : "—" },
+              { label: "Peak Hour", value: peakSlot.count > 0 ? peakSlot.slot : "ï¿½" },
+              { label: "Avg. Hour", value: logs.length > 0 ? `${String(avgHour).padStart(2, "0")}:00` : "ï¿½" },
             ].map(r => (
               <div key={r.label} className="flex items-center justify-between text-sm border-b border-border pb-2 last:border-0 last:pb-0">
                 <span className="text-muted-foreground">{r.label}</span>

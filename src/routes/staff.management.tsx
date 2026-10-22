@@ -261,7 +261,7 @@ function StaffManagementPage() {
             {filtered.map(u => (
               <div key={u.id} className="flex items-center gap-4 px-5 py-3 hover:bg-muted/20">
                 <div className="grid h-9 w-9 place-items-center rounded-full bg-primary/10 text-primary font-bold text-xs shrink-0">
-                  {u.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase()}
+                  {u.name ? u.name.split(" ").map(w => w[0] ?? "").join("").slice(0, 2).toUpperCase() : "?"}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">

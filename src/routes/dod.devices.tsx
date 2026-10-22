@@ -123,7 +123,12 @@ function DodDevicesPage() {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+    // Background refresh every 60s so DOD sees updated status without manual refresh
+    const iv = setInterval(() => void load(), 60_000);
+    return () => clearInterval(iv);
+  }, []);
 
   const loadGroups = async (deviceId: string) => {
     if (groups[deviceId]) return;

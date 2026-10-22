@@ -84,7 +84,7 @@ function StudentManagement() {
           <div key={s.id} className="rounded-xl border border-border bg-card p-4 hover:shadow-md transition group">
             <button onClick={() => setOpen(s)} className="w-full text-left">
               <div className="flex items-center gap-3">
-                <div className="grid h-10 w-10 place-items-center rounded-full bg-primary/10 text-primary font-bold text-xs">{s.name.split(" ").map(n => n[0]).join("").slice(0, 2)}</div>
+                <div className="grid h-10 w-10 place-items-center rounded-full bg-primary/10 text-primary font-bold text-xs">{s.name ? s.name.split(" ").map(n => n[0] ?? "").join("").slice(0, 2) : "?"}</div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm truncate">{s.name}</div>
                   <div className="text-xs text-muted-foreground">

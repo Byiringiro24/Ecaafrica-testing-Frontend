@@ -393,7 +393,7 @@ function ParentsPage() {
                           )}
                           {children.map((child) => child && (
                             <span key={child.id} className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-semibold">
-                              {child.name.split(" ")[0]} <span className="opacity-70">({child.studentIdNumber} · {child.class})</span>
+                              {(child.name ?? "").split(" ")[0]} <span className="opacity-70">({child.studentIdNumber} · {child.class})</span>
                             </span>
                           ))}
                         </div>

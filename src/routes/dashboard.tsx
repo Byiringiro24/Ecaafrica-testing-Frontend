@@ -102,7 +102,11 @@ type DeviceRecord = {
   mode?: string | null;
   type?: string | null;
   is_active?: boolean;
+  is_online?: boolean;
+  is_connected?: boolean;
   last_seen_at?: string | null;
+  last_sync_status?: string | null;
+  last_sync_error?: string | null;
 };
 
 const deviceStatusLabel = (status?: string | null): RecentCheckin["status"] => {
@@ -242,15 +246,21 @@ function DashboardPage() {
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const pct = (n: number) => (counts.total ? ((n / counts.total) * 100).toFixed(0) : "0");
 
-  const activeDevices = devices.filter((device) => device.is_active !== false);
-  const offlineDevices = devices.filter((device) => device.is_active === false);
+  const activeDevices = devices.filter((device) => {
+    // Use real connectivity: is_online → is_connected → last_seen_at < 90s
+    if (device.is_online === true || device.is_connected === true) return true;
+    if (device.is_online === false || device.is_connected === false) return false;
+    if (device.last_seen_at) return Date.now() - new Date(device.last_seen_at).getTime() < 90_000;
+    return false;
+  });
+  const offlineDevices = devices.filter((device) => !activeDevices.includes(device));
 
   const deviceLocationRows = Array.from(
     devices.reduce((acc, device) => {
       const key = (device.location?.trim() || device.mode?.trim() || "Unknown location").toLowerCase();
       const current = acc.get(key) ?? { label: device.location?.trim() || device.mode?.trim() || "Unknown location", active: 0, offline: 0 };
-      if (device.is_active === false) current.offline += 1;
-      else current.active += 1;
+      const online = activeDevices.includes(device);
+      if (online) current.active += 1; else current.offline += 1;
       acc.set(key, current);
       return acc;
     }, new Map<string, { label: string; active: number; offline: number }>()
@@ -313,9 +323,28 @@ function DashboardPage() {
         const totalStudents = studentMeta.meta?.total || records.length;
         const eveningDeviceLogs = todayDeviceLogData.filter(isEveningDeviceLog);
         const eveningSummary = summarizeDeviceAttendance(eveningDeviceLogs, totalStudents);
+
+        // Fetch gate_logs-backed accurate present count (deduplicated at DB level)
+        // This is the authoritative source — gate_logs uses ON CONFLICT DO NOTHING
+        // so retried SSE events never inflate the count.
+        const gateStats = await apiRequest<{ gatePresent?: number; uniqueStudents?: number }>(
+          "/attendance/records/device-logs/stats",
+          { auth: "school" }
+        ).catch(() => null);
+
+        const deviceSummary = summarizeDeviceAttendance(todayDeviceLogData, totalStudents);
+        // Prefer gate_logs count (accurate dedup) over in-memory count from attendance_logs
+        const presentCount = gateStats?.gatePresent ?? deviceSummary.present;
+
         setCounts(
           isSchoolDay
-            ? { ...summarizeDeviceAttendance(todayDeviceLogData, totalStudents), eveningPresent: eveningSummary.present }
+            ? {
+                total: totalStudents,
+                present: presentCount,
+                eveningPresent: eveningSummary.present,
+                absent: Math.max(0, totalStudents - presentCount - deviceSummary.late),
+                late: deviceSummary.late,
+              }
             : { total: totalStudents, present: 0, eveningPresent: 0, absent: 0, late: 0 }
         );
 
@@ -455,19 +484,19 @@ function DashboardPage() {
       ) : (
         <>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Total Students" value={counts.total} icon={<Users className="h-5 w-5" />} trend="" tone="primary" />
-            <StatCard label="Present Today" value={counts.present} icon={<CheckCircle2 className="h-5 w-5" />} trend={`${pct(counts.present)}% of total`} tone="success" />
-            <StatCard label="Absent Today" value={counts.absent} icon={<XCircle className="h-5 w-5" />} trend={`${pct(counts.absent)}% of total`} tone="destructive" />
-            <StatCard label="Late Arrivals" value={counts.late} icon={<Clock className="h-5 w-5" />} trend={`${pct(counts.late)}% of total`} tone="warning" />
-            <StatCard label="Total Present Students" value={counts.present} icon={<CheckCircle2 className="h-5 w-5" />} trend="Entry device attendance" tone="success" />
-            <StatCard label="Total Present Students" value={counts.eveningPresent} icon={<Moon className="h-5 w-5" />} trend="Exit device attendance" tone="primary" />
+            <StatCard label="Total Students" value={counts.total} icon={<Users className="h-5 w-5" />} trend="" tone="primary" className="hidden" />
+            <StatCard label="Present Today" value={counts.present} icon={<CheckCircle2 className="h-5 w-5" />} trend={`${pct(counts.present)}% of total`} tone="success" className="hidden" />
+            <StatCard label="Absent Today" value={counts.absent} icon={<XCircle className="h-5 w-5" />} trend={`${pct(counts.absent)}% of total`} tone="destructive" className="hidden" />
+            <StatCard label="Late Arrivals" value={counts.late} icon={<Clock className="h-5 w-5" />} trend={`${pct(counts.late)}% of total`} tone="warning" className="hidden" />
+            <StatCard label="Total Present Students" value={counts.present} icon={<CheckCircle2 className="h-5 w-5" />} trend="Entry device attendance" tone="success" className="hidden" />
+            <StatCard label="Total Present Students" value={counts.eveningPresent} icon={<Moon className="h-5 w-5" />} trend="Exit device attendance" tone="primary" className="hidden" />
             <StatCard label="Teachers Taking Attendance" value={classAttendance.teachers} icon={<GraduationCap className="h-5 w-5" />} trend="Class attendance today" tone="primary" />
             <StatCard label="Class Present Attendance" value={classAttendance.present} icon={<ClipboardCheck className="h-5 w-5" />} trend="Student records marked present" tone="success" />
             <StatCard label="Class Absent Attendance" value={classAttendance.absent} icon={<ClipboardX className="h-5 w-5" />} trend="Student records marked absent" tone="destructive" />
           </div>
 
           <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 mt-6">
-            <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+            <div className="hidden rounded-xl border border-border bg-card p-5 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-display font-bold text-lg">This Week's Attendance</h3>
                 <span className="text-xs text-muted-foreground">Mon – Fri</span>

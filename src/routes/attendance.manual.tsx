@@ -39,7 +39,7 @@ type PeriodRecord = {
   end_time?: string;
   is_break?: boolean;
 };
-type TeacherRecord = { id: string; name: string };
+type TeacherRecord = { id: string; name: string; role?: string; roles?: Array<{ slug: string }> };
 type SubjectRecord = { id: string; name: string; code?: string | null };
 
 type ApiStudent = {
@@ -159,14 +159,6 @@ const formatPeriodRange = (start?: string | null, end?: string | null) => {
   const to = formatPeriodTime(end);
   if (!from && !to) return "—";
   return `${from} – ${to}`;
-};
-
-/** Adds calendar days to a date-input value without converting it to UTC. */
-const addDaysToDateInput = (value: string, days: number) => {
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  date.setDate(date.getDate() + days);
-  return localDateInputValue(date);
 };
 
 const buildAttendanceChartImage = (counts: Record<UiStatus, number>) => {
@@ -372,13 +364,14 @@ function ManualAttendancePage() {
   };
 
   const loadSummaryReport = async () => {
+    const end = new Date(`${dateFilter}T00:00:00`);
     const days = summaryPeriod === "daily" ? 0 : summaryPeriod === "weekly" ? 6 : summaryPeriod === "monthly" ? 29 : 89;
-    const startDate = addDaysToDateInput(dateFilter, -days);
-    const endDate = addDaysToDateInput(dateFilter, 1);
+    const start = new Date(end);
+    start.setDate(start.getDate() - days);
     setSummaryLoading(true);
     try {
       const report = await apiRequest<AttendanceSummary>(
-        `/attendance/records/summary?start_date=${startDate}&end_date=${endDate}`,
+        `/attendance/records/summary?start_date=${start.toISOString().slice(0, 10)}&end_date=${new Date(end.getTime() + 86400000).toISOString().slice(0, 10)}`,
         { auth: "school" }
       );
       setSummaryReport(report);
@@ -896,7 +889,13 @@ function ManualAttendancePage() {
 
           <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-border flex flex-wrap gap-2 items-center justify-between">
-              <h3 className="font-display font-bold">Manual Attendance — {todayLabel}</h3>
+              <div>
+                <h3 className="font-display font-bold">Manual Attendance — {todayLabel}</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Each row is one student's mark. If two teachers both marked the same class in the same period,
+                  both sets of records appear — each teacher's session is kept separately in history.
+                </p>
+              </div>
               <div className="text-xs text-muted-foreground space-x-3">
                 <span>Total: <b className="text-foreground">{counts.total}</b></span>
                 <span>Present: <b className="text-success">{counts.present}</b></span>

@@ -213,7 +213,7 @@ function StaffRoleManagementPage() {
               return (
                 <div key={user.id} className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center">
                   <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                    {user.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
+                    {user.name ? user.name.split(" ").map((part) => part[0] ?? "").join("").slice(0, 2).toUpperCase() : "?"}
                   </div>
                   <div className="min-w-48 flex-1">
                     <div className="font-semibold">{user.name}</div>

@@ -62,7 +62,7 @@ export function SuperAdminLayout({ title, subtitle, headerExtra, breadcrumbs, ch
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: s => s.location.pathname });
   const platformUser = getPlatformAuth()?.user;
-  const displayName = platformUser?.name ?? SUPER_ADMIN_USER.name;
+  const displayName = (platformUser?.name ?? SUPER_ADMIN_USER.name) || "Admin";
   const displayRole = platformUser?.role ?? SUPER_ADMIN_USER.role;
 
   return (
@@ -147,7 +147,7 @@ export function SuperAdminLayout({ title, subtitle, headerExtra, breadcrumbs, ch
           </Link>
           <div className="flex items-center gap-3">
             <div className="grid h-10 w-10 place-items-center rounded-full bg-amber-500 text-amber-950 font-bold text-sm">
-              {displayName.split(" ").map(p => p[0]).join("").slice(0, 2)}
+              {(displayName || "Admin").split(" ").map(p => p[0] ?? "").join("").slice(0, 2).toUpperCase() || "SA"}
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold text-white truncate">{displayName}</div>

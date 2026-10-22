@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowUpRight, Loader2, Search, Trash2, UserPlus, Wifi, WifiOff, X, AlertTriangle } from "lucide-react";
+import { ArrowUpRight, Loader2, RefreshCw, Search, Trash2, UserPlus, Wifi, WifiOff, X, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";
 import { Avatar } from "@/components/ui-kit/Avatar";
+import { isDeviceOnline } from "@/components/ui-kit/DeviceStatusCards";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/api";
 
@@ -103,6 +104,7 @@ function DeviceStudentsPage() {
   const [showAssignedOnly, setShowAssignedOnly] = useState(false);
   const [studentPage, setStudentPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busyAction, setBusyAction] = useState<{ type: "push-selected" | "push-class" | "push-all" | "push-single" | "remove"; id?: string } | null>(null);
   const [deviceStatus, setDeviceStatus] = useState<DeviceStatus | null>(null);
 
@@ -257,7 +259,9 @@ function DeviceStudentsPage() {
   const selectedDeviceLabel = device?.name ?? (deviceId ? "Selected device" : "No device selected");
   const selectedDeviceLocation = device?.location ?? "—";
   const selectedDeviceLastSync = deviceStatus?.last_sync_at ? new Date(deviceStatus.last_sync_at).toLocaleString() : device?.lastSync ?? "No sync yet";
-  const selectedDeviceIsOnline = Boolean(deviceStatus?.connected ?? device?.isConnected);
+  const selectedDeviceIsOnline = deviceStatus
+    ? Boolean(deviceStatus.connected)
+    : device ? isDeviceOnline(device as any) : false;
   const selectedDeviceStatusLabel = selectedDeviceIsOnline ? "Online" : "Offline";
   const selectedDeviceSyncState = getDeviceSyncState(deviceStatus?.last_sync_status ?? device?.lastSyncStatus ?? null);
   const selectedDeviceSyncMessage = deviceStatus?.message ?? device?.lastStatusMessage ?? "No push activity yet";
@@ -294,6 +298,58 @@ function DeviceStudentsPage() {
     }));
     setStudents(mappedStudents);
   };
+
+  // Refresh all data + device status — called by Refresh button and auto-poll
+  const refreshAll = async (silent = false) => {
+    if (!silent) setRefreshing(true);
+    try {
+      const [deviceData, studentsData] = await Promise.all([
+        apiRequest<any[]>("/devices?limit=500&sort=created_at&order=desc", { auth: "school" }),
+        apiRequest<any[]>("/students?limit=5000&status=active", { auth: "school" }),
+      ]);
+      const mappedDevices = (Array.isArray(deviceData) ? deviceData : []).map((device) => ({
+        id: device.id,
+        name: device.name,
+        location: device.location ?? "—",
+        maxUsers: 200,
+        lastSync: device.last_sync_at ? new Date(device.last_sync_at).toLocaleString() : "No sync yet",
+        lastSyncStatus: device.last_sync_status ?? null,
+        lastStatusMessage: device.last_status_message ?? null,
+        tabletId: device.tablet_id ?? null,
+        deviceUsersCount: Number(device.device_users_count ?? 0),
+        deviceLogsCount: Number(device.device_logs_count ?? 0),
+        isConnected: Boolean(device.is_connected || device.status === "online"),
+      }));
+      setDevices(mappedDevices);
+      const mappedStudents = (Array.isArray(studentsData) ? studentsData : []).map((student): Student => ({
+        id: student.id,
+        name: `${student.first_name ?? ""} ${student.last_name ?? ""}`.trim(),
+        className: student.current_section?.full_name ?? student.current_section?.name ?? student.class ?? "—",
+        classId: student.current_section?.class_id ?? null,
+        sectionId: student.current_section?.id ?? null,
+        residency: student.student_type === "boarding" ? "Boarding" : "Day",
+        gender: student.gender ?? null,
+        deviceUserId: student.device_user_id ?? null,
+        deviceSyncStatus: student.device_sync_status ?? null,
+        lastDeviceSync: student.last_device_sync ?? null,
+      }));
+      setStudents(mappedStudents);
+      // Also refresh device status if one is selected
+      if (deviceId) await loadSelectedDeviceStatus();
+      if (!silent) toast.success("Data refreshed");
+    } catch (e: any) {
+      if (!silent) toast.error(e?.message ?? "Refresh failed");
+    } finally {
+      if (!silent) setRefreshing(false);
+    }
+  };
+
+  // Auto-poll device status every 30 seconds so online/offline stays live
+  useEffect(() => {
+    if (!deviceId) return;
+    const iv = setInterval(() => void loadSelectedDeviceStatus(), 30_000);
+    return () => clearInterval(iv);
+  }, [deviceId]);
 
   const loadSelectedDeviceStatus = async () => {
     if (!deviceId) return;
@@ -463,11 +519,24 @@ function DeviceStudentsPage() {
 
   return (
     <AppLayout title="Device Students" subtitle="Assign boarding and day students to biometric devices">
-      {!hasSelectedDevice && (
-        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Select a device to enable push and remove actions.
+      {/* Header row with Refresh button */}
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          {!hasSelectedDevice && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Select a device to enable push and remove actions.
+            </div>
+          )}
         </div>
-      )}
+        <button
+          onClick={() => void refreshAll()}
+          disabled={refreshing}
+          className="inline-flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-50 shadow-sm transition-all"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
         <StatCard label="Assigned Students" value={assignedCount} tone="success" icon={<UserPlus className="h-5 w-5" />} />

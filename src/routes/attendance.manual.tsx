@@ -161,14 +161,6 @@ const formatPeriodRange = (start?: string | null, end?: string | null) => {
   return `${from} – ${to}`;
 };
 
-/** Adds calendar days to a date-input value without converting it to UTC. */
-const addDaysToDateInput = (value: string, days: number) => {
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(year, month - 1, day);
-  date.setDate(date.getDate() + days);
-  return localDateInputValue(date);
-};
-
 const buildAttendanceChartImage = (counts: Record<UiStatus, number>) => {
   const canvas = document.createElement("canvas");
   canvas.width = 700;
@@ -372,13 +364,14 @@ function ManualAttendancePage() {
   };
 
   const loadSummaryReport = async () => {
+    const end = new Date(`${dateFilter}T00:00:00`);
     const days = summaryPeriod === "daily" ? 0 : summaryPeriod === "weekly" ? 6 : summaryPeriod === "monthly" ? 29 : 89;
-    const startDate = addDaysToDateInput(dateFilter, -days);
-    const endDate = addDaysToDateInput(dateFilter, 1);
+    const start = new Date(end);
+    start.setDate(start.getDate() - days);
     setSummaryLoading(true);
     try {
       const report = await apiRequest<AttendanceSummary>(
-        `/attendance/records/summary?start_date=${startDate}&end_date=${endDate}`,
+        `/attendance/records/summary?start_date=${start.toISOString().slice(0, 10)}&end_date=${new Date(end.getTime() + 86400000).toISOString().slice(0, 10)}`,
         { auth: "school" }
       );
       setSummaryReport(report);
@@ -997,13 +990,6 @@ function ManualAttendancePage() {
 
       {tab === "manual" && (
         <>
-          {/* Timing note — Time In column shows when teacher saved marks, not bell time */}
-          <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs text-blue-800">
-            <b>Note:</b> The "Time In" column shows when the teacher submitted attendance for each student — it is the
-            actual save time, not the period bell time. Device (biometric) attendance uses session time windows for
-            automatic status; manual attendance does not. If two different teachers mark the same class in the same
-            period, both sessions are preserved separately so neither teacher's records are lost.
-          </div>
           <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-wrap gap-3 items-end mb-5">
             <div>
               <label className="text-xs font-semibold text-muted-foreground">Class</label>

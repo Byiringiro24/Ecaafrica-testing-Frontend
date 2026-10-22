@@ -61,6 +61,7 @@ const deviceDotClass = (d: Device) => {
 };
 
 const scopeColor  = (s?: string) => { if (s === "gate") return "bg-emerald-100 text-emerald-700 border-emerald-200"; if (s === "dormitory") return "bg-blue-100 text-blue-700 border-blue-200"; if (s === "dining_hall") return "bg-amber-100 text-amber-700 border-amber-200"; if (s === "classroom") return "bg-violet-100 text-violet-700 border-violet-200"; return "bg-gray-100 text-gray-600 border-gray-200"; };
+const formatScope  = (s: unknown) => typeof s === "string" && s.length > 0 ? s.replace(/_/g, " ") : "Not assigned";
 const statusPill  = (s: string) => { const l = (s ?? "").toLowerCase(); if (l === "present") return "bg-green-100 text-green-700"; if (l === "late") return "bg-amber-100 text-amber-700"; if (l === "absent") return "bg-red-100 text-red-700"; return "bg-gray-100 text-gray-600"; };
 
 const LOGS_PER_PAGE  = 25;
@@ -540,7 +541,7 @@ export default function DeviceManagement() {
                       </div>
                       {/* Scope badge */}
                       {scope
-                        ? <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize ${scopeColor(scope)}`}>{scope.replace("_"," ")}</span>
+                        ? <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize ${scopeColor(scope)}`}>{formatScope(scope)}</span>
                         : <span className="text-[10px] text-amber-600 font-semibold">âš  Not assigned</span>
                       }
                       {lbl && <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{lbl}</p>}
@@ -590,7 +591,7 @@ export default function DeviceManagement() {
                             <h2 className="font-bold text-lg leading-tight">{selected.name}</h2>
                             {(selected as any).location_scope && (
                               <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize ${scopeColor((selected as any).location_scope)}`}>
-                                {((selected as any).location_scope as string).replace("_"," ")}
+                                {formatScope((selected as any).location_scope)}
                               </span>
                             )}
                             {/* Connection tier badge */}
@@ -696,7 +697,7 @@ export default function DeviceManagement() {
                       {/* Device Assignment */}
                       <Collapse title="Device Assignment" icon={MapPin}
                         badge={(selected as any).location_scope
-                          ? <span className={`ml-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize ${scopeColor((selected as any).location_scope)}`}>{((selected as any).location_scope as string).replace("_"," ")}</span>
+                          ? <span className={`ml-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold capitalize ${scopeColor((selected as any).location_scope)}`}>{formatScope((selected as any).location_scope)}</span>
                           : <span className="ml-2 text-[10px] text-amber-600 font-semibold">Not assigned</span>
                         }
                         defaultOpen={!(selected as any).location_scope}

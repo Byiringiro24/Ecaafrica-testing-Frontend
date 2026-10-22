@@ -102,7 +102,7 @@ type AttendanceRow = {
 type AttendanceSummary = {
   total: number; present: number; absent: number; late: number; excused: number;
   teachers: number; classes: number; sessions: number;
-  details: Array<{ className: string; subjectName: string; teacherName: string; periodName: string; total: number; present: number; late: number; absent: number; startedAt?: string | null; submittedAt?: string | null; sessionDate?: string; sessionId?: string }>;
+  details: Array<{ className: string; subjectName: string; teacherName: string; periodName: string; total: number; present: number; late: number; absent: number; startedAt?: string | null; sessionDate?: string; sessionId?: string }>;
 };
 
 const PAGE_SIZE = 20;
@@ -979,8 +979,8 @@ function ManualAttendancePage() {
                 ))}
               </div>
               <div className="rounded-xl border border-border bg-card overflow-x-auto">
-                <table className="w-full text-sm"><thead className="bg-muted/40 text-xs uppercase"><tr>{['Session ID', 'Class', 'Session Date', 'Subject', 'Teacher', 'Period', 'Started', 'Submission', 'Total', 'Present', 'Late', 'Absent'].map((heading) => <th key={heading} className="text-left px-4 py-3">{heading}</th>)}</tr></thead>
-                  <tbody>{summaryReport.details.map((row, index) => <tr key={`${row.sessionId ?? row.className}-${row.subjectName}-${row.periodName}-${index}`} className="border-t border-border"><td className="px-4 py-3 text-xs font-mono">{row.sessionId ?? "—"}</td><td className="px-4 py-3 font-medium">{row.className}</td><td className="px-4 py-3 text-xs">{row.sessionDate?.slice(0, 10) ?? "—"}</td><td className="px-4 py-3">{row.subjectName}</td><td className="px-4 py-3">{row.teacherName}</td><td className="px-4 py-3">{row.periodName}</td><td className="px-4 py-3 text-xs">{formatAttendanceDateTime(row.startedAt)}</td><td className="px-4 py-3 text-xs">{formatAttendanceDateTime(row.submittedAt)}</td><td className="px-4 py-3">{row.total}</td><td className="px-4 py-3">{row.present}</td><td className="px-4 py-3">{row.late}</td><td className="px-4 py-3">{row.absent}</td></tr>)}</tbody>
+                <table className="w-full text-sm"><thead className="bg-muted/40 text-xs uppercase"><tr>{['Session ID', 'Class', 'Session Date', 'Subject', 'Teacher', 'Period', 'Started', 'Total', 'Present', 'Late', 'Absent'].map((heading) => <th key={heading} className="text-left px-4 py-3">{heading}</th>)}</tr></thead>
+                  <tbody>{summaryReport.details.map((row, index) => <tr key={`${row.sessionId ?? row.className}-${row.subjectName}-${row.periodName}-${index}`} className="border-t border-border"><td className="px-4 py-3 text-xs font-mono">{row.sessionId ?? "—"}</td><td className="px-4 py-3 font-medium">{row.className}</td><td className="px-4 py-3 text-xs">{row.sessionDate?.slice(0, 10) ?? "—"}</td><td className="px-4 py-3">{row.subjectName}</td><td className="px-4 py-3">{row.teacherName}</td><td className="px-4 py-3">{row.periodName}</td><td className="px-4 py-3 text-xs">{formatAttendanceDateTime(row.startedAt)}</td><td className="px-4 py-3">{row.total}</td><td className="px-4 py-3">{row.present}</td><td className="px-4 py-3">{row.late}</td><td className="px-4 py-3">{row.absent}</td></tr>)}</tbody>
                 </table>
               </div>
             </>

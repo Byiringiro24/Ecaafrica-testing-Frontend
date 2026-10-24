@@ -1,6 +1,7 @@
 import Layout from "./Layout";
 import { Link } from "@tanstack/react-router";
 import pricingBg from "@/assets/pricing.jpg";
+import { landingCurrencyByLanguage, useLandingLanguage } from "@/components/landing/LandingLocalization";
 
 const conditions = [
   {
@@ -191,7 +192,7 @@ function CheckIcon({ className }) {
   );
 }
 
-function PlanCard({ plan }) {
+function PlanCard({ plan, currency }) {
   const s = planStyles[plan.key];
   const isFeatured = plan.featured;
 
@@ -214,7 +215,7 @@ function PlanCard({ plan }) {
         {/* Price */}
         <div className="px-5 py-4 text-center bg-white/10 border-y border-white/10">
           <span className="font-display text-3xl font-extrabold text-white">
-            <span className="text-base align-super mr-0.5">RWF</span>
+            <span className="text-base align-super mr-0.5">{currency}</span>
             {plan.price}
           </span>
           <p className="text-white/50 text-[10px] font-bold uppercase tracking-wide mt-1">per student / per month</p>
@@ -278,7 +279,7 @@ function PlanCard({ plan }) {
       {/* Price */}
       <div className={`px-5 py-4 text-center border-y border-slate-100 ${s.priceBg}`}>
         <span className={`font-display text-3xl font-extrabold ${s.price}`}>
-          <span className="text-base align-super mr-0.5">RWF</span>
+          <span className="text-base align-super mr-0.5">{currency}</span>
           {plan.price}
         </span>
         <p className={`text-[10px] font-bold uppercase tracking-wide mt-1 ${s.per}`}>per student / per month</p>
@@ -330,6 +331,9 @@ function PlanCard({ plan }) {
 }
 
 export default function Pricing() {
+  const language = useLandingLanguage();
+  const currency = landingCurrencyByLanguage[language];
+
   return (
     <Layout>
       <div className="w-full">
@@ -385,7 +389,7 @@ export default function Pricing() {
           <section>
             <div className="grid md:grid-cols-3 gap-5">
               {plans.map((plan) => (
-                <PlanCard key={plan.key} plan={plan} />
+                <PlanCard key={plan.key} plan={plan} currency={currency} />
               ))}
             </div>
           </section>

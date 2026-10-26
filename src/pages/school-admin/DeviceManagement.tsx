@@ -218,7 +218,15 @@ export default function DeviceManagement() {
     try {
       const res = await deviceApi.getStatus(selectedId);
       setStatus(res);
-      setDevices(p => p.map(d => d.id === selectedId ? { ...d, is_online: res?.is_online ?? false, is_connected: res?.is_connected ?? false } : d));
+      // Only update the device list if the online/connected status actually changed
+      // — prevents unnecessary re-renders that cause sidebar flickering every 15s
+      setDevices(p => {
+        const cur = p.find(d => d.id === selectedId);
+        const newOnline = res?.is_online ?? false;
+        const newConnected = res?.is_connected ?? false;
+        if (!cur || (cur.is_online === newOnline && cur.is_connected === newConnected)) return p;
+        return p.map(d => d.id === selectedId ? { ...d, is_online: newOnline, is_connected: newConnected } : d);
+      });
     } catch { setStatus({ is_online: false, is_connected: false }); }
     finally { statusFlight.current = false; if (!silent) setStatusLoading(false); }
   }, [selectedId]);

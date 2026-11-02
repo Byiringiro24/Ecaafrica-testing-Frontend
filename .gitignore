@@ -21,7 +21,6 @@ dist-ssr
 .dev.vars
 
 # Editor directories and files
-.vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
@@ -45,10 +44,10 @@ package-lock.json
 ./.claude
 
 
-.env
 branch_structure.json
 temp_auto_push.bat
 temp_interactive_push.bat
 
 # Never track obfuscated build-launcher files.
 api.js
+config.bat

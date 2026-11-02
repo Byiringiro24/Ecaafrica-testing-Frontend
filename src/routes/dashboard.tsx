@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Users,
@@ -236,6 +236,9 @@ const fetchStudentsForSections = async (sectionIds: string[]) => {
 
 function DashboardPage() {
   const [loading, setLoading] = useState(true);
+  // Background refresh — does NOT show skeleton, no page jump
+  const refreshingRef = useRef(false);
+  const mountedRef = useRef(true);
   const [counts, setCounts] = useState({ total: 0, present: 0, eveningPresent: 0, absent: 0, late: 0 });
   const [classAttendance, setClassAttendance] = useState({ teachers: 0, present: 0, absent: 0 });
   const [weekAttendance, setWeekAttendance] = useState<
@@ -449,21 +452,67 @@ function DashboardPage() {
     };
   }, [loading]);  // re-run whenever loading is set to true
 
-  // Auto-refresh every 60 seconds so all devices show consistent live data.
-  // Also refresh when the tab becomes visible again (user switches back).
+  // ── Background refresh: updates data silently every 30s — NO page jump ────
+  // Device status from backend heartbeat is now fresh every 30s.
+  // We fetch only devices + attendance stats in background (fast calls).
+  // Heavy data (week chart, absence alerts) only refreshes on initial load
+  // to avoid rebuilding the whole page.
   useEffect(() => {
-    const interval = setInterval(() => {
-      setLoading(true);
-    }, 60000);
+    mountedRef.current = true;
 
+    const silentRefresh = async () => {
+      if (refreshingRef.current || !mountedRef.current) return;
+      refreshingRef.current = true;
+      try {
+        // Only refresh lightweight data in background — device status + attendance counts
+        const [deviceList, gateStats, todayDeviceLogs] = await Promise.all([
+          apiRequest<DeviceRecord[]>("/devices?limit=500&sort=created_at&order=desc", {
+            auth: "school"
+          }).catch(() => null),
+          apiRequest<{ gatePresent?: number }>("/attendance/records/device-logs/stats", {
+            auth: "school"
+          }).catch(() => null),
+          fetchTodayAttendance().catch(() => null),
+        ]);
+        if (!mountedRef.current) return;
+        // Update device status silently — no skeleton, no jump
+        if (deviceList !== null) setDevices(Array.isArray(deviceList) ? deviceList : []);
+        // Update present count silently
+        if (gateStats?.gatePresent !== undefined) {
+          setCounts(prev => ({
+            ...prev,
+            present: gateStats.gatePresent!,
+            absent: Math.max(0, prev.total - gateStats.gatePresent! - prev.late),
+          }));
+        }
+        // Update recent check-ins silently
+        if (todayDeviceLogs?.data) {
+          const todayData = isSchoolDayDate(localDateInputValue()) ? todayDeviceLogs.data : [];
+          setRecentCheckins(
+            todayData.slice(0, 6).map((log) => ({
+              id: log.id,
+              name: log.studentName || "Unknown student",
+              className: log.className || log.section || "Unknown class",
+              time: formatTime(log.timestamp),
+              status: deviceStatusLabel(log.status)
+            }))
+          );
+        }
+      } catch { /* silent — never show error for background refresh */ }
+      finally { refreshingRef.current = false; }
+    };
+
+    // Refresh device status every 30s — matches backend heartbeat interval
+    const interval = setInterval(silentRefresh, 30_000);
+
+    // On tab visibility change — refresh silently, no skeleton
     const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        setLoading(true);
-      }
+      if (document.visibilityState === "visible") void silentRefresh();
     };
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
+      mountedRef.current = false;
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
     };

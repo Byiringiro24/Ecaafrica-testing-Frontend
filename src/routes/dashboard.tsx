@@ -24,6 +24,7 @@ import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { isDeviceOnline } from "@/components/ui-kit/DeviceStatusCards";
 import { localDateInputValue } from "@/lib/dateInput";
 import { fetchDeviceLogs, fetchTodayAttendance } from "@/lib/device-logs-api";
 import type { DeviceLog } from "@/lib/device-logs-types";
@@ -246,14 +247,8 @@ function DashboardPage() {
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const pct = (n: number) => (counts.total ? ((n / counts.total) * 100).toFixed(0) : "0");
 
-  const activeDevices = devices.filter((device) => {
-    // Use real connectivity: is_online → is_connected → last_seen_at < 90s
-    if (device.is_online === true || device.is_connected === true) return true;
-    if (device.is_online === false || device.is_connected === false) return false;
-    if (device.last_seen_at) return Date.now() - new Date(device.last_seen_at).getTime() < 90_000;
-    return false;
-  });
-  const offlineDevices = devices.filter((device) => !activeDevices.includes(device));
+  const activeDevices = devices.filter(isDeviceOnline);
+  const offlineDevices = devices.filter((device) => !isDeviceOnline(device));
 
   const deviceLocationRows = Array.from(
     devices.reduce((acc, device) => {

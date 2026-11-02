@@ -1,8 +1,10 @@
 import { Link } from "@tanstack/react-router";
-import { Menu, X, Phone, Instagram, Facebook, Linkedin, Twitter, Mail, Circle } from "lucide-react";
-import { useState, ReactNode } from "react";
+import { Menu, X, Phone, Instagram, Facebook, Linkedin, Twitter, Mail, Globe2, ChevronDown, Check } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { GB, TZ, FR, RW } from "country-flag-icons/react/3x2";
 import { NavLink } from "./NavLink";
 import logo from "@/assets/netrack-logo.png";
+import { LandingLocalization, type LandingLanguage } from "@/components/landing/LandingLocalization";
 
 const nav = [
   { to: "/", label: "Home" },
@@ -18,11 +20,40 @@ interface LayoutProps {
   children: ReactNode;
 }
 
+const languages: { code: LandingLanguage; label: string }[] = [
+  { code: "en", label: "English" },
+  { code: "sw", label: "Kiswahili" },
+  { code: "fr", label: "Français" },
+  { code: "rw", label: "Kinyarwanda" },
+];
+
+const languageFlags = { en: GB, sw: TZ, fr: FR, rw: RW };
+
 export default function Layout({ children }: LayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
+  const [language, setLanguage] = useState<LandingLanguage>(() => {
+    const savedLanguage = typeof window === "undefined" ? null : localStorage.getItem("landing-language");
+    return languages.some(({ code }) => code === savedLanguage) ? (savedLanguage as LandingLanguage) : "en";
+  });
+  const selectedLanguage = languages.find(({ code }) => code === language) ?? languages[0];
+  const SelectedFlag = languageFlags[language];
+
+  useEffect(() => {
+    localStorage.setItem("landing-language", language);
+    document.documentElement.lang = language === "sw" ? "sw" : language;
+  }, [language]);
+
+  const changeLanguage = (nextLanguage: LandingLanguage) => {
+    setLanguage(nextLanguage);
+    localStorage.setItem("landing-language", nextLanguage);
+    window.dispatchEvent(new Event("landing-language-change"));
+    setLanguageOpen(false);
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F4F7FC] text-[#1A1A1A] font-sans antialiased selection:bg-[#42A5F5] selection:text-white relative overflow-x-hidden">
+      <LandingLocalization key={language} language={language}>
 
       {/* Decorative ambient background glows */}
       <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-gradient-to-tr from-[#42A5F5]/10 to-transparent rounded-full blur-[120px] pointer-events-none z-0"></div>
@@ -87,6 +118,41 @@ export default function Layout({ children }: LayoutProps) {
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
+            <div className="relative" data-no-translate>
+              <button
+                type="button"
+                onClick={() => setLanguageOpen((open) => !open)}
+                aria-expanded={languageOpen}
+                aria-haspopup="listbox"
+                className="inline-flex h-10 items-center gap-2 rounded-full border border-[#0A3D91]/15 bg-white px-3 text-sm font-semibold text-[#0A3D91] shadow-sm transition-colors hover:bg-[#F4F7FC]"
+              >
+                <Globe2 className="h-4 w-4" aria-hidden="true" />
+                <SelectedFlag className="h-4 w-6 rounded-sm object-cover" aria-hidden="true" />
+                <span>{selectedLanguage.label}</span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${languageOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+              </button>
+              {languageOpen && (
+                <div className="absolute right-0 top-12 z-50 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl" role="listbox" aria-label="Select language">
+                  {languages.map((option) => {
+                    const Flag = languageFlags[option.code];
+                    return (
+                    <button
+                      key={option.code}
+                      type="button"
+                      role="option"
+                      aria-selected={language === option.code}
+                      onClick={() => changeLanguage(option.code)}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${language === option.code ? "bg-[#0A3D91]/10 text-[#0A3D91]" : "text-slate-600 hover:bg-slate-50"}`}
+                    >
+                      <Flag className="h-4 w-6 rounded-sm object-cover" aria-hidden="true" />
+                      <span className="flex-1 font-semibold">{option.label}</span>
+                      {language === option.code && <Check className="h-4 w-4" aria-hidden="true" />}
+                    </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             <a
               href="https://wa.me/250786402913"
               target="_blank"
@@ -134,6 +200,25 @@ export default function Layout({ children }: LayoutProps) {
                 </NavLink>
               ))}
               <div className="h-px bg-[#EEF4FF] my-2"></div>
+              <div className="px-2 pb-1" data-no-translate>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Language</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {languages.map((option) => {
+                    const Flag = languageFlags[option.code];
+                    return (
+                    <button
+                      key={option.code}
+                      type="button"
+                      onClick={() => { changeLanguage(option.code); setMobileMenuOpen(false); }}
+                      className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-semibold ${language === option.code ? "border-[#0A3D91] bg-[#0A3D91]/10 text-[#0A3D91]" : "border-slate-200 text-slate-600"}`}
+                    >
+                      <Flag className="h-4 w-6 rounded-sm object-cover" aria-hidden="true" />
+                      {option.label}
+                    </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </nav>
         )}
@@ -218,7 +303,7 @@ export default function Layout({ children }: LayoutProps) {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-xs text-white/60">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-center sm:text-left sm:flex-1">
-                <span>© 2026 ECA – Education Care Africa. All rights reserved</span>
+                <span>&copy; 2026 ECA – Education Care Africa. All rights reserved</span>
               </div>
               <div className="text-center sm:flex-1">
                 <a href="https://www.netrackgroup.com/" target="_blank" rel="noreferrer" className="text-[#42A5F5] font-semibold hover:underline">
@@ -233,6 +318,7 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </div>
       </footer>
+      </LandingLocalization>
     </div>
   );
 }

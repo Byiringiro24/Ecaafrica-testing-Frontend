@@ -108,7 +108,10 @@ function DeviceAttendancePage() {
         const list: DeviceRecord[] = (Array.isArray(res) ? res : res?.data ?? [])
           .map((d: any) => ({ id: d.id, name: d.name, location: d.location }));
         setDevices(list);
-        if (list.length && !selectedDeviceId) setSelectedDeviceId(list[0].id);
+        // Leave the default filter on "All Devices". Picking the first device
+        // here can silently hide scans when that device is offline while another
+        // device in the school has attendance data.
+        setSelectedDeviceId(current => list.some(device => device.id === current) ? current : "");
       })
       .catch(() => {})
       .finally(() => setDevicesLoading(false));

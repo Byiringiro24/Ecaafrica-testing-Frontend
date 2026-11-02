@@ -212,7 +212,7 @@ function StaffLeaves() {
           <div className="space-y-4 text-sm">
             <div className="flex items-center gap-4">
               <div className="grid h-14 w-14 place-items-center rounded-full bg-primary/10 text-primary font-bold">
-                {open.studentName.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                {(open.studentName ?? "?").split(" ").map((n) => n[0] ?? "").join("").slice(0, 2)}
               </div>
               <div>
                 <div className="font-display font-bold text-lg">{open.studentName}</div>

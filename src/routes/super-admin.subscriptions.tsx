@@ -46,7 +46,7 @@ function SubsPage() {
       })
       .catch((error) => {
         setRows([]);
-        toast.error(error?.message ?? "Unable to load subscriptions");
+        toast.error((error as any)?.message ?? "Unable to load subscriptions");
       })
       .finally(() => setLoading(false));
   }, [statusF]);
@@ -61,7 +61,7 @@ function SubsPage() {
       setRows((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       toast.success("Subscription updated");
     } catch (error) {
-      toast.error(error?.message ?? "Unable to update subscription");
+      toast.error((error as any)?.message ?? "Unable to update subscription");
     }
   };
   const openEdit = (subscription: Subscription) => {
@@ -104,7 +104,7 @@ function SubsPage() {
       setEditing(null);
       toast.success("Subscription plan updated");
     } catch (error) {
-      toast.error(error?.message ?? "Unable to update subscription plan");
+      toast.error((error as any)?.message ?? "Unable to update subscription plan");
     } finally {
       setSaving(false);
     }

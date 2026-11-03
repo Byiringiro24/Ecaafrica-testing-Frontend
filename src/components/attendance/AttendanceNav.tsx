@@ -3,7 +3,9 @@ import { cn } from "@/lib/utils";
 import { isSchoolAdminRole } from "@/lib/schoolAuth";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
-const TABS = [
+type Tab = { to: string; label: string; schoolAdminOnly?: true };
+
+const TABS: Tab[] = [
   { to: "/attendance/manual",             label: "Class Attendance"         },
   { to: "/attendance/boarding-manual",    label: "Boarding Attendance"      },
   { to: "/attendance/dining-hall",        label: "Dining Hall"              },
@@ -12,7 +14,7 @@ const TABS = [
   { to: "/attendance/device-attendance",  label: "Device Attendance"        },
   { to: "/attendance/messages",           label: "SMS Settings"             },
   { to: "/attendance/bulk-sms",           label: "Bulk SMS"                 },
-] as const;
+];
 
 export function AttendanceNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });

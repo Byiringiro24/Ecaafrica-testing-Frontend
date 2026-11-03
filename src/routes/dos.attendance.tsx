@@ -8,7 +8,7 @@ import { directorOfStudiesRouteGuard } from "@/lib/schoolAuth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
 import { exportToExcel } from "@/lib/exportExcel";
-import { attendanceDate, formatAttendanceDateTime } from "@/lib/attendanceTime";
+import { attendanceDate, formatAttendanceDateTime, formatAttendanceTime } from "@/lib/attendanceTime";
 
 export const Route = createFileRoute("/dos/attendance")({
   beforeLoad: ({ location }) => directorOfStudiesRouteGuard(location),

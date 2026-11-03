@@ -324,7 +324,7 @@ export function ManageSmsTypePage({ triggerType, typeLabel }: ManageSmsTypePageP
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-foreground">Template Name</label>
-                  <SaInput value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
+                  <SaInput label="Template Name" value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-foreground">English Template</label>

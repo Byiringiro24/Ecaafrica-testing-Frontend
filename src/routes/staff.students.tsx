@@ -22,6 +22,8 @@ const blankForm = (): FormState => ({
   class: CLASSES[0],
   parentName: "",
   parentPhone: "",
+  residency: "Day",
+  student_id_number: "",
 });
 
 function StudentManagement() {
@@ -168,6 +170,7 @@ function StudentManagement() {
 function StudentForm({ initial, mode, onCancel, onSave }: { initial: FormState; mode: "add" | "edit"; onCancel: () => void; onSave: (data: FormState) => void }) {
   const [form, setForm] = useState<FormState>(initial);
   const [saving, setSaving] = useState(false);
+  const schoolCountry = useSchoolCountryName();
   const update = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm(f => ({ ...f, [k]: v }));
 
   const submit = async (e: React.FormEvent) => {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Search, X, Printer, Send, Plus } from "lucide-react";
@@ -362,7 +362,7 @@ function SubscriptionTab() {
   useEffect(() => {
     apiRequest<any>("/school/subscription", { auth: "school" })
       .then(setSubscription)
-      .catch((error) => toast.error(error?.message ?? "Unable to load subscription"))
+      .catch((error) => toast.error((error as any)?.message ?? "Unable to load subscription"))
       .finally(() => setLoading(false));
   }, []);
   if (loading) return <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">Loading subscription...</div>;
@@ -372,7 +372,7 @@ function SubscriptionTab() {
   const saveAutoRenew = async (value: boolean) => {
     setSaving(true);
     try { const updated = await apiRequest<any>("/school/subscription", { auth: "school", method: "PATCH", body: JSON.stringify({ auto_renew: value }) }); setSubscription(updated); toast.success("Subscription preferences updated"); }
-    catch (error) { toast.error(error?.message ?? "Unable to update subscription"); }
+    catch (error) { toast.error((error as any)?.message ?? "Unable to update subscription"); }
     finally { setSaving(false); }
   };
   const [viewing, setViewing] = useState<SubscriptionInvoice | null>(null);

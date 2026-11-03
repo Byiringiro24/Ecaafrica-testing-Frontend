@@ -309,7 +309,6 @@ function DashboardPage() {
             last_status_message: live.last_status_message,
           };
         });
-        ]);
 
         if (!active) return;
 

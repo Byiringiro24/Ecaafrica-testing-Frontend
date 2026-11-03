@@ -44,7 +44,7 @@ async function attemptTokenRefresh(authMode: "school" | "platform"): Promise<str
       accessToken: payload.data.accessToken as string,
       refreshToken: (payload.data.refreshToken as string | null | undefined) ?? auth.refreshToken,
       user: payload.data.user ?? auth.user,
-      activeRole: auth.activeRole,
+      ...(authMode === "school" ? { activeRole: (auth as any).activeRole } : {}),
     };
 
     if (authMode === "school") setSchoolAuth(updated);

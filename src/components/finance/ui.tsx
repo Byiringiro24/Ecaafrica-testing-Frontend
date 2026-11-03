@@ -157,8 +157,8 @@ export function DocButton({ doc, label = "View" }: { doc: UploadedDoc | null; la
   );
 }
 
-export function PrimaryButton({ children, onClick, type = "button" }: { children: ReactNode; onClick?: () => void; type?: "button" | "submit" }) {
-  return <button type={type} onClick={onClick} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90">{children}</button>;
+export function PrimaryButton({ children, onClick, type = "button", disabled }: { children: ReactNode; onClick?: () => unknown; type?: "button" | "submit"; disabled?: boolean }) {
+  return <button type={type} onClick={onClick} disabled={disabled} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed">{children}</button>;
 }
 export function GhostButton({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
   return <button type="button" onClick={onClick} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">{children}</button>;

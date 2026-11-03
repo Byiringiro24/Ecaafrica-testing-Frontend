@@ -9,7 +9,19 @@ import { ConfirmModal } from "@/components/modals/ConfirmModal";
 import { apiRequest } from "@/lib/api";
 import { studentIdNumber, studentSearchText } from "@/lib/studentIdentity";
 
+/** Extract student name from SMS body text — returns first capitalized word sequence */
+function extractStudentName(body: string): string {
+  if (!body) return "Student";
+  // Try common patterns like "Dear ..., student NAME has..."
+  const m = body.match(/student\s+([A-Z][A-Za-z\s]+?)(?:\s+has|\s+was|\s+is|\.|,)/i)
+    ?? body.match(/([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)+)/);
+  return m?.[1]?.trim() ?? "Student";
+}
+
 export const Route = createFileRoute("/parents")({ component: ParentsPage });
+
+/** Shape of the parent edit form */
+type ParentEditFormState = { full_name: string; phone: string; email: string; national_id: string; district: string };
 
 type NotificationStatus = "queued" | "sent" | "delivered" | "failed" | "retry";
 
@@ -270,7 +282,8 @@ function ParentsPage() {
       name: student.name,
       class: student.class,
       parentName: student.parentName,
-      parentPhone: student.parentPhone
+      parentPhone: student.parentPhone,
+      studentIdNumber: student.studentIdNumber ?? student.id,
     })),
     [studentViews]
   );
@@ -462,8 +475,8 @@ function ParentEditModal({
 }: {
   open: boolean;
   parent: ParentRecord;
-  form: typeof editForm;
-  setForm: React.Dispatch<React.SetStateAction<typeof editForm>>;
+  form: ParentEditFormState;
+  setForm: React.Dispatch<React.SetStateAction<ParentEditFormState>>;
   saving: boolean;
   onSave: () => void;
   onClose: () => void;

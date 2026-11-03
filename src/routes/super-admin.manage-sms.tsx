@@ -51,7 +51,7 @@ function ManageSmsPage() {
     }
     return [] as NotificationTemplate[];
   }, []);
-  const [selectedTriggerType, setSelectedTriggerType] = useState<SMS_TRIGGER_TYPES[0]["value"] | null>(
+  const [selectedTriggerType, setSelectedTriggerType] = useState<typeof SMS_TRIGGER_TYPES[number]["value"] | null>(
     SMS_TRIGGER_TYPES[0].value
   );
   const [selectedTemplate, setSelectedTemplate] = useState<NotificationTemplate | null>(null);
@@ -76,7 +76,7 @@ function ManageSmsPage() {
     setLoading(true);
     try {
       const response = await getNotificationTemplates({
-        trigger_type: selectedTriggerType,
+        trigger_type: selectedTriggerType ?? undefined,
         limit: 100
       });
       const nextTemplates = normalizeTemplates(response);
@@ -402,7 +402,7 @@ function ManageSmsPage() {
                     key={template.id}
                     onClick={() => handleTemplateSelect(template.id)}
                     className={`cursor-pointer rounded-lg border border-border p-4 hover:bg-muted/50 
-                      ${selectedTemplate?.id === template.id ? "bg-primary/50 border-primary" : ""}`}
+                      ${(selectedTemplate as NotificationTemplate | null)?.id === template.id ? "bg-primary/50 border-primary" : ""}`}
                   >
                     <div className="flex justify-between items-start">
                       <div>
@@ -436,6 +436,7 @@ function ManageSmsPage() {
                 <div className="space-y-2">
                   <label className="text-xs font-semibold mb-1.5 text-foreground">Template Name</label>
                   <SaInput
+                    label="Template Name"
                     value={templateName}
                     onChange={(e) => setTemplateName(e.target.value)}
                   />

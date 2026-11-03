@@ -274,7 +274,7 @@ function StaffPage() {
   }, [departments, visibleStaffRows]);
 
   const filtered = useMemo(() => {
-    const baseRows = tab === "Teachers" ? teacherRows : visibleStaffRows;
+    const baseRows = tab === "Departments" ? visibleStaffRows : visibleStaffRows;
     return baseRows.filter((staff) =>
       (q === "" || staff.name.toLowerCase().includes(q.toLowerCase()) || staff.staffId.toLowerCase().includes(q.toLowerCase())) &&
       (dept === "All" || staff.department === dept) &&

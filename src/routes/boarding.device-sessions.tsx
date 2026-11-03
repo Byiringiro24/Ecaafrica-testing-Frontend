@@ -145,7 +145,7 @@ function DeviceSessionsPage() {
           apiRequest<any[]>("/classes?limit=500", { auth: "school" }),
           apiRequest<any[]>("/sections?limit=500", { auth: "school" }),
         ]);
-        const mapped = normalizeListResponse(deviceData).map(d => ({ id: d.id, name: d.name, location: d.location }));
+        const mapped = normalizeListResponse(deviceData).map((d: any) => ({ id: d.id, name: d.name, location: d.location }));
         const classNames = normalizeListResponse(classData)
           .map((item: any) => item?.name ?? item?.class_name)
           .filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0);
@@ -155,8 +155,8 @@ function DeviceSessionsPage() {
 
         setDevices(mapped);
         setSmsTemplates(normalizeListResponse(templateData));
-        setSchoolClasses(Array.from(new Set(classNames)).sort((a, b) => a.localeCompare(b)));
-        setSchoolSections(Array.from(new Set(sectionNames)).sort((a, b) => a.localeCompare(b)));
+        setSchoolClasses(Array.from(new Set<string>(classNames)).sort((a, b) => a.localeCompare(b)));
+        setSchoolSections(Array.from(new Set<string>(sectionNames)).sort((a, b) => a.localeCompare(b)));
         if (mapped[0]) setSelectedDeviceId(c => c || mapped[0].id);
       } catch (e) { toast.error(getErrorMessage(e, "Failed to load devices")); }
       finally { setLoading(false); }

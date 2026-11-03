@@ -24,6 +24,7 @@ import { Avatar } from "@/components/ui-kit/Avatar";
 import { StatusBadge } from "@/components/ui-kit/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/api";
+import { deviceApi } from "@/lib/deviceApi";
 import { isDeviceOnline } from "@/components/ui-kit/DeviceStatusCards";
 import { localDateInputValue } from "@/lib/dateInput";
 import { fetchDeviceLogs, fetchTodayAttendance } from "@/lib/device-logs-api";
@@ -271,7 +272,7 @@ function DashboardPage() {
       setLoading(true);
       try {
         const today = localDateInputValue();
-        const [studentMeta, todayDeviceLogs, classes, sections, sessions, records, deviceList] = await Promise.all([
+        const [studentMeta, todayDeviceLogs, classes, sections, sessions, records, deviceListRaw, liveStatuses] = await Promise.all([
           apiRequest<StudentCountResponse>("/students?limit=1", {
             auth: "school",
             returnMeta: true
@@ -287,7 +288,27 @@ function DashboardPage() {
           }).catch(() => []),
           apiRequest<DeviceRecord[]>("/devices?limit=500&sort=created_at&order=desc", {
             auth: "school"
-          }).catch(() => [])
+          }).catch(() => []),
+          // LIVE device status — real HTTP ping to each tablet bridge via WireGuard
+          // Returns actual FK623 + WireGuard state, NOT DB cache
+          deviceApi.getLiveStatuses().catch(() => null),
+        ]);
+
+        // Merge live status into device records — live always wins over DB cache
+        const liveStatusMap = new Map<string, any>(
+          Array.isArray(liveStatuses) ? liveStatuses.map((s: any) => [s.id, s]) : []
+        );
+        const deviceList = (Array.isArray(deviceListRaw) ? deviceListRaw : []).map((d: any) => {
+          const live = liveStatusMap.get(d.id);
+          if (!live) return d;
+          return {
+            ...d,
+            is_online: live.is_online,
+            is_connected: live.is_connected,
+            status: live.is_online ? "online" : "offline",
+            last_status_message: live.last_status_message,
+          };
+        });
         ]);
 
         if (!active) return;
@@ -464,19 +485,34 @@ function DashboardPage() {
       if (refreshingRef.current || !mountedRef.current) return;
       refreshingRef.current = true;
       try {
-        // Only refresh lightweight data in background — device status + attendance counts
-        const [deviceList, gateStats, todayDeviceLogs] = await Promise.all([
-          apiRequest<DeviceRecord[]>("/devices?limit=500&sort=created_at&order=desc", {
-            auth: "school"
-          }).catch(() => null),
+        // LIVE device status — real HTTP ping to each tablet bridge
+        const [liveStatuses, gateStats, todayDeviceLogs] = await Promise.all([
+          deviceApi.getLiveStatuses().catch(() => null),
           apiRequest<{ gatePresent?: number }>("/attendance/records/device-logs/stats", {
             auth: "school"
           }).catch(() => null),
           fetchTodayAttendance().catch(() => null),
         ]);
         if (!mountedRef.current) return;
+
         // Update device status silently — no skeleton, no jump
-        if (deviceList !== null) setDevices(Array.isArray(deviceList) ? deviceList : []);
+        // Merge live status with existing device list
+        if (Array.isArray(liveStatuses)) {
+          const liveMap = new Map<string, any>(liveStatuses.map((s: any) => [s.id, s]));
+          setDevices(prev => prev.map(d => {
+            const live = liveMap.get(d.id);
+            if (!live) return d;
+            // Only update if status actually changed — prevents unnecessary re-renders
+            if (d.is_online === live.is_online && d.is_connected === live.is_connected) return d;
+            return {
+              ...d,
+              is_online: live.is_online,
+              is_connected: live.is_connected,
+              status: live.is_online ? "online" : "offline",
+              last_status_message: live.last_status_message,
+            };
+          }));
+        }
         // Update present count silently
         if (gateStats?.gatePresent !== undefined) {
           setCounts(prev => ({

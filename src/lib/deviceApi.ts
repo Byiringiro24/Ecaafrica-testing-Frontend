@@ -190,6 +190,11 @@ export const deviceApi = {
   getStatus: (id: string) =>
     apiRequest<any>(`/devices/${id}/status`, { auth: "school" }),
 
+  // Get LIVE status for ALL devices — real HTTP ping to each tablet bridge
+  // Returns actual FK623 + WireGuard state, NOT from DB cache
+  getLiveStatuses: () =>
+    apiRequest<any[]>(`/devices/live-status`, { auth: "school" }),
+
   // Get device attendance config
   getAttendanceConfig: (id: string) =>
     apiRequest<{ device_id: string; sessions: AttendanceSession[]; attendance_config: AttendanceConfig }>(

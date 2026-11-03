@@ -1,4 +1,5 @@
 ﻿import { ReactNode, useState } from "react";
+import type { ElementType } from "react";
 import { SuspendedBanner } from "@/components/layout/SuspendedBanner";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
@@ -12,7 +13,10 @@ import { useCurrentUser, getInitials, formatRole } from "@/hooks/useCurrentUser"
 import logo from "@/assets/logo.png";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 
-const NAV = [
+type NavItem = { to: string; label: string; icon: ElementType; native?: true };
+type NavSection = { section: string; items: NavItem[] };
+
+const NAV: NavSection[] = [
   {
     section: "Overview",
     items: [

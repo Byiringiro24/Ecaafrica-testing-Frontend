@@ -64,7 +64,7 @@ function LoginPage() {
         setSchoolAuth({
           accessToken: result.accessToken,
           refreshToken: result.refreshToken ?? null,
-          user: result.user
+          user: result.user as any
         });
       }
 

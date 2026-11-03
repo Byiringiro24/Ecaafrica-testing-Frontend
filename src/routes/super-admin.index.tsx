@@ -15,7 +15,18 @@ import {
   SCHOOL_GROWTH, 
   planBadgeClass,
   statusBadgeClass,
+  type PlatformSchool as BasePlatformSchool,
 } from "@/lib/superAdminMockData";
+
+/** Generic paginated list response from backend */
+type ListResponse<T> = { data: T[]; meta: { total: number; page: number; limit: number } };
+
+/** Extend PlatformSchool with live API fields not in the mock type */
+type PlatformSchool = BasePlatformSchool & {
+  subscription_plan?: { name?: string; sms_bundle?: number } | null;
+  student_count?: number | null;
+  updated_at?: string | null;
+};
 
 export const Route = createFileRoute("/super-admin/")({
   component: SuperAdminOverview,

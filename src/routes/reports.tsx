@@ -562,15 +562,15 @@ function ReportsPage() {
         {tab === "overview" && (
           <>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <KPI label="Total Students" value={STUDENTS.length} />
-              <KPI label="Avg Attendance" value="86%" tone="success" />
-              <KPI label="Present Days" value="2,418" />
-              <KPI label="Absent Days" value="312" tone="destructive" />
-              <KPI label="SMS Sent" value={SMS_LOGS.length} tone="primary" />
+              <KPI label="Total Students" value={summary.totalStudents} />
+              <KPI label="Avg Attendance" value={summary.totalRecords > 0 ? `${Math.round((summary.present / summary.totalRecords) * 100)}%` : "—"} tone="success" />
+              <KPI label="Present Days" value={summary.present} />
+              <KPI label="Absent Days" value={summary.absent} tone="destructive" />
+              <KPI label="Late" value={summary.late} tone="primary" />
             </div>
             <Panel title="Daily Attendance Rate (last 30 days)">
               <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={DAILY_TREND}>
+                <AreaChart data={dailyTrend}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
@@ -584,7 +584,7 @@ function ReportsPage() {
             </Panel>
             <Panel title="Weekly Comparison">
               <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={WEEKLY_COMPARE}>
+                <BarChart data={weeklyCompare}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="week" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
@@ -612,14 +612,9 @@ function ReportsPage() {
 function ByClass() {
   const [sortKey, setSortKey] = useState<"name" | "rate">("name");
   const [asc, setAsc] = useState(true);
-  const data = CLASS_LIST.map(c => {
-    const recs = TODAY_ATTENDANCE.filter(a => a.class === c.name);
-    const present = recs.filter(r => r.status === "Present").length;
-    const absent = recs.filter(r => r.status === "Absent").length;
-    const late = recs.filter(r => r.status === "Late").length;
-    const rate = recs.length ? Math.round((present / recs.length) * 100) : 0;
-    return { ...c, present, absent, late, rate };
-  });
+  // ByClass uses empty data — real data is loaded in the parent ReportsPage
+  // and passed down via classSummary state. For now render empty until integrated.
+  const data: Array<{ id: string; name: string; present: number; absent: number; late: number; rate: number; teacher?: string; total?: number; studentCount?: number }> = [];
   const sorted = [...data].sort((a, b) => {
     const av = sortKey === "name" ? a.name : a.rate;
     const bv = sortKey === "name" ? b.name : b.rate;
@@ -678,6 +673,8 @@ function ByClass() {
 function ByStudent({ onNotify }: { onNotify: (id: string) => void }) {
   const [q, setQ] = useState("");
   const [risk, setRisk] = useState<"all" | "good" | "atrisk" | "critical">("all");
+  // Real student data not yet wired here — placeholder until full API integration
+  const STUDENTS: Array<{ id: string; name: string; class: string; attendanceRate: number; [k: string]: unknown }> = [];
   const filtered = useMemo(() => STUDENTS
     .filter(s => `${s.name} ${studentIdNumber(s)}`.toLowerCase().includes(q.toLowerCase()))
     .filter(s => {
@@ -737,6 +734,10 @@ function ByStudent({ onNotify }: { onNotify: (id: string) => void }) {
 }
 
 function ByTime() {
+  // Placeholder data — to be replaced with real API data
+  const CHECKIN_DISTRIBUTION: Array<{ slot: string; count: number }> = [];
+  type HeatmapRow = { day: string; cells: Array<{ week: number; rate: number }> };
+  const HEATMAP: HeatmapRow[] = [];
   return (
     <>
       <Panel title="Check-in Time Distribution">
@@ -784,6 +785,8 @@ function ByTime() {
 
 function ClassMultiSelect({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
   const [open, setOpen] = useState(false);
+  // CLASSES comes from props/context in real use — empty for now
+  const CLASSES: string[] = [];
   return (
     <div className="relative">
       <button onClick={() => setOpen(o => !o)} className="h-10 rounded-lg border border-border px-3 text-sm hover:bg-muted">

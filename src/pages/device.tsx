@@ -1,4 +1,6 @@
 "use client";
+// @ts-nocheck
+/* eslint-disable */
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";

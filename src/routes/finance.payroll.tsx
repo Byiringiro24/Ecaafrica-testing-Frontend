@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Search, Printer, CheckCircle2, Send, Wallet } from "lucide-react";
+import { Search, Printer, CheckCircle2, Send, Wallet, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { FinanceLayout, StatusPill } from "@/components/layout/FinanceLayout";
 import { StatCard } from "@/components/ui-kit/StatCard";

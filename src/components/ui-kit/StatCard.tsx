@@ -6,7 +6,7 @@ interface Props {
   value: string | number;
   icon?: ReactNode;
   trend?: string;
-  tone?: "primary" | "success" | "destructive" | "warning";
+  tone?: "primary" | "success" | "destructive" | "warning" | "secondary";
   accent?: "blue";
   /** Denser layout for dashboard grids with many KPIs */
   compact?: boolean;
@@ -20,6 +20,7 @@ const TONES = {
   success: "bg-success/15 text-success",
   destructive: "bg-destructive/15 text-destructive",
   warning: "bg-amber-100 text-amber-700",
+  secondary: "bg-muted text-muted-foreground",
 };
 
 const ACCENTS = {

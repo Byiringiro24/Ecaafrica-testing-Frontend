@@ -258,7 +258,7 @@ export interface SMSLog {
 
 const STATUS_SMS: SMSLog["status"][] = ["sent","sent","sent","sent","sent","sent","sent","sent","failed","pending"];
 const TRIGGER_BY_STATUS: Record<Status, SMSLog["trigger"]> = {
-  Present: "present", Absent: "absent", Late: "late",
+  Present: "present", Absent: "absent", Late: "late", Excused: "absent",
 };
 
 function buildMessage(parent: string, student: string, cls: string, trig: SMSLog["trigger"], time: string) {

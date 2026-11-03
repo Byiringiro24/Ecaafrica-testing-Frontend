@@ -938,6 +938,22 @@ function AssignTab({ tablets, devices, schools, onRefresh }: {
   const [tabletSchoolForm, setTabletSchoolForm] = useState({ tablet_id: "", school_id: "" });
   const [linkForm, setLinkForm] = useState({ device_id: "", tablet_id: "" });
   const [deviceSchoolForm, setDeviceSchoolForm] = useState({ device_id: "", school_id: "" });
+  // Live ping state for devices in this tab (ping on mount)
+  const [deviceLiveStatus, setDeviceLiveStatus] = useState<Record<string, boolean | null>>({});
+
+  useEffect(() => {
+    for (const d of devices) {
+      const tabletId = d.tablet_id ?? d.tablet?.id;
+      if (!tabletId) continue;
+      apiRequest<any>(`/platform/hardware/tablets/${tabletId}/ping`, { auth: "platform" })
+        .then(res => {
+          const online = res?.healthy === true || res?.success === true;
+          setDeviceLiveStatus(prev => ({ ...prev, [d.id]: online }));
+        })
+        .catch(() => setDeviceLiveStatus(prev => ({ ...prev, [d.id]: false })));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devices]);
 
   const handleReassignTablet = async (e: FormEvent) => {
     e.preventDefault();

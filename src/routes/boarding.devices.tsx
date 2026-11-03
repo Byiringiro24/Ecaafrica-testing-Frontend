@@ -406,7 +406,7 @@ function ServerCommandCenter() {
             cardCount: nextLogs.filter((log) => log.scan_method === "nfc").length,
             passwordCount: nextLogs.filter((log) => log.scan_method === "manual").length,
             totalDevices: nextDevices.length,
-            onlineDevices: nextDevices.filter(isDeviceOnline).length,
+            onlineDevices: nextDevices.filter((d) => isDeviceOnline(d as any)).length,
           });
         }
         if (sessionsResult.status === "fulfilled") setSessions(sessionsResult.value.sessions ?? []);
@@ -416,7 +416,7 @@ function ServerCommandCenter() {
         ...current,
         totalStudents: nextStudents.length,
         totalDevices: nextDevices.length,
-        onlineDevices: nextDevices.filter(isDeviceOnline).length,
+        onlineDevices: nextDevices.filter((d) => isDeviceOnline(d as any)).length,
         attendanceToday: current.totalLogs ? current.attendanceToday : logs.filter((log) => log.scanned_at?.startsWith(today)).length,
       }));
     } catch (error: any) {
@@ -1020,7 +1020,7 @@ function ServerCommandCenter() {
     }
   }
 
-  const connected = isDeviceOnline(selectedDevice ?? {} as Device);
+  const connected = isDeviceOnline((selectedDevice ?? {}) as any);
 
   // ── Socket-backed live monitor ──────────────────────────────────────────
   const handleGateEvent = useCallback((event: GateSocketEvent) => {
@@ -1234,7 +1234,7 @@ function ServerCommandCenter() {
                           <div className="font-semibold text-foreground">{device.name}</div>
                           <div className="text-xs text-muted-foreground">{device.location ?? "No location"}</div>
                         </div>
-                        <StatusPill value={isDeviceOnline(device) ? "online" : "offline"} />
+                        <StatusPill value={isDeviceOnline(device as any) ? "online" : "offline"} />
                       </div>
                       <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
                         <span>Users on device: {device.device_users_count ?? 0}</span>

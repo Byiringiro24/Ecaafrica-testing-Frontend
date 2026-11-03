@@ -248,6 +248,8 @@ function AssignClassModal({
 }) {
   const [classId, setClassId] = useState(classes[0]?.id ?? "");
   const [amount, setAmount] = useState("");
+  const currentUserModal = useCurrentUser();
+  const currency = currentUserModal?.school_currency ?? "RWF";
   const [submitting, setSubmitting] = useState(false);
   const submit = async () => {
     const value = Number(amount.replace(/[^\d.]/g, ""));

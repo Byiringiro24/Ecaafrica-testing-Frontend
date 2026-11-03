@@ -203,10 +203,29 @@ export default function DeviceManagement() {
   const loadDevices = useCallback(async () => {
     setDevLoading(true);
     try {
-      const res = await deviceApi.getAll({ limit: 200 });
+      // Load device list and live status in parallel
+      const [res, liveStatuses] = await Promise.all([
+        deviceApi.getAll({ limit: 200 }),
+        deviceApi.getLiveStatuses().catch(() => null),
+      ]);
       const list = res.data ?? [];
-      setDevices(list);
-      setSelectedId(cur => cur || list[0]?.id || "");
+      // Merge live status — real FK623+WireGuard state, not DB cache
+      const liveMap = new Map<string, any>(
+        Array.isArray(liveStatuses) ? liveStatuses.map((s: any) => [s.id, s]) : []
+      );
+      const merged = list.map((d: any) => {
+        const live = liveMap.get(d.id);
+        if (!live) return d;
+        return {
+          ...d,
+          is_online: live.is_online,
+          is_connected: live.is_connected,
+          status: live.is_online ? "online" : "offline",
+          last_status_message: live.last_status_message,
+        };
+      });
+      setDevices(merged);
+      setSelectedId(cur => cur || merged[0]?.id || "");
     } catch (e: any) { toast.error(e?.message ?? "Failed to load devices"); }
     finally { setDevLoading(false); }
   }, []);

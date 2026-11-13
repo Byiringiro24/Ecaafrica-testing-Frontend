@@ -48,6 +48,12 @@ const NAV: NavSection[] = [
       { to: "/super-admin/plans", label: "Subscription Plans", icon: Layers },
     ],
   },
+  {
+    label: "System",
+    items: [
+      { to: "/super-admin/settings", label: "Settings", icon: Settings },
+    ],
+  },
 ];
 
 interface Props {
